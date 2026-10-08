@@ -1,0 +1,74 @@
+@import "tailwindcss";
+@import "tw-animate-css";
+
+@theme {
+  --color-cream: #fcfaf7;
+  --color-cream-deep: #f4f0eb;
+  --color-linen: #e5dbd1;
+  --color-sage: #7a8c79;
+  --color-forest: #1b3b22;
+  --color-forest-deep: #142d19;
+  --color-ink: #0e2012;
+  --color-gold: #d4af37;
+  --color-gold-light: #f7f1d8;
+  --color-gold-dark: #aa8c2c;
+  --color-bg: #fcfaf7;
+  --color-surface: #ffffff;
+  --color-fg: #142d19;
+  --color-muted: #5c6b5a;
+  --color-primary: #1b3b22;
+  --color-border: #e5dbd1;
+  --radius: 0.9rem;
+  --font-sans: "Inter", ui-sans-serif, system-ui, sans-serif;
+  --font-serif: "Playfair Display", ui-serif, Georgia, serif;
+}
+
+@layer base {
+  button:not(:disabled),
+  [role="button"]:not(:disabled) {
+    cursor: pointer;
+  }
+
+  html {
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+
+  body {
+    background-color: var(--color-cream);
+    color: var(--color-forest-deep);
+    font-family: var(--font-sans);
+  }
+
+  h1,
+  h2,
+  h3,
+  h4 {
+    font-family: var(--font-serif);
+    text-wrap: balance;
+    color: var(--color-forest);
+  }
+
+  p {
+    text-wrap: pretty;
+  }
+}
+
+.crown-trail {
+  position: fixed;
+  top: 0;
+  left: 0;
+  z-index: 80;
+  pointer-events: none;
+  color: var(--color-gold);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}

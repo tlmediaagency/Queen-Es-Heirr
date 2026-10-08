@@ -1,0 +1,1023 @@
+<!DOCTYPE html>
+<html lang="en" class="scroll-smooth">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Queen E's Heirr | Curating Culture & Confections</title>
+    <!-- Tailwind CSS CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        queen: {
+                            50: '#fcfaf7',
+                            100: '#f4f0eb',
+                            200: '#e5dbd1',
+                            300: '#d0bfb0',
+                            600: '#7a8c79',
+                            forest: '#1b3b22', // Deep Rich Green matching brand
+                            750: '#142d19',
+                            800: '#0e2012',
+                            900: '#08140a',
+                        },
+                        champagne: {
+                            DEFAULT: '#d4af37',
+                            light: '#f7f1d8',
+                            dark: '#aa8c2c'
+                        }
+                    },
+                    fontFamily: {
+                        sans: ['Inter', 'sans-serif'],
+                        serif: ['Playfair Display', 'serif']
+                    }
+                }
+            }
+        }
+    </script>
+    <!-- Google Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Playfair+Display:ital,wght@0,400;0,600;0,700;1,400&display=swap" rel="stylesheet">
+    <!-- Font Awesome for Icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <style>
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: #fcfaf7;
+            color: #142d19;
+            overflow-x: hidden;
+        }
+        h1, h2, h3, h4, .font-serif {
+            font-family: 'Playfair Display', serif;
+        }
+        /* Shimmer animation for hero text */
+        @keyframes shimmer {
+            0% { background-position: -200% 0; }
+            100% { background-position: 200% 0; }
+        }
+        .shimmer-text {
+            background: linear-gradient(90deg, #d4af37 0%, #fff7d6 50%, #d4af37 100%);
+            background-size: 200% auto;
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            animation: shimmer 4s linear infinite;
+        }
+        .hero-pattern {
+            background-image: radial-gradient(#d4af37 0.6px, transparent 0.6px);
+            background-size: 24px 24px;
+        }
+        /* Crown cursor trail elements */
+        .crown-trail {
+            position: fixed;
+            pointer-events: none;
+            font-size: 14px;
+            color: #d4af37;
+            transform: translate(-50%, -50%);
+            transition: opacity 0.4s ease, transform 0.4s ease;
+            z-index: 9999;
+            opacity: 0.8;
+            user-select: none;
+        }
+    </style>
+</head>
+<body class="antialiased selection:bg-champagne/30 min-h-screen flex flex-col justify-between">
+
+    <!-- Navigation Header -->
+    <header id="header" class="fixed top-0 left-0 right-0 z-50 bg-[#fcfaf7]/95 backdrop-blur-md border-b border-queen-200 transition-all duration-300">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+            <div class="flex items-center justify-between h-20">
+                <!-- Brand Logo -->
+                <a href="#home" onclick="navigateTo('home')" class="flex items-center space-x-3 group">
+                    <div class="w-10 h-10 rounded-full bg-queen-forest flex items-center justify-center border border-champagne text-champagne font-serif text-xl font-bold group-hover:bg-queen-750 transition shadow-sm">
+                        <i class="fa-solid fa-crown text-sm"></i>
+                    </div>
+                    <div>
+                        <span class="font-serif text-lg sm:text-xl font-bold tracking-wide text-queen-forest block leading-none">QUEEN E'S HEIRR</span>
+                        <span class="text-[9px] uppercase tracking-[0.2em] text-queen-600 font-semibold">Curating Culture & Confections</span>
+                    </div>
+                </a>
+
+                <!-- Desktop Nav Links (Multi-page tab system) -->
+                <nav class="hidden xl:flex items-center space-x-5">
+                    <button onclick="navigateTo('home')" id="nav-home" class="nav-link text-xs uppercase tracking-wider font-semibold text-queen-forest hover:text-champagne-dark transition pb-1 border-b-2 border-queen-forest">Home</button>
+                    <button onclick="navigateTo('shop')" id="nav-shop" class="nav-link text-xs uppercase tracking-wider font-semibold text-queen-800/80 hover:text-champagne-dark transition pb-1 border-b-2 border-transparent">The Shop</button>
+                    <button onclick="navigateTo('classes')" id="nav-classes" class="nav-link text-xs uppercase tracking-wider font-semibold text-queen-800/80 hover:text-champagne-dark transition pb-1 border-b-2 border-transparent">Jam & Etiquette Classes</button>
+                    <button onclick="navigateTo('training')" id="nav-training" class="nav-link text-xs uppercase tracking-wider font-semibold text-queen-800/80 hover:text-champagne-dark transition pb-1 border-b-2 border-transparent">Etiquette & Leadership</button>
+                    <button onclick="navigateTo('wholesale')" id="nav-wholesale" class="nav-link text-xs uppercase tracking-wider font-semibold text-queen-800/80 hover:text-champagne-dark transition pb-1 border-b-2 border-transparent">Wholesale Portal</button>
+                    <button onclick="navigateTo('stories')" id="nav-stories" class="nav-link text-xs uppercase tracking-wider font-semibold text-queen-800/80 hover:text-champagne-dark transition pb-1 border-b-2 border-transparent">Queen Talk</button>
+                    <button onclick="navigateTo('locations')" id="nav-locations" class="nav-link text-xs uppercase tracking-wider font-semibold text-queen-800/80 hover:text-champagne-dark transition pb-1 border-b-2 border-transparent">Locations</button>
+                    <button onclick="navigateTo('faq')" id="nav-faq" class="nav-link text-xs uppercase tracking-wider font-semibold text-queen-800/80 hover:text-champagne-dark transition pb-1 border-b-2 border-transparent">FAQ</button>
+                </nav>
+
+                <!-- Action Button -->
+                <div class="hidden md:flex items-center space-x-4">
+                    <button onclick="navigateTo('shop')" class="bg-queen-forest hover:bg-queen-750 text-champagne-light px-5 py-2.5 rounded-full text-xs font-semibold tracking-wider uppercase transition shadow-sm flex items-center space-x-2">
+                        <i class="fa-solid fa-store"></i>
+                        <span>Shop Online</span>
+                    </button>
+                </div>
+
+                <!-- Mobile Menu Button -->
+                <div class="xl:hidden flex items-center">
+                    <button id="mobile-menu-btn" class="text-queen-forest p-2 focus:outline-none">
+                        <i class="fa-solid fa-bars text-xl"></i>
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Mobile Menu Dropdown -->
+        <div id="mobile-menu" class="hidden xl:hidden bg-[#fcfaf7] border-b border-queen-200 px-6 py-6 space-y-4 shadow-xl">
+            <button onclick="navigateTo('home'); toggleMobileMenu();" class="block w-full text-left text-sm font-semibold uppercase tracking-wider text-queen-forest">Home</button>
+            <button onclick="navigateTo('shop'); toggleMobileMenu();" class="block w-full text-left text-sm font-semibold uppercase tracking-wider text-queen-forest">The Shop</button>
+            <button onclick="navigateTo('classes'); toggleMobileMenu();" class="block w-full text-left text-sm font-semibold uppercase tracking-wider text-queen-forest">Jam & Etiquette Classes</button>
+            <button onclick="navigateTo('training'); toggleMobileMenu();" class="block w-full text-left text-sm font-semibold uppercase tracking-wider text-queen-forest">Etiquette & Leadership Training</button>
+            <button onclick="navigateTo('wholesale'); toggleMobileMenu();" class="block w-full text-left text-sm font-semibold uppercase tracking-wider text-queen-forest">Wholesale Portal</button>
+            <button onclick="navigateTo('stories'); toggleMobileMenu();" class="block w-full text-left text-sm font-semibold uppercase tracking-wider text-queen-forest">Queen Talk / Stories</button>
+            <button onclick="navigateTo('locations'); toggleMobileMenu();" class="block w-full text-left text-sm font-semibold uppercase tracking-wider text-queen-forest">Locations</button>
+            <button onclick="navigateTo('faq'); toggleMobileMenu();" class="block w-full text-left text-sm font-semibold uppercase tracking-wider text-queen-forest">FAQ</button>
+            <div class="pt-2">
+                <button onclick="navigateTo('shop'); toggleMobileMenu();" class="block text-center w-full bg-queen-forest text-champagne-light py-3 rounded-full text-xs font-semibold tracking-wider uppercase">
+                    Shop Online
+                </button>
+            </div>
+        </div>
+    </header>
+
+    <!-- MAIN CONTENT CONTAINER (Dynamic Page Views) -->
+    <main class="flex-grow pt-20">
+
+        <!-- ================= PAGE 1: HOME ================= -->
+        <div id="page-home" class="page-view animate-in fade-in duration-300">
+            <!-- Official Brand Header Image Banner -->
+            <section class="w-full bg-queen-900 border-b border-queen-200 py-6">
+                <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+                    <div class="rounded-3xl overflow-hidden shadow-2xl border-4 border-champagne/40 bg-queen-forest relative">
+                        <!-- Use base64 or placeholder image that guarantees 100% loading without broken links -->
+                        <img src="https://images.unsplash.com/photo-1587049352847-4a222e784d38?auto=format&fit=crop&w=1400&q=80" alt="Queen E's Heirr Banner" class="w-full h-auto max-h-[450px] object-cover" onerror="this.src='https://placehold.co/1400x560/1b3b22/d4af37?text=Queen+E\'s+Heirr+-+Curating+Culture+&+Confections'">
+                    </div>
+                </div>
+            </section>
+
+            <!-- Hero Section -->
+            <section class="relative pt-12 pb-24 md:pt-20 md:pb-32 overflow-hidden hero-pattern">
+                <div class="absolute inset-0 bg-gradient-to-b from-queen-50/50 via-transparent to-queen-50 pointer-events-none"></div>
+                <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 relative z-10">
+                    <div class="grid grid-cols-1 lg:grid-cols-12 gap-12 items-center">
+                        <div class="lg:col-span-7 space-y-6 text-center lg:text-left">
+                            <div class="inline-flex items-center space-x-2 bg-queen-100 border border-queen-200 px-4 py-1.5 rounded-full text-[11px] font-semibold tracking-widest text-queen-forest uppercase">
+                                <i class="fa-solid fa-crown text-champagne"></i>
+                                <span>Curating Culture & Confections</span>
+                            </div>
+                            <h1 class="font-serif text-4xl sm:text-5xl lg:text-6xl font-bold text-queen-forest leading-tight">
+                                <span class="text-[11px] uppercase tracking-[0.25em] font-sans font-semibold text-queen-600 block mb-2">Pure + Premium</span>
+                                <span class="shimmer-text">Crafted with Poise & Grace.</span>
+                            </h1>
+                            <p class="text-queen-800/80 text-lg max-w-xl mx-auto lg:mx-0 font-light leading-relaxed">
+                                Welcome to Queen E's Heirr. We blend artisan gourmet preserves, STEM-based jam science, and pickled delicacies with elite etiquette and leadership training for students, professionals, and connoisseurs.
+                            </p>
+                            <div class="flex flex-col sm:flex-row items-center justify-center lg:justify-start space-y-4 sm:space-y-0 sm:space-x-4 pt-4">
+                                <button onclick="navigateTo('shop')" class="w-full sm:w-auto bg-queen-forest hover:bg-queen-750 text-champagne-light px-8 py-4 rounded-full text-xs font-semibold tracking-widest uppercase shadow-md transition text-center flex items-center justify-center space-x-2">
+                                    <span>Shop Confections</span>
+                                    <i class="fa-solid fa-arrow-right text-xs"></i>
+                                </button>
+                                <button onclick="navigateTo('classes')" class="w-full sm:w-auto bg-transparent hover:bg-queen-100 text-queen-forest border border-queen-300 px-8 py-4 rounded-full text-xs font-semibold tracking-widest uppercase transition text-center">
+                                    Jam & Etiquette Classes
+                                </button>
+                            </div>
+                            <!-- Social Links Bar -->
+                            <div class="pt-8 flex items-center justify-center lg:justify-start space-x-4">
+                                <span class="text-xs uppercase tracking-widest text-queen-600 font-semibold">Follow Us:</span>
+                                <a href="https://www.facebook.com/QueenEJams" target="_blank" class="w-9 h-9 rounded-full bg-queen-forest text-champagne flex items-center justify-center hover:bg-queen-750 transition"><i class="fa-brands fa-facebook-f text-xs"></i></a>
+                                <a href="https://www.instagram.com/queenejams" target="_blank" class="w-9 h-9 rounded-full bg-queen-forest text-champagne flex items-center justify-center hover:bg-queen-750 transition"><i class="fa-brands fa-instagram text-xs"></i></a>
+                                <a href="https://www.linkedin.com/in/queenesheirr" target="_blank" class="w-9 h-9 rounded-full bg-queen-forest text-champagne flex items-center justify-center hover:bg-queen-750 transition"><i class="fa-brands fa-linkedin-in text-xs"></i></a>
+                            </div>
+                        </div>
+                        <div class="lg:col-span-5 relative">
+                            <div class="relative mx-auto max-w-md lg:max-w-none">
+                                <div class="absolute -inset-2 bg-gradient-to-r from-champagne to-queen-600 rounded-3xl blur-lg opacity-30 animate-pulse"></div>
+                                <div class="relative rounded-2xl overflow-hidden shadow-2xl border-4 border-white bg-queen-200 aspect-[4/5]">
+                                    <img src="https://images.unsplash.com/photo-1558961363-fa8fdf82db35?auto=format&fit=crop&w=600&q=80" alt="Queen E's Heirr Collection" class="w-full h-full object-cover" onerror="this.src='https://placehold.co/600x750/1b3b22/d4af37?text=Queen+E\'s+Heirr+Collection'">
+                                    <div class="absolute inset-0 bg-gradient-to-t from-queen-900/80 via-transparent to-transparent flex flex-col justify-end p-8 text-white">
+                                        <span class="text-xs uppercase tracking-widest text-champagne font-semibold mb-1">Artisanal Excellence & STEM</span>
+                                        <h3 class="font-serif text-2xl font-bold">From Jam Jar to Executive Boardroom</h3>
+                                        <p class="text-xs text-queen-100 mt-1">Curating culture through science, flavor, and timeless poise.</p>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Quick Preview Highlights -->
+            <section class="py-20 bg-white border-t border-queen-200">
+                <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+                    <div class="text-center max-w-2xl mx-auto space-y-4 mb-16">
+                        <span class="text-xs uppercase tracking-widest text-queen-600 font-semibold block">The Queen E Experience</span>
+                        <h2 class="font-serif text-3xl sm:text-4xl font-bold text-queen-forest">Excellence in Every Detail</h2>
+                        <p class="text-queen-800/80 text-sm font-light">Explore our core pillars dedicated to taste, science, and leadership.</p>
+                    </div>
+                    <div class="grid grid-cols-1 md:grid-cols-3 gap-8">
+                        <div onclick="navigateTo('shop')" class="cursor-pointer bg-queen-50 p-8 rounded-2xl border border-queen-200 hover:shadow-xl transition group">
+                            <div class="w-12 h-12 bg-queen-forest text-champagne rounded-xl flex items-center justify-center text-lg mb-6 group-hover:scale-110 transition"><i class="fa-solid fa-jar"></i></div>
+                            <h3 class="font-serif text-xl font-bold text-queen-forest mb-2">Boutique Confections</h3>
+                            <p class="text-xs text-queen-800/70 mb-4">Artisan jams and pickled delicacies made in small batches with pristine local ingredients.</p>
+                            <span class="text-xs font-semibold text-champagne-dark uppercase tracking-wider flex items-center space-x-2"><span>Shop Jams</span> <i class="fa-solid fa-arrow-right text-[10px]"></i></span>
+                        </div>
+
+                        <div onclick="navigateTo('classes')" class="cursor-pointer bg-queen-50 p-8 rounded-2xl border border-queen-200 hover:shadow-xl transition group">
+                            <div class="w-12 h-12 bg-queen-forest text-champagne rounded-xl flex items-center justify-center text-lg mb-6 group-hover:scale-110 transition"><i class="fa-solid fa-flask"></i></div>
+                            <h3 class="font-serif text-xl font-bold text-queen-forest mb-2">Jam Making & STEM</h3>
+                            <p class="text-xs text-queen-800/70 mb-4">Discover the science of jam making (pectin, thermodynamics, and biochemistry) standalone or combined with etiquette.</p>
+                            <span class="text-xs font-semibold text-champagne-dark uppercase tracking-wider flex items-center space-x-2"><span>View Classes</span> <i class="fa-solid fa-arrow-right text-[10px]"></i></span>
+                        </div>
+
+                        <div onclick="navigateTo('wholesale')" class="cursor-pointer bg-queen-50 p-8 rounded-2xl border border-queen-200 hover:shadow-xl transition group">
+                            <div class="w-12 h-12 bg-queen-forest text-champagne rounded-xl flex items-center justify-center text-lg mb-6 group-hover:scale-110 transition"><i class="fa-solid fa-boxes-stacked"></i></div>
+                            <h3 class="font-serif text-xl font-bold text-queen-forest mb-2">Wholesale Ordering</h3>
+                            <p class="text-xs text-queen-800/70 mb-4">Are you a retailer or boutique stockist? Apply or place bulk wholesale orders for your shelves.</p>
+                            <span class="text-xs font-semibold text-champagne-dark uppercase tracking-wider flex items-center space-x-2"><span>Wholesale Portal</span> <i class="fa-solid fa-arrow-right text-[10px]"></i></span>
+                        </div>
+                    </div>
+                </div>
+            </section>
+        </div>
+
+        <!-- ================= PAGE 2: THE SHOP ================= -->
+        <div id="page-shop" class="page-view hidden py-16 animate-in fade-in duration-300">
+            <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+                <div class="max-w-3xl mx-auto text-center space-y-4 mb-16">
+                    <span class="text-xs uppercase tracking-widest text-queen-600 font-semibold block">Square Secure Boutique</span>
+                    <h1 class="font-serif text-4xl font-bold text-queen-forest">Signature Jams & Pickled Goods</h1>
+                    <p class="text-queen-800/80 text-sm font-light">
+                        Handcrafted in small batches with pristine ingredients. Secure checkout embedded right here on our site.
+                    </p>
+                </div>
+
+                <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-8">
+                    <!-- Product 1 -->
+                    <div class="bg-white rounded-2xl overflow-hidden shadow-sm hover:shadow-xl transition-all duration-300 border border-queen-200 flex flex-col justify-between group">
+                        <div>
+                            <div class="relative overflow-hidden aspect-[4/3] bg-queen-100">
+                                <img src="https://images.unsplash.com/photo-1599785209707-a456fc1337bb?auto=format&fit=crop&w=600&q=80" alt="Strawberry Champagne Jam" class="w-full h-full object-cover group-hover:scale-105 transition duration-500" onerror="this.src='https://placehold.co/600x450/f4f0eb/1b3b22?text=Strawberry+Champagne'">
+                                <span class="absolute top-4 right-4 bg-queen-forest text-champagne text-[10px] font-semibold px-3 py-1 rounded-full uppercase tracking-widest">Bestseller</span>
+                            </div>
+                            <div class="p-6 space-y-3">
+                                <div class="flex justify-between items-start">
+                                    <h3 class="font-serif text-xl font-bold text-queen-forest">Strawberry Champagne Jam</h3>
+                                    <span class="text-lg font-bold text-queen-forest">$14.00</span>
+                                </div>
+                                <p class="text-queen-800/70 text-xs leading-relaxed">
+                                    Sun-ripened sweet strawberries kissed with fine champagne. Perfect for morning croissants or charcuterie boards.
+                                </p>
+                            </div>
+                        </div>
+                        <div class="p-6 pt-0">
+                            <button onclick="openSquareCheckout('Strawberry Champagne Jam', '$14.00')" class="w-full bg-queen-forest hover:bg-queen-750 text-champagne-light py-3 rounded-xl text-xs font-semibold uppercase tracking-wider transition flex items-center justify-center space-x-2">
+                                <i class="fa-solid fa-cart-shopping"></i>
+                                <span>Buy with Square</span>
+                            </button>
+                        </div>
+                    </div>
+
+                    <!-- Product 2 -->
+                    <div class="bg-white rounded-2xl overflow-hidden shadow-sm hover:shadow-xl transition-all duration-300 border border-queen-200 flex flex-col justify-between group">
+                        <div>
+                            <div class="relative overflow-hidden aspect-[4/3] bg-queen-100">
+                                <img src="https://images.unsplash.com/photo-1606787366850-de6330128bfc?auto=format&fit=crop&w=600&q=80" alt="Bourbon Peach Preserve" class="w-full h-full object-cover group-hover:scale-105 transition duration-500" onerror="this.src='https://placehold.co/600x450/f4f0eb/1b3b22?text=Bourbon+Peach+Preserve'">
+                                <span class="absolute top-4 right-4 bg-queen-forest text-champagne text-[10px] font-semibold px-3 py-1 rounded-full uppercase tracking-widest">Limited Batch</span>
+                            </div>
+                            <div class="p-6 space-y-3">
+                                <div class="flex justify-between items-start">
+                                    <h3 class="font-serif text-xl font-bold text-queen-forest">Bourbon Peach Preserve</h3>
+                                    <span class="text-lg font-bold text-queen-forest">$16.00</span>
+                                </div>
+                                <p class="text-queen-800/70 text-xs leading-relaxed">
+                                    Juicy southern peaches infused with rich Kentucky bourbon and warm Madagascar vanilla.
+                                </p>
+                            </div>
+                        </div>
+                        <div class="p-6 pt-0">
+                            <button onclick="openSquareCheckout('Bourbon Peach Preserve', '$16.00')" class="w-full bg-queen-forest hover:bg-queen-750 text-champagne-light py-3 rounded-xl text-xs font-semibold uppercase tracking-wider transition flex items-center justify-center space-x-2">
+                                <i class="fa-solid fa-cart-shopping"></i>
+                                <span>Buy with Square</span>
+                            </button>
+                        </div>
+                    </div>
+
+                    <!-- Product 3 -->
+                    <div class="bg-white rounded-2xl overflow-hidden shadow-sm hover:shadow-xl transition-all duration-300 border border-queen-200 flex flex-col justify-between group">
+                        <div>
+                            <div class="relative overflow-hidden aspect-[4/3] bg-queen-100">
+                                <img src="https://images.unsplash.com/photo-1540420773420-3366772f4999?auto=format&fit=crop&w=600&q=80" alt="Artisanal Pickled Delicacies" class="w-full h-full object-cover group-hover:scale-105 transition duration-500" onerror="this.src='https://placehold.co/600x450/f4f0eb/1b3b22?text=Pickled+Delicacies'">
+                            </div>
+                            <div class="p-6 space-y-3">
+                                <div class="flex justify-between items-start">
+                                    <h3 class="font-serif text-xl font-bold text-queen-forest">Queen E's Signature Pickled Okra & Veggies</h3>
+                                    <span class="text-lg font-bold text-queen-forest">$15.00</span>
+                                </div>
+                                <p class="text-queen-800/70 text-xs leading-relaxed">
+                                    Crisp, zesty pickled farm-fresh vegetables packed with garlic, dill, and a subtle spice kick.
+                                </p>
+                            </div>
+                        </div>
+                        <div class="p-6 pt-0">
+                            <button onclick="openSquareCheckout('Signature Pickled Okra & Veggies', '$15.00')" class="w-full bg-queen-forest hover:bg-queen-750 text-champagne-light py-3 rounded-xl text-xs font-semibold uppercase tracking-wider transition flex items-center justify-center space-x-2">
+                                <i class="fa-solid fa-cart-shopping"></i>
+                                <span>Buy with Square</span>
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- ================= PAGE 3: JAM & ETIQUETTE CLASSES (WITH STEM) ================= -->
+        <div id="page-classes" class="page-view hidden py-16 animate-in fade-in duration-300">
+            <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+                <div class="max-w-3xl mx-auto text-center space-y-4 mb-16">
+                    <span class="text-xs uppercase tracking-widest text-queen-600 font-semibold block">Science & Social Mastery</span>
+                    <h1 class="font-serif text-4xl font-bold text-queen-forest">Jam Making & STEM Etiquette Classes</h1>
+                    <p class="text-queen-800/80 text-base font-light leading-relaxed">
+                        Explore the fascinating biochemistry of jam making (pectin extraction, sugar bonds, and thermodynamics) paired with gracious hosting or standalone culinary workshops!
+                    </p>
+                </div>
+
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-8 mb-16">
+                    <!-- Class Option 1 -->
+                    <div class="bg-white p-8 rounded-3xl border border-queen-200 shadow-sm flex flex-col justify-between">
+                        <div class="space-y-4">
+                            <span class="text-[10px] font-semibold bg-queen-100 text-queen-forest px-3 py-1 rounded-full uppercase tracking-widest">STEM Focus</span>
+                            <h3 class="font-serif text-2xl font-bold text-queen-forest">Standalone Jam Making & STEM Lab</h3>
+                            <p class="text-queen-800/70 text-xs sm:text-sm leading-relaxed">
+                                Discover the science behind the sweet! Learn how fruit acids, natural plant pectin, and precise temperatures create the perfect gel structure. Ideal for students and culinary enthusiasts.
+                            </p>
+                            <ul class="space-y-2 text-xs text-queen-800 pt-2">
+                                <li class="flex items-center space-x-2"><i class="fa-solid fa-flask text-champagne-dark"></i><span>Hands-on fruit biochemistry & heat science</span></li>
+                                <li class="flex items-center space-x-2"><i class="fa-solid fa-jar text-champagne-dark"></i><span>Take home 2 custom artisan jam jars</span></li>
+                            </ul>
+                        </div>
+                        <div class="pt-8 border-t border-queen-100 mt-6 flex justify-between items-center">
+                            <span class="font-bold text-lg text-queen-forest">$55.00</span>
+                            <button onclick="openBookingModal('Standalone Jam Making & STEM Lab')" class="bg-queen-forest hover:bg-queen-750 text-champagne-light px-6 py-3 rounded-xl text-xs font-semibold uppercase tracking-wider transition">
+                                Reserve Lab Spot
+                            </button>
+                        </div>
+                    </div>
+
+                    <!-- Class Option 2 -->
+                    <div class="bg-white p-8 rounded-3xl border border-queen-200 shadow-sm flex flex-col justify-between">
+                        <div class="space-y-4">
+                            <span class="text-[10px] font-semibold bg-champagne/20 text-champagne-dark px-3 py-1 rounded-full uppercase tracking-widest">Ultimate Experience</span>
+                            <h3 class="font-serif text-2xl font-bold text-queen-forest">Jam Making & Etiquette Combined Class</h3>
+                            <p class="text-queen-800/70 text-xs sm:text-sm leading-relaxed">
+                                The full Queen E experience! Combine our hands-on jam crafting and STEM science session with formal tea service, table manners, and gracious hosting etiquette.
+                            </p>
+                            <ul class="space-y-2 text-xs text-queen-800 pt-2">
+                                <li class="flex items-center space-x-2"><i class="fa-solid fa-utensils text-champagne-dark"></i><span>Formal afternoon tea pairing & dining etiquette</span></li>
+                                <li class="flex items-center space-x-2"><i class="fa-solid fa-crown text-champagne-dark"></i><span>Gracious hosting and social poise masterclass</span></li>
+                            </ul>
+                        </div>
+                        <div class="pt-8 border-t border-queen-100 mt-6 flex justify-between items-center">
+                            <span class="font-bold text-lg text-queen-forest">$85.00</span>
+                            <button onclick="openBookingModal('Jam-Making & Etiquette Combined Class')" class="bg-queen-forest hover:bg-queen-750 text-champagne-light px-6 py-3 rounded-xl text-xs font-semibold uppercase tracking-wider transition">
+                                Reserve Combined Class
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- ================= PAGE 4: ETIQUETTE & LEADERSHIP TRAINING ================= -->
+        <div id="page-training" class="page-view hidden py-16 animate-in fade-in duration-300">
+            <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+                <div class="max-w-3xl mx-auto text-center space-y-4 mb-16">
+                    <span class="text-xs uppercase tracking-widest text-queen-600 font-semibold block">Professional Development & Poise</span>
+                    <h1 class="font-serif text-4xl font-bold text-queen-forest">Etiquette & Leadership Training</h1>
+                    <p class="text-queen-800/80 text-base font-light">
+                        Empowering students and professionals with the confidence, communication skills, and social intelligence to lead in any room.
+                    </p>
+
+                    <!-- Interactive Sub-Tabs -->
+                    <div class="flex justify-center pt-6">
+                        <div class="bg-queen-100 p-1.5 rounded-full inline-flex space-x-2">
+                            <button onclick="switchTrainingTab('students')" id="btn-students" class="px-6 py-2.5 rounded-full text-xs font-semibold uppercase tracking-wider transition bg-queen-forest text-champagne-light shadow-sm">
+                                For Students & Youth
+                            </button>
+                            <button onclick="switchTrainingTab('professionals')" id="btn-professionals" class="px-6 py-2.5 rounded-full text-xs font-semibold uppercase tracking-wider transition text-queen-800 hover:text-queen-forest">
+                                For Professionals & Corporate
+                            </button>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Tab Content: Students -->
+                <div id="content-students" class="grid grid-cols-1 md:grid-cols-3 gap-8">
+                    <div class="bg-white rounded-2xl p-8 border border-queen-200 shadow-sm flex flex-col justify-between">
+                        <div class="space-y-4">
+                            <div class="w-12 h-12 rounded-xl bg-queen-forest text-champagne flex items-center justify-center font-serif text-lg font-bold">01</div>
+                            <h3 class="font-serif text-xl font-bold text-queen-forest">Youth Dining & Social Graces</h3>
+                            <p class="text-queen-800/70 text-xs leading-relaxed">
+                                Engaging workshops teaching children and teens proper table manners, first impressions, and polite conversation.
+                            </p>
+                        </div>
+                        <div class="pt-8">
+                            <div class="flex justify-between items-center mb-4">
+                                <span class="text-xs text-queen-600 uppercase tracking-widest">Ages 8–17</span>
+                                <span class="font-bold text-queen-forest">$125</span>
+                            </div>
+                            <button onclick="openBookingModal('Youth Dining & Social Graces')" class="w-full bg-queen-forest hover:bg-queen-750 text-champagne-light py-3 rounded-xl text-xs font-semibold uppercase tracking-wider transition">
+                                Enroll Student
+                            </button>
+                        </div>
+                    </div>
+
+                    <div class="bg-white rounded-2xl p-8 border border-queen-200 shadow-sm flex flex-col justify-between">
+                        <div class="space-y-4">
+                            <div class="w-12 h-12 rounded-xl bg-queen-forest text-champagne flex items-center justify-center font-serif text-lg font-bold">02</div>
+                            <h3 class="font-serif text-xl font-bold text-queen-forest">Student Leadership Academy</h3>
+                            <p class="text-queen-800/70 text-xs leading-relaxed">
+                                Equipping high school and college students with public speaking, emotional intelligence, and foundational leadership.
+                            </p>
+                        </div>
+                        <div class="pt-8">
+                            <div class="flex justify-between items-center mb-4">
+                                <span class="text-xs text-queen-600 uppercase tracking-widest">High School & College</span>
+                                <span class="font-bold text-queen-forest">$250</span>
+                            </div>
+                            <button onclick="openBookingModal('Student Leadership Academy')" class="w-full bg-queen-forest hover:bg-queen-750 text-champagne-light py-3 rounded-xl text-xs font-semibold uppercase tracking-wider transition">
+                                Enroll Student
+                            </button>
+                        </div>
+                    </div>
+
+                    <div class="bg-white rounded-2xl p-8 border border-queen-200 shadow-sm flex flex-col justify-between">
+                        <div class="space-y-4">
+                            <div class="w-12 h-12 rounded-xl bg-queen-forest text-champagne flex items-center justify-center font-serif text-lg font-bold">03</div>
+                            <h3 class="font-serif text-xl font-bold text-queen-forest">Cotillion & Debutante Prep</h3>
+                            <p class="text-queen-800/70 text-xs leading-relaxed">
+                                Traditional poise, formal ballroom deportment, posture, and elegant presentation for special formal milestones.
+                            </p>
+                        </div>
+                        <div class="pt-8">
+                            <div class="flex justify-between items-center mb-4">
+                                <span class="text-xs text-queen-600 uppercase tracking-widest">Private & Group</span>
+                                <span class="font-bold text-queen-forest">Inquire</span>
+                            </div>
+                            <button onclick="openBookingModal('Cotillion & Debutante Prep')" class="w-full bg-queen-forest hover:bg-queen-750 text-champagne-light py-3 rounded-xl text-xs font-semibold uppercase tracking-wider transition">
+                                Request Details
+                            </button>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Tab Content: Professionals (Initially Hidden) -->
+                <div id="content-professionals" class="hidden grid grid-cols-1 md:grid-cols-3 gap-8">
+                    <div class="bg-white rounded-2xl p-8 border border-queen-200 shadow-sm flex flex-col justify-between">
+                        <div class="space-y-4">
+                            <div class="w-12 h-12 rounded-xl bg-queen-forest text-champagne flex items-center justify-center font-serif text-lg font-bold">01</div>
+                            <h3 class="font-serif text-xl font-bold text-queen-forest">Executive Presence & Dining</h3>
+                            <p class="text-queen-800/70 text-xs leading-relaxed">
+                                Master business dining etiquette, corporate networking poise, and polished non-verbal communication.
+                            </p>
+                        </div>
+                        <div class="pt-8">
+                            <div class="flex justify-between items-center mb-4">
+                                <span class="text-xs text-queen-600 uppercase tracking-widest">Professionals</span>
+                                <span class="font-bold text-queen-forest">$350</span>
+                            </div>
+                            <button onclick="openBookingModal('Executive Presence & Dining')" class="w-full bg-queen-forest hover:bg-queen-750 text-champagne-light py-3 rounded-xl text-xs font-semibold uppercase tracking-wider transition">
+                                Book Session
+                            </button>
+                        </div>
+                    </div>
+
+                    <div class="bg-white rounded-2xl p-8 border border-queen-200 shadow-sm flex flex-col justify-between">
+                        <div class="space-y-4">
+                            <div class="w-12 h-12 rounded-xl bg-queen-forest text-champagne flex items-center justify-center font-serif text-lg font-bold">02</div>
+                            <h3 class="font-serif text-xl font-bold text-queen-forest">Corporate Leadership Coaching</h3>
+                            <p class="text-queen-800/70 text-xs leading-relaxed">
+                                Tailored leadership training for emerging managers, team building, conflict resolution, and cross-cultural etiquette.
+                            </p>
+                        </div>
+                        <div class="pt-8">
+                            <div class="flex justify-between items-center mb-4">
+                                <span class="text-xs text-queen-600 uppercase tracking-widest">Corporate Teams</span>
+                                <span class="font-bold text-queen-forest">Custom Quote</span>
+                            </div>
+                            <button onclick="openBookingModal('Corporate Leadership Coaching')" class="w-full bg-queen-forest hover:bg-queen-750 text-champagne-light py-3 rounded-xl text-xs font-semibold uppercase tracking-wider transition">
+                                Request Proposal
+                            </button>
+                        </div>
+                    </div>
+
+                    <div class="bg-white rounded-2xl p-8 border border-queen-200 shadow-sm flex flex-col justify-between">
+                        <div class="space-y-4">
+                            <div class="w-12 h-12 rounded-xl bg-queen-forest text-champagne flex items-center justify-center font-serif text-lg font-bold">03</div>
+                            <h3 class="font-serif text-xl font-bold text-queen-forest">Keynote Speaking & Workshops</h3>
+                            <p class="text-queen-800/70 text-xs leading-relaxed">
+                                Inspiring presentations on confidence, professional branding, and the power of poise for corporate conventions.
+                            </p>
+                        </div>
+                        <div class="pt-8">
+                            <div class="flex justify-between items-center mb-4">
+                                <span class="text-xs text-queen-600 uppercase tracking-widest">Events & Conventions</span>
+                                <span class="font-bold text-queen-forest">Inquire</span>
+                            </div>
+                            <button onclick="openBookingModal('Keynote Speaking & Workshops')" class="w-full bg-queen-forest hover:bg-queen-750 text-champagne-light py-3 rounded-xl text-xs font-semibold uppercase tracking-wider transition">
+                                Book Speaker
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- ================= PAGE 5: WHOLESALE PORTAL ================= -->
+        <div id="page-wholesale" class="page-view hidden py-16 animate-in fade-in duration-300">
+            <div class="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 space-y-8">
+                <div class="text-center space-y-4">
+                    <span class="text-xs uppercase tracking-widest text-queen-600 font-semibold block">B2B Retail Stockist Ordering</span>
+                    <h1 class="font-serif text-4xl font-bold text-queen-forest">Wholesale Ordering Portal</h1>
+                    <p class="text-queen-800/80 text-base font-light leading-relaxed">
+                        Stock your shelves with Queen E's artisan preserves and pickled delicacies. Complete the wholesale inquiry form below to access case pricing and direct stockist fulfillment.
+                    </p>
+                </div>
+
+                <div class="bg-white rounded-3xl p-8 sm:p-10 border border-queen-200 shadow-sm">
+                    <form onsubmit="handleWholesaleSubmit(event)" class="space-y-6">
+                        <div class="grid grid-cols-1 sm:grid-cols-2 gap-6">
+                            <div>
+                                <label class="text-[11px] font-semibold uppercase tracking-wider text-queen-800 block mb-1">Business / Store Name</label>
+                                <input type="text" required class="w-full px-4 py-3 rounded-xl border border-queen-200 text-sm bg-queen-50" placeholder="e.g. Bayou Stuf Boutique">
+                            </div>
+                            <div>
+                                <label class="text-[11px] font-semibold uppercase tracking-wider text-queen-800 block mb-1">Contact Person</label>
+                                <input type="text" required class="w-full px-4 py-3 rounded-xl border border-queen-200 text-sm bg-queen-50" placeholder="Full Name">
+                            </div>
+                        </div>
+
+                        <div class="grid grid-cols-1 sm:grid-cols-2 gap-6">
+                            <div>
+                                <label class="text-[11px] font-semibold uppercase tracking-wider text-queen-800 block mb-1">Business Email</label>
+                                <input type="email" required class="w-full px-4 py-3 rounded-xl border border-queen-200 text-sm bg-queen-50" placeholder="store@example.com">
+                            </div>
+                            <div>
+                                <label class="text-[11px] font-semibold uppercase tracking-wider text-queen-800 block mb-1">Reseller / Tax ID</label>
+                                <input type="text" required class="w-full px-4 py-3 rounded-xl border border-queen-200 text-sm bg-queen-50" placeholder="Tax ID Number">
+                            </div>
+                        </div>
+
+                        <div>
+                            <label class="text-[11px] font-semibold uppercase tracking-wider text-queen-800 block mb-1">Estimated Initial Order / Case Quantities</label>
+                            <textarea rows="4" required class="w-full px-4 py-3 rounded-xl border border-queen-200 text-sm bg-queen-50" placeholder="Please list estimated case quantities for Strawberry Champagne Jam, Bourbon Peach Preserve, and Pickled Goods..."></textarea>
+                        </div>
+
+                        <button type="submit" class="w-full bg-queen-forest hover:bg-queen-750 text-champagne-light py-4 rounded-xl text-xs font-semibold uppercase tracking-widest transition shadow-md">
+                            Submit Wholesale Order Request
+                        </button>
+                    </form>
+                </div>
+            </div>
+        </div>
+
+        <!-- ================= PAGE 6: QUEEN TALK / STORIES ================= -->
+        <div id="page-stories" class="page-view hidden py-16 animate-in fade-in duration-300">
+            <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+                <div class="max-w-3xl mx-auto text-center space-y-4 mb-16">
+                    <span class="text-xs uppercase tracking-widest text-queen-600 font-semibold block">Journal & Insights</span>
+                    <h1 class="font-serif text-4xl font-bold text-queen-forest">Queen Talk & Stories</h1>
+                    <p class="text-queen-800/80 text-base font-light">
+                        Reflections on southern hospitality, artisanal recipes, gracious living, and modern leadership.
+                    </p>
+                </div>
+
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-8 max-w-4xl mx-auto">
+                    <div class="bg-white rounded-2xl overflow-hidden shadow-sm border border-queen-200 p-8 space-y-4">
+                        <span class="text-xs font-semibold text-champagne-dark uppercase tracking-widest">Hosting & Recipes</span>
+                        <h3 class="font-serif text-2xl font-bold text-queen-forest">The Art of the Charcuterie & Jam Pairing</h3>
+                        <p class="text-queen-800/80 text-xs leading-relaxed">
+                            Discover how to pair our signature Strawberry Champagne and Bourbon Peach preserves with artisan cheeses and savory crackers for your next gathering.
+                        </p>
+                    </div>
+
+                    <div class="bg-white rounded-2xl overflow-hidden shadow-sm border border-queen-200 p-8 space-y-4">
+                        <span class="text-xs font-semibold text-champagne-dark uppercase tracking-widest">Etiquette & Poise</span>
+                        <h3 class="font-serif text-2xl font-bold text-queen-forest">First Impressions in the Digital & In-Person Era</h3>
+                        <p class="text-queen-800/80 text-xs leading-relaxed">
+                            Why professional posture, eye contact, and gracious communication remain the ultimate competitive advantage for modern students and rising executives.
+                        </p>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- ================= PAGE 7: LOCATIONS ================= -->
+        <div id="page-locations" class="page-view hidden py-16 animate-in fade-in duration-300">
+            <div class="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 space-y-8">
+                <div class="text-center space-y-4">
+                    <span class="text-xs uppercase tracking-widest text-queen-600 font-semibold block">Physical Retail Stockist</span>
+                    <h1 class="font-serif text-4xl font-bold text-queen-forest">Where to Find Queen E's</h1>
+                    <p class="text-queen-800/80 text-base font-light leading-relaxed">
+                        Visit our featured local retail stockist partner in Lacombe, LA!
+                    </p>
+                </div>
+
+                <div class="max-w-xl mx-auto pt-4">
+                    <!-- Bayou Stuf Featured Location -->
+                    <div class="bg-white p-8 rounded-3xl border border-queen-200 shadow-sm space-y-4">
+                        <div class="w-12 h-12 bg-queen-forest text-champagne rounded-2xl flex items-center justify-center text-lg">
+                            <i class="fa-solid fa-store"></i>
+                        </div>
+                        <span class="text-[10px] font-semibold bg-queen-100 text-queen-forest px-3 py-1 rounded-full uppercase tracking-widest">Featured Stockist</span>
+                        <h3 class="font-serif text-2xl font-bold text-queen-forest">Bayou Stuf</h3>
+                        <p class="text-xs font-semibold text-champagne-dark">28178 U.S. Hwy 190, Lacombe, LA</p>
+                        <p class="text-queen-800/70 text-xs leading-relaxed">
+                            Lacombe, get your Queen E's fix at Bayou Stuf! Sweeten your bayou life with Queen E's Jams & Pickles now available at Bayou Stuf (28178 U.S. Hwy 190). Elevate your po'boys, stock up on pantry staples, and experience the Queen E's love, all under one roof!
+                        </p>
+                        <p class="text-xs font-semibold text-queen-forest pt-2">Support local, taste the magic!</p>
+                        <div class="pt-2 flex flex-wrap gap-2 text-[10px] text-queen-600">
+                            <span class="bg-queen-50 px-2.5 py-1 rounded-md">#QueenEsLove</span>
+                            <span class="bg-queen-50 px-2.5 py-1 rounded-md">#BayouStuf</span>
+                            <span class="bg-queen-50 px-2.5 py-1 rounded-md">#Lacombe</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- ================= PAGE 8: FAQ ================= -->
+        <div id="page-faq" class="page-view hidden py-16 animate-in fade-in duration-300">
+            <div class="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8">
+                <div class="text-center space-y-4 mb-16">
+                    <span class="text-xs uppercase tracking-widest text-queen-600 font-semibold block">Got Questions?</span>
+                    <h1 class="font-serif text-4xl font-bold text-queen-forest">Frequently Asked Questions</h1>
+                    <p class="text-queen-800/80 text-base font-light">
+                        Everything you need to know about our confections, shipping, classes, and wholesale accounts.
+                    </p>
+                </div>
+
+                <div class="space-y-6">
+                    <div class="bg-white rounded-2xl p-6 border border-queen-200 shadow-sm space-y-2">
+                        <h3 class="font-serif text-lg font-bold text-queen-forest">Are your jams and confections made in small batches?</h3>
+                        <p class="text-queen-800/70 text-xs sm:text-sm leading-relaxed">
+                            Yes! Every single jar of preserves and pickled delicacy is meticulously crafted in small batches using pristine vine-ripened fruits and traditional family recipes to ensure exceptional flavor and quality.
+                        </p>
+                    </div>
+
+                    <div class="bg-white rounded-2xl p-6 border border-queen-200 shadow-sm space-y-2">
+                        <h3 class="font-serif text-lg font-bold text-queen-forest">How do the Jam-Making & STEM Etiquette Classes work?</h3>
+                        <p class="text-queen-800/70 text-xs sm:text-sm leading-relaxed">
+                            We offer both standalone jam-making & STEM science labs (exploring fruit pectin and thermodynamics) and combined classes that pair the science session with formal tea service and etiquette training.
+                        </p>
+                    </div>
+
+                    <div class="bg-white rounded-2xl p-6 border border-queen-200 shadow-sm space-y-2">
+                        <h3 class="font-serif text-lg font-bold text-queen-forest">Can I book private etiquette or leadership coaching for my team?</h3>
+                        <p class="text-queen-800/70 text-xs sm:text-sm leading-relaxed">
+                            Absolutely! We offer customized corporate leadership training, youth cotillion prep, and private workshops tailored specifically to your organization or event requirements.
+                        </p>
+                    </div>
+
+                    <div class="bg-white rounded-2xl p-6 border border-queen-200 shadow-sm space-y-2">
+                        <h3 class="font-serif text-lg font-bold text-queen-forest">What is the shelf life of your artisanal jams once opened?</h3>
+                        <p class="text-queen-800/70 text-xs sm:text-sm leading-relaxed">
+                            Unopened jars can be stored in a cool, dark place for up to 18 months. Once opened, keep refrigerated and enjoy within 4 to 6 weeks for optimal freshness and vibrant flavor.
+                        </p>
+                    </div>
+
+                    <div class="bg-white rounded-2xl p-6 border border-queen-200 shadow-sm space-y-2">
+                        <h3 class="font-serif text-lg font-bold text-queen-forest">How can retail stores stock Queen E's products?</h3>
+                        <p class="text-queen-800/70 text-xs sm:text-sm leading-relaxed">
+                            Boutiques and retail stockists can apply through our Wholesale Portal tab. Once submitted, our team will review your reseller details and send you direct wholesale case pricing and catalog information.
+                        </p>
+                    </div>
+
+                    <div class="bg-white rounded-2xl p-6 border border-queen-200 shadow-sm space-y-2">
+                        <h3 class="font-serif text-lg font-bold text-queen-forest">Do you ship orders nationwide?</h3>
+                        <p class="text-queen-800/70 text-xs sm:text-sm leading-relaxed">
+                            Yes! We securely package and ship our gourmet preserves and pickled goods directly to your doorstep across the United States. Local pickup is also available at our featured partner Bayou Stuf in Lacombe, LA.
+                        </p>
+                    </div>
+
+                    <div class="bg-white rounded-2xl p-6 border border-queen-200 shadow-sm space-y-2">
+                        <h3 class="font-serif text-lg font-bold text-queen-forest">What should I bring to a Jam-Making STEM Lab?</h3>
+                        <p class="text-queen-800/70 text-xs sm:text-sm leading-relaxed">
+                            All culinary equipment, aprons, science materials, and ingredients are provided. Just bring your curiosity and excitement for hands-on learning!
+                        </p>
+                    </div>
+
+                    <div class="bg-white rounded-2xl p-6 border border-queen-200 shadow-sm space-y-2">
+                        <h3 class="font-serif text-lg font-bold text-queen-forest">Can I request a custom flavor or gift basket?</h3>
+                        <p class="text-queen-800/70 text-xs sm:text-sm leading-relaxed">
+                            Yes! For weddings, corporate gifting, or private events, we create custom preserve collections and curated gift boxes. Contact us through our inquiry forms to discuss your vision.
+                        </p>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+    </main>
+
+    <!-- Footer -->
+    <footer class="bg-queen-900 text-queen-100 py-16 border-t border-queen-800 mt-20">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+            <div class="grid grid-cols-1 md:grid-cols-4 gap-12 pb-12 border-b border-queen-800">
+                <div class="space-y-4 md:col-span-1">
+                    <div class="flex items-center space-x-3">
+                        <div class="w-10 h-10 rounded-full bg-champagne flex items-center justify-center text-queen-900 font-serif text-xl font-bold">
+                            <i class="fa-solid fa-crown text-sm"></i>
+                        </div>
+                        <span class="font-serif text-lg font-bold tracking-wide text-white">QUEEN E'S HEIRR</span>
+                    </div>
+                    <p class="text-xs text-queen-300 leading-relaxed font-light">
+                        Curating Culture & Confections. Artisanal gourmet jams, STEM jam science classes, and elite etiquette training.
+                    </p>
+                </div>
+                <div>
+                    <h4 class="font-serif font-bold text-white mb-4 text-xs uppercase tracking-wider">Navigation</h4>
+                    <ul class="space-y-2 text-xs text-queen-300">
+                        <li><button onclick="navigateTo('home')" class="hover:text-champagne transition">Home</button></li>
+                        <li><button onclick="navigateTo('shop')" class="hover:text-champagne transition">The Shop</button></li>
+                        <li><button onclick="navigateTo('classes')" class="hover:text-champagne transition">Jam & Etiquette Classes</button></li>
+                        <li><button onclick="navigateTo('training')" class="hover:text-champagne transition">Etiquette & Leadership</button></li>
+                        <li><button onclick="navigateTo('wholesale')" class="hover:text-champagne transition">Wholesale Portal</button></li>
+                    </ul>
+                </div>
+                <div>
+                    <h4 class="font-serif font-bold text-white mb-4 text-xs uppercase tracking-wider">Offerings</h4>
+                    <ul class="space-y-2 text-xs text-queen-300">
+                        <li><button onclick="navigateTo('shop')" class="hover:text-champagne transition">Gourmet Preserves</button></li>
+                        <li><button onclick="navigateTo('classes')" class="hover:text-champagne transition">STEM Jam Science Labs</button></li>
+                        <li><button onclick="navigateTo('training')" class="hover:text-champagne transition">Youth Etiquette</button></li>
+                        <li><button onclick="navigateTo('training')" class="hover:text-champagne transition">Executive Coaching</button></li>
+                    </ul>
+                </div>
+                <div>
+                    <h4 class="font-serif font-bold text-white mb-4 text-xs uppercase tracking-wider">Connect</h4>
+                    <p class="text-xs text-queen-300 mb-4">Follow us across social media for updates and class openings.</p>
+                    <div class="flex space-x-3 mb-6">
+                        <a href="https://www.facebook.com/QueenEJams" target="_blank" class="w-9 h-9 rounded-full bg-queen-800 flex items-center justify-center text-champagne hover:bg-queen-750 transition"><i class="fa-brands fa-facebook-f text-xs"></i></a>
+                        <a href="https://www.instagram.com/queenejams" target="_blank" class="w-9 h-9 rounded-full bg-queen-800 flex items-center justify-center text-champagne hover:bg-queen-750 transition"><i class="fa-brands fa-instagram text-xs"></i></a>
+                        <a href="https://www.linkedin.com/in/queenesheirr" target="_blank" class="w-9 h-9 rounded-full bg-queen-800 flex items-center justify-center text-champagne hover:bg-queen-750 transition"><i class="fa-brands fa-linkedin-in text-xs"></i></a>
+                    </div>
+                    
+                    <h4 class="font-serif font-bold text-white mb-2 text-xs uppercase tracking-wider">Join The Royal Mailing List</h4>
+                    <p class="text-[11px] text-queen-300 mb-3 font-light">Subscribe for exclusive confection releases, jam-making science lab dates, and etiquette tips.</p>
+                    <form onsubmit="handleMailingListSubmit(event)" class="space-y-2">
+                        <div class="flex">
+                            <input type="email" id="mailing-email" required placeholder="Enter your email" class="bg-queen-800 text-xs text-white px-3 py-2.5 rounded-l-xl border border-queen-700 focus:outline-none focus:border-champagne w-full">
+                            <button type="submit" class="bg-champagne hover:bg-champagne-dark text-queen-900 font-semibold px-4 py-2.5 rounded-r-xl text-xs uppercase tracking-wider transition">
+                                Join
+                            </button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+            <div class="pt-8 flex flex-col sm:flex-row justify-between items-center text-xs text-queen-400">
+                <p>&copy; 2026 Queen E's Heirr. All rights reserved. Hosted on GitHub.</p>
+                <p class="mt-4 sm:mt-0">Square Secure Checkout | Curating Culture & Confections</p>
+            </div>
+        </div>
+    </footer>
+
+    <!-- Square Checkout Modal Simulation -->
+    <div id="checkout-modal" class="fixed inset-0 z-50 flex items-center justify-center bg-queen-900/60 backdrop-blur-sm hidden">
+        <div class="bg-white rounded-3xl max-w-md w-full mx-4 p-8 border border-queen-200 shadow-2xl relative">
+            <button onclick="closeSquareCheckout()" class="absolute top-6 right-6 text-queen-600 hover:text-queen-forest">
+                <i class="fa-solid fa-xmark text-lg"></i>
+            </button>
+            <div class="text-center space-y-3 mb-6">
+                <div class="w-12 h-12 bg-queen-100 text-champagne-dark rounded-full flex items-center justify-center mx-auto text-xl">
+                    <i class="fa-solid fa-lock"></i>
+                </div>
+                <h3 class="font-serif text-2xl font-bold text-queen-forest">Square Secure Checkout</h3>
+                <p id="modal-product-name" class="text-xs text-queen-600 uppercase tracking-wider font-semibold">Product Title</p>
+            </div>
+            <div class="bg-queen-50 p-4 rounded-2xl mb-6 space-y-2">
+                <div class="flex justify-between text-sm">
+                    <span class="text-queen-750">Item Price:</span>
+                    <span id="modal-product-price" class="font-bold text-queen-forest">$0.00</span>
+                </div>
+                <div class="flex justify-between text-sm border-t border-queen-200 pt-2">
+                    <span class="text-queen-750">Estimated Shipping:</span>
+                    <span class="font-bold text-queen-forest">$5.00</span>
+                </div>
+            </div>
+            <button onclick="simulateSquarePayment()" class="w-full bg-queen-forest hover:bg-queen-750 text-champagne-light py-4 rounded-xl text-xs font-semibold uppercase tracking-widest transition shadow-md">
+                Complete Secure Square Payment
+            </button>
+        </div>
+    </div>
+
+    <!-- Booking Modal Simulation -->
+    <div id="booking-modal" class="fixed inset-0 z-50 flex items-center justify-center bg-queen-900/60 backdrop-blur-sm hidden">
+        <div class="bg-white rounded-3xl max-w-md w-full mx-4 p-8 border border-queen-200 shadow-2xl relative">
+            <button onclick="closeBookingModal()" class="absolute top-6 right-6 text-queen-600 hover:text-queen-forest">
+                <i class="fa-solid fa-xmark text-lg"></i>
+            </button>
+            <div class="text-center space-y-3 mb-6">
+                <div class="w-12 h-12 bg-champagne/20 text-champagne-dark rounded-full flex items-center justify-center mx-auto text-xl">
+                    <i class="fa-solid fa-graduation-cap"></i>
+                </div>
+                <h3 class="font-serif text-2xl font-bold text-queen-forest">Class & Program Registration</h3>
+                <p id="booking-program-name" class="text-xs text-queen-600 uppercase tracking-wider font-semibold">Program Name</p>
+            </div>
+            <form onsubmit="handleBookingSubmit(event)" class="space-y-4">
+                <div>
+                    <label class="text-[11px] font-semibold uppercase tracking-wider text-queen-800 block mb-1">Attendee / Participant Name</label>
+                    <input type="text" required class="w-full px-4 py-2.5 rounded-xl border border-queen-200 text-sm bg-queen-50" placeholder="Full Name">
+                </div>
+                <div>
+                    <label class="text-[11px] font-semibold uppercase tracking-wider text-queen-800 block mb-1">Contact Email</label>
+                    <input type="email" required class="w-full px-4 py-2.5 rounded-xl border border-queen-200 text-sm bg-queen-50" placeholder="email@example.com">
+                </div>
+                <div>
+                    <label class="text-[11px] font-semibold uppercase tracking-wider text-queen-800 block mb-1">Preferred Date / Session</label>
+                    <input type="date" required class="w-full px-4 py-2.5 rounded-xl border border-queen-200 text-sm bg-queen-50">
+                </div>
+                <button type="submit" class="w-full bg-queen-forest hover:bg-queen-750 text-champagne-light py-3 rounded-xl text-xs font-semibold uppercase tracking-widest transition mt-4">
+                    Submit Registration Request
+                </button>
+            </form>
+        </div>
+    </div>
+
+    <!-- Notification Toast -->
+    <div id="toast" class="fixed bottom-6 right-6 z-50 bg-queen-forest text-champagne-light px-6 py-4 rounded-2xl shadow-2xl border border-champagne/40 flex items-center space-x-3 transform translate-y-32 opacity-0 transition-all duration-300">
+        <i class="fa-solid fa-circle-check text-champagne text-lg"></i>
+        <span id="toast-message" class="text-xs font-medium">Success!</span>
+    </div>
+
+    <!-- JavaScript for Multi-Page Routing, Crown Trail, & Interactivity -->
+    <script>
+        // Crown Cursor Trail Effect
+        const trailCount = 8;
+        const trailDots = [];
+        const mouse = { x: window.innerWidth / 2, y: window.innerHeight / 2 };
+        const dotsPosition = [];
+
+        for (let i = 0; i < trailCount; i++) {
+            dotsPosition.push({ x: mouse.x, y: mouse.y });
+            const span = document.createElement('span');
+            span.className = 'crown-trail';
+            span.innerHTML = '<i class="fa-solid fa-crown text-[10px]"></i>';
+            document.body.appendChild(span);
+            trailDots.push(span);
+        }
+
+        window.addEventListener('mousemove', (e) => {
+            mouse.x = e.clientX;
+            mouse.y = e.clientY;
+        });
+
+        function animateTrail() {
+            let currentX = mouse.x;
+            let currentY = mouse.y;
+
+            dotsPosition.forEach((pos, index) => {
+                pos.x += (currentX - pos.x) * 0.35;
+                pos.y += (currentY - pos.y) * 0.35;
+                currentX = pos.x;
+                currentY = pos.y;
+
+                const dot = trailDots[index];
+                dot.style.left = `${pos.x}px`;
+                dot.style.top = `${pos.y}px`;
+                dot.style.opacity = `${(trailCount - index) / trailCount * 0.6}`;
+            });
+
+            requestAnimationFrame(animateTrail);
+        }
+        requestAnimationFrame(animateTrail);
+
+        // Multi-Page Routing System
+        function navigateTo(pageId) {
+            // Hide all pages
+            const pages = document.querySelectorAll('.page-view');
+            pages.forEach(p => p.classList.add('hidden'));
+
+            // Show target page
+            const target = document.getElementById('page-' + pageId);
+            if (target) {
+                target.classList.remove('hidden');
+                window.scrollTo({ top: 0, behavior: 'smooth' });
+            }
+
+            // Update active nav styling
+            const navLinks = document.querySelectorAll('.nav-link');
+            navLinks.forEach(link => {
+                link.classList.remove('border-queen-forest', 'text-queen-forest');
+                link.classList.add('border-transparent', 'text-queen-800/80');
+            });
+
+            const activeBtn = document.getElementById('nav-' + pageId);
+            if (activeBtn) {
+                activeBtn.classList.remove('border-transparent', 'text-queen-800/80');
+                activeBtn.classList.add('border-queen-forest', 'text-queen-forest');
+            }
+        }
+
+        // Mobile Menu Toggle
+        const mobileMenuBtn = document.getElementById('mobile-menu-btn');
+        const mobileMenu = document.getElementById('mobile-menu');
+
+        function toggleMobileMenu() {
+            mobileMenu.classList.toggle('hidden');
+        }
+
+        mobileMenuBtn.addEventListener('click', toggleMobileMenu);
+
+        // Training Section Sub-Tabs Switcher
+        function switchTrainingTab(target) {
+            const btnStudents = document.getElementById('btn-students');
+            const btnProfessionals = document.getElementById('btn-professionals');
+            const contentStudents = document.getElementById('content-students');
+            const contentProfessionals = document.getElementById('content-professionals');
+
+            if (target === 'students') {
+                btnStudents.className = "px-6 py-2.5 rounded-full text-xs font-semibold uppercase tracking-wider transition bg-queen-forest text-champagne-light shadow-sm";
+                btnProfessionals.className = "px-6 py-2.5 rounded-full text-xs font-semibold uppercase tracking-wider transition text-queen-800 hover:text-queen-forest";
+                contentStudents.classList.remove('hidden');
+                contentProfessionals.classList.add('hidden');
+            } else {
+                btnProfessionals.className = "px-6 py-2.5 rounded-full text-xs font-semibold uppercase tracking-wider transition bg-queen-forest text-champagne-light shadow-sm";
+                btnStudents.className = "px-6 py-2.5 rounded-full text-xs font-semibold uppercase tracking-wider transition text-queen-800 hover:text-queen-forest";
+                contentProfessionals.classList.remove('hidden');
+                contentStudents.classList.add('hidden');
+            }
+        }
+
+        // Square Checkout Modal
+        function openSquareCheckout(name, price) {
+            document.getElementById('modal-product-name').innerText = name;
+            document.getElementById('modal-product-price').innerText = price;
+            document.getElementById('checkout-modal').classList.remove('hidden');
+        }
+
+        function closeSquareCheckout() {
+            document.getElementById('checkout-modal').classList.add('hidden');
+        }
+
+        function simulateSquarePayment() {
+            closeSquareCheckout();
+            showToast("Secure Square payment completed successfully!");
+        }
+
+        // Booking Modal
+        function openBookingModal(programName) {
+            document.getElementById('booking-program-name').innerText = programName;
+            document.getElementById('booking-modal').classList.remove('hidden');
+        }
+
+        function closeBookingModal() {
+            document.getElementById('booking-modal').classList.add('hidden');
+        }
+
+        function handleBookingSubmit(event) {
+            event.preventDefault();
+            closeBookingModal();
+            showToast("Registration request submitted! A confirmation has been sent to your email.");
+        }
+
+        // Wholesale Form Submission
+        function handleWholesaleSubmit(event) {
+            event.preventDefault();
+            showToast("Wholesale application submitted successfully! Our team will email you case pricing.");
+            event.target.reset();
+        }
+
+        // Mailing List Form Submission
+        function handleMailingListSubmit(event) {
+            event.preventDefault();
+            const emailInput = document.getElementById('mailing-email');
+            const email = emailInput.value.trim();
+            
+            // Store subscriber in localStorage array simulation
+            let subscribers = JSON.parse(localStorage.getItem('queen_mailing_list') || '[]');
+            if (!subscribers.includes(email)) {
+                subscribers.push(email);
+                localStorage.setItem('queen_mailing_list', JSON.stringify(subscribers));
+            }
+
+            showToast("Welcome to the Royal Circle! You have successfully joined our mailing list.");
+            emailInput.value = '';
+        }
+
+        // Toast Helper
+        function showToast(message) {
+            const toast = document.getElementById('toast');
+            const toastMsg = document.getElementById('toast-message');
+            toastMsg.innerText = message;
+            toast.classList.remove('translate-y-32', 'opacity-0');
+            setTimeout(() => {
+                toast.classList.add('translate-y-32', 'opacity-0');
+            }, 4000);
+        }
+    </script>
+</body>
+</html>
