@@ -3,16 +3,16 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Jam Making & Etiquette | Queen E's Heirr</title>
-  <meta name="description" content="Hands-on jam making and etiquette classes with a STEM lab, for students and groups. Register with Queen E's Heirr.">
-  <link rel="canonical" href="https://queenesheirr.com/classes/">
+  <title>Customer Support | Queen E's Heirr</title>
+  <meta name="description" content="Contact Queen E's Heirr customer support for help with orders, damaged jars, classes, allergens, and wholesale.">
+  <link rel="canonical" href="https://queenesheirr.com/support/">
   <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self' data:; connect-src 'self' https://*.workers.dev https://script.google.com https://script.googleusercontent.com; form-action 'self'; base-uri 'self'; object-src 'none'">
   <meta name="referrer" content="strict-origin-when-cross-origin">
   <meta property="og:type" content="website">
   <meta property="og:site_name" content="Queen E's Heirr">
-  <meta property="og:title" content="Jam Making & Etiquette | Queen E's Heirr">
-  <meta property="og:description" content="Hands-on jam making and etiquette classes with a STEM lab, for students and groups. Register with Queen E's Heirr.">
-  <meta property="og:url" content="https://queenesheirr.com/classes/">
+  <meta property="og:title" content="Customer Support | Queen E's Heirr">
+  <meta property="og:description" content="Contact Queen E's Heirr customer support for help with orders, damaged jars, classes, allergens, and wholesale.">
+  <meta property="og:url" content="https://queenesheirr.com/support/">
   <meta property="og:image" content="https://queenesheirr.com/images/og.jpg">
   <meta name="twitter:card" content="summary_large_image">
   <link rel="icon" href="/favicon.svg" type="image/svg+xml">
@@ -30,7 +30,7 @@
     </a>
     <nav class="nav"><a href="/">Home</a>
 <a href="/shop/">The Shop</a>
-<a href="/classes/" aria-current="page">Classes</a>
+<a href="/classes/">Classes</a>
 <a href="/training/">Etiquette & Leadership</a>
 <a href="/wholesale/">Wholesale</a>
 <a href="/stories/">Queen Talk</a>
@@ -47,7 +47,7 @@
   </div>
   <div class="wrap menu" data-menu><a href="/">Home</a>
 <a href="/shop/">The Shop</a>
-<a href="/classes/" aria-current="page">Classes</a>
+<a href="/classes/">Classes</a>
 <a href="/training/">Etiquette & Leadership</a>
 <a href="/wholesale/">Wholesale</a>
 <a href="/stories/">Queen Talk</a>
@@ -57,27 +57,33 @@
 <main>
 
 <section class="section wrap">
-  <div class="center"><p class="kicker">Science and social mastery</p><h1>Jam making & etiquette classes</h1><p class="lede">Learn why jam sets, then sit down to tea. Prices are per person. Register below and we will send you a quote to confirm.</p></div>
-  <img src="/images/tasting.jpg" alt="A Queen E jam tasting" style="border-radius:24px;margin:1.5rem 0;max-height:420px;width:100%;object-fit:cover">
+  <div class="center"><p class="kicker">Customer support</p><h1>We're here to help</h1>
+  <p class="lede">Questions about an order, a jar, a class, or anything else? Send us a note and we will reply by email.</p></div>
   <div class="grid-2">
-    <article class="card pad"><h2>Standalone jam making & STEM lab</h2><p class="muted">Fruit acids, pectin, and temperature. Take home two jars. $55.</p></article>
-    <article class="card pad"><h2>Jam making & etiquette combined</h2><p class="muted">The lab plus formal tea, table manners, and hosting. $85.</p></article>
+    <article class="card pad"><h2>Email us</h2><p class="muted"><a href="mailto:info@queenesheirr.com">info@queenesheirr.com</a><br>Include your name and, for order questions, the email you used at checkout.</p></article>
+    <article class="card pad"><h2>Damaged or incorrect order</h2><p class="muted">Email us within 7 days of delivery with your order details and a photo, and we'll make it right. Because these are food products, we can't accept returns of opened jars.</p></article>
+    <article class="card pad"><h2>Shipping</h2><p class="muted">We ship within the United States. Delivery times are estimates, and jars are glass, so please check your package on arrival. Shipping and any tax are shown at checkout before you pay.</p></article>
+    <article class="card pad"><h2>Allergens and ingredients</h2><p class="muted">Check the jar label for ingredients and storage instructions. If you have an allergy question, contact us before ordering.</p></article>
   </div>
-  <form class="stack" data-form="Class registration" data-quote style="margin-top:1.5rem">
-    <h2>Register</h2>
-    <label class="field">Name<input name="name" required></label>
-    <label class="field">Email<input type="email" name="email" required></label>
-    <label class="field">Class
-      <select name="class" required>
-        <option>Standalone Jam Making & STEM Lab</option>
-        <option>Jam Making & Etiquette Combined Class</option>
+  <form class="stack" data-form="Customer support" style="margin-top:1.5rem">
+    <h2>Send us a message</h2>
+    <label class="field">Name<input name="name" required autocomplete="name"></label>
+    <label class="field">Email<input type="email" name="email" required autocomplete="email"></label>
+    <label class="field">What is this about?
+      <select name="topic" required>
+        <option>Question about an order</option>
+        <option>Damaged or incorrect order</option>
+        <option>Product or allergen question</option>
+        <option>Classes or training</option>
+        <option>Wholesale</option>
+        <option>Something else</option>
       </select>
     </label>
-    <label class="field">Number of attendees<input type="number" name="attendees" min="1" max="30" value="1" required></label>
-    <label class="field">Preferred date<input type="date" name="date" required></label>
-    <label class="field">Notes<textarea name="notes"></textarea></label>
-    <button class="btn" type="submit">Send registration</button>
+    <label class="field">Order details (optional)<input name="order_details" placeholder="Date ordered, items, or order number"></label>
+    <label class="field">Message<textarea name="message" required></textarea></label>
+    <button class="btn" type="submit">Send message</button>
   </form>
+  <p class="muted center" style="margin-top:1.5rem">See also our <a href="/faq/">FAQ</a>, <a href="/terms-of-use/">Terms of Use</a>, and <a href="/privacy-policy/">Privacy Policy</a>.</p>
 </section>
 
 </main>
