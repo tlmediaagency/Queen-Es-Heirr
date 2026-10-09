@@ -9,7 +9,7 @@
 
 import { CATALOG } from "./catalog.js";
 import { SEED } from "./seed-data.js";
-import { handleAdmin, readEvents, upcoming } from "./admin.js";
+import { handleAdmin, readEvents, upcoming, serveImage } from "./admin.js";
 
 const API = "https://api.stripe.com/v1";
 const MAX_LINES = 40;
@@ -365,11 +365,14 @@ export default {
     const url = new URL(request.url);
     const c = cors(env, request.headers.get("Origin") || "");
     if (request.method === "OPTIONS") return new Response(null, { status: 204, headers: c.headers });
+    if (env.ADMIN_HOST && url.hostname === env.ADMIN_HOST && url.pathname === "/") return Response.redirect(`https://${env.ADMIN_HOST}/admin`, 302);
     if (!env.STRIPE_SECRET_KEY) return json({ error: "Not configured" }, 500, c.headers);
     if (url.pathname === "/admin" || url.pathname.startsWith("/admin/api/") || url.pathname === "/admin/") {
       const r = await handleAdmin(request, env, url, { stripeGet, stripePost, stockOf });
       if (r) return r;
     }
+    const im = url.pathname.match(/^\/img\/([a-f0-9]+)\.jpg$/);
+    if (im && request.method === "GET") return serveImage(env, im[1]);
     if (url.pathname === "/events" && request.method === "GET") {
       return json(upcoming(await readEvents(env)), 200, { ...c.headers, "Cache-Control": "public, max-age=60" });
     }

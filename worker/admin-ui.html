@@ -1,6 +1,6 @@
 <!doctype html>
 <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<meta name="robots" content="noindex,nofollow"><title>Queen E's Heirr Admin</title>
+<meta name="robots" content="noindex,nofollow"><title>Queen E's Heirr Shop Admin Portal</title>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;700&family=Playfair+Display:wght@500;700&display=swap">
 <style>
 :root{--cream:#fcfaf7;--cream-deep:#f4f0eb;--linen:#e5dbd1;--forest:#1b3b22;--forest-deep:#142d19;--ink:#0e2012;--gold:#d4af37;--gold-light:#f7f1d8;--muted:#5c6b5a;--sage:#7a8c79;--red:#9b2c2c}
@@ -63,7 +63,7 @@ function signOut() { TOKEN = null; try { sessionStorage.removeItem("qe_t"); } ca
 function shell(content) {
   clear(app);
   app.appendChild(h("header", null, [h("div", { "class": "in" }, [
-    h("div", null, [h("b", { text: "Queen E's Heirr" }), h("br"), h("small", { text: "Shop admin" })]),
+    h("div", null, [h("b", { text: "Queen E's Heirr" }), h("br"), h("small", { text: "Shop Admin Portal" })]),
     h("button", { "class": "btn small", onclick: signOut, text: "Sign out" })])]));
   app.appendChild(h("div", { "class": "wrap" }, content));
 }
@@ -108,6 +108,38 @@ function start() {
 }
 function loading(n) { clear(n); n.appendChild(h("p", { "class": "muted", text: "Loading..." })); }
 function failed(n, er) { clear(n); n.appendChild(h("p", { "class": "msg err", text: er.message })); }
+
+/* PHOTO PICKER: shrinks the photo in the browser, uploads it, and fills in the address */
+function photoPicker(current) {
+  var holder = { url: current || "" };
+  var preview = h("img", { alt: "", style: "max-width:140px;max-height:140px;border-radius:12px;border:1px solid var(--linen);" + (current ? "" : "display:none") });
+  if (current) preview.src = current;
+  var status = h("span", { "class": "muted" });
+  var file = h("input", { type: "file", accept: "image/*", "aria-label": "Choose a product photo" });
+  file.addEventListener("change", function () {
+    var f = file.files && file.files[0]; if (!f) return;
+    status.textContent = "Uploading...";
+    var img = new Image(), objUrl = URL.createObjectURL(f);
+    img.onload = function () {
+      var max = 1200, sc = Math.min(1, max / Math.max(img.width, img.height));
+      var c = document.createElement("canvas"); c.width = Math.round(img.width * sc); c.height = Math.round(img.height * sc);
+      var ctx = c.getContext("2d"); ctx.fillStyle = "#fff"; ctx.fillRect(0, 0, c.width, c.height); ctx.drawImage(img, 0, 0, c.width, c.height);
+      URL.revokeObjectURL(objUrl);
+      c.toBlob(function (blob) {
+        var rd = new FileReader();
+        rd.onload = function () {
+          api("POST", "image", { data: String(rd.result).split(",")[1] }).then(function (d) {
+            holder.url = d.url; preview.src = URL.createObjectURL(blob); preview.style.display = ""; status.textContent = "Photo ready. Click Save to use it.";
+          }).catch(function (er) { status.textContent = er.message; });
+        };
+        rd.readAsDataURL(blob);
+      }, "image/jpeg", 0.85);
+    };
+    img.onerror = function () { status.textContent = "That file could not be read as a photo."; };
+    img.src = objUrl;
+  });
+  return { holder: holder, node: h("div", null, [h("label", null, ["Product photo", file]), h("div", { style: "margin-top:6px;display:flex;gap:10px;align-items:center" }, [preview, status])]) };
+}
 
 /* ORDERS */
 var STATUS = [["new", "New"], ["in_production", "In production"], ["ready", "Ready"], ["fulfilled", "Fulfilled"]];
@@ -184,12 +216,12 @@ function productCard(p, reload) {
       h("button", { "class": "btn small" + (p.active ? " danger" : ""), text: p.active ? "Hide from shop" : "Show in shop", onclick: function () {
         api("POST", "product/" + p.id, { active: !p.active }).then(function () { toast("Saved"); reload(); }).catch(function (er) { toast(er.message); });
       } })])]));
-  var name = h("input", { value: p.name }), desc = h("textarea", { rows: "3", text: p.description }), img = h("input", { type: "url", placeholder: "https://... (optional)" });
+  var name = h("input", { value: p.name }), desc = h("textarea", { rows: "3", text: p.description }), pick = photoPicker(p.image);
   var cat = h("select", null, ["Jams", "Pickled goods"].map(function (c) { return h("option", { value: c, selected: c === p.category, text: c }); }));
   var details = h("div", { "class": "hide" }, [
-    h("label", null, ["Name", name]), h("label", null, ["Category", cat]), h("label", null, ["Description", desc]), h("label", null, ["Photo web address (from Stripe or this site)", img]),
+    h("label", null, ["Name", name]), h("label", null, ["Category", cat]), h("label", null, ["Description", desc]), pick.node,
     h("p"), h("button", { "class": "btn small primary", text: "Save details", onclick: function () {
-      var body = { name: name.value, description: desc.value, category: cat.value }; if (img.value.trim()) body.image = img.value.trim();
+      var body = { name: name.value, description: desc.value, category: cat.value }; if (pick.holder.url && pick.holder.url !== p.image) body.image = pick.holder.url;
       api("POST", "product/" + p.id, body).then(function () { toast("Saved"); reload(); }).catch(function (er) { toast(er.message); });
     } })]);
   card.appendChild(details);
@@ -203,16 +235,16 @@ function productCard(p, reload) {
   return card;
 }
 function addProductCard(reload) {
-  var name = h("input"), desc = h("textarea", { rows: "2" }), img = h("input", { type: "url", placeholder: "https://... (optional)" });
+  var name = h("input"), desc = h("textarea", { rows: "2" }), pick = photoPicker("");
   var cat = h("select", null, ["Jams", "Pickled goods"].map(function (c) { return h("option", { value: c, text: c }); }));
   var rows = [0, 1, 2].map(function (i) { return { l: h("input", { placeholder: i ? "" : "8 oz" }), p: h("input", { inputmode: "decimal", placeholder: i ? "" : "7.00" }), s: h("input", { inputmode: "numeric", placeholder: "unlimited" }) }; });
   var box = h("div", { "class": "hide" }, [
-    h("label", null, ["Product name", name]), h("label", null, ["Category", cat]), h("label", null, ["Description", desc]), h("label", null, ["Photo web address (from Stripe or this site)", img]),
+    h("label", null, ["Product name", name]), h("label", null, ["Category", cat]), h("label", null, ["Description", desc]), pick.node,
     h("p", { "class": "muted", text: "Sizes (fill one, two or three rows)" })].concat(rows.map(function (r) {
       return h("div", { "class": "row" }, [h("label", null, ["Size", r.l]), h("label", null, ["Price $", r.p]), h("label", null, ["Stock", r.s])]);
     })).concat([h("p"), h("button", { "class": "btn primary", text: "Add product", onclick: function () {
       var sizes = rows.filter(function (r) { return r.l.value.trim() || r.p.value.trim(); }).map(function (r) { return { label: r.l.value, price: r.p.value, stock: r.s.value.trim() === "" ? null : r.s.value.trim() }; });
-      api("POST", "product", { name: name.value, category: cat.value, description: desc.value, image: img.value.trim(), sizes: sizes }).then(function () { toast("Product added"); reload(); }).catch(function (er) { toast(er.message); });
+      api("POST", "product", { name: name.value, category: cat.value, description: desc.value, image: pick.holder.url, sizes: sizes }).then(function () { toast("Product added"); reload(); }).catch(function (er) { toast(er.message); });
     } })]));
   return h("div", { "class": "card" }, [h("button", { "class": "btn primary", text: "+ Add a new product", onclick: function () { box.classList.toggle("hide"); } }), box]);
 }

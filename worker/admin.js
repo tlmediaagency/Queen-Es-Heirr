@@ -98,7 +98,10 @@ async function verify(request, env) {
   return j({ token: `${p}.${await hmac(env.SESSION_SECRET, p)}`, email });
 }
 
-const okImage = (u) => typeof u === "string" && /^https:\/\/(files\.stripe\.com|queenesheirr\.com)\/[^\s]+$/.test(u);
+const okImage = (u, origin) => typeof u === "string" && (
+  /^https:\/\/(files\.stripe\.com|queenesheirr\.com)\/[^\s]+$/.test(u) ||
+  (typeof origin === "string" && u.startsWith(origin + "/img/") && /^\/img\/[a-f0-9]{16,32}\.jpg$/.test(u.slice(origin.length)))
+);
 const slug = (s) => s.toLowerCase().normalize("NFKD").replace(/[̀-ͯ]/g, "").replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 60);
 const cents = (d) => { const n = Math.round(parseFloat(d) * 100); return Number.isFinite(n) && n >= 50 && n <= 1000000 ? n : null; };
 const stockVal = (v) => (v === null || v === "" || v === undefined ? null : Number.isInteger(+v) && +v >= 0 && +v <= 100000 ? +v : NaN);
@@ -119,7 +122,7 @@ export async function handleAdmin(request, env, url, d) {
   const me = await session(request, env);
   if (!me) return j({ error: "Please sign in" }, 401);
 
-  const imgBad = (b) => b && b.image && !okImage(b.image);
+  const imgBad = (b) => b && b.image && !okImage(b.image, url.origin);
   const body = request.method === "POST" || request.method === "PUT" ? await request.json().catch(() => ({})) : {};
 
   try {
@@ -132,7 +135,7 @@ export async function handleAdmin(request, env, url, d) {
       const by = {};
       for (const x of pr.data) (by[typeof x.product === "string" ? x.product : x.product.id] ||= []).push(x);
       const shape = (p, active) => ({
-        id: p.id, name: p.name, active, category: (p.metadata && p.metadata.category) || "Jams", description: p.description || "",
+        id: p.id, name: p.name, image: (p.images && p.images[0]) || "", active, category: (p.metadata && p.metadata.category) || "Jams", description: p.description || "",
         sizes: (by[p.id] || []).map((x) => ({
           priceId: x.id, label: x.nickname || "Regular", cents: x.unit_amount, stock: stockOf(x),
           soldOut: (x.metadata && x.metadata.sold_out) === "true",
@@ -179,7 +182,7 @@ export async function handleAdmin(request, env, url, d) {
       if (typeof body.description === "string") q.set("description", body.description.slice(0, 1000));
       if (body.category === "Jams" || body.category === "Pickled goods") q.set("metadata[category]", body.category);
       if (typeof body.active === "boolean") q.set("active", String(body.active));
-      if (okImage(body.image)) q.set("images[0]", body.image);
+      if (okImage(body.image, url.origin)) q.set("images[0]", body.image);
       if (![...q.keys()].length) return j({ error: "Nothing to change" }, 400);
       await stripePost(env, `/products/${m[1]}`, q);
       return j({ ok: true });
@@ -194,7 +197,7 @@ export async function handleAdmin(request, env, url, d) {
       try { await stripeGet(env, `/products/${id}`); } catch { exists = false; }
       if (exists) return j({ error: "A product with that name already exists" }, 409);
       const q = new URLSearchParams({ id, name, description: String(body.description || "").slice(0, 1000), "metadata[category]": body.category === "Pickled goods" ? "Pickled goods" : "Jams", "metadata[sort]": "900" });
-      if (okImage(body.image)) q.set("images[0]", body.image);
+      if (okImage(body.image, url.origin)) q.set("images[0]", body.image);
       await stripePost(env, "/products", q);
       for (const s of parsed) {
         const pq = new URLSearchParams({ product: id, currency: "usd", unit_amount: String(s.c), nickname: s.label });
@@ -202,6 +205,16 @@ export async function handleAdmin(request, env, url, d) {
         await stripePost(env, "/prices", pq);
       }
       return j({ ok: true, id });
+    }
+    if (route === "image" && request.method === "POST") {
+      const b64 = String(body.data || "");
+      if (!/^[A-Za-z0-9+/=]+$/.test(b64) || b64.length > 900000) return j({ error: "That photo is too large. Try a smaller one." }, 400);
+      const bytes = Uint8Array.from(atob(b64), (ch) => ch.charCodeAt(0));
+      if (bytes.length < 1000 || bytes[0] !== 0xff || bytes[1] !== 0xd8 || bytes[2] !== 0xff) return j({ error: "Please choose a JPG or PNG photo" }, 400);
+      const idb = new Uint8Array(12); crypto.getRandomValues(idb);
+      const id = Array.from(idb).map((x) => x.toString(16).padStart(2, "0")).join("");
+      await env.ADMIN_KV.put("img:" + id, bytes);
+      return j({ ok: true, url: `${url.origin}/img/${id}.jpg` });
     }
     if (route === "events" && request.method === "GET") return j({ events: await readEvents(env) });
     if (route === "events" && request.method === "PUT") {
@@ -248,4 +261,11 @@ export async function handleAdmin(request, env, url, d) {
     return j({ error: "That did not save. Please try again." }, 502);
   }
   return j({ error: "Not found" }, 404);
+}
+
+export async function serveImage(env, id) {
+  if (!env.ADMIN_KV || !/^[a-f0-9]{16,32}$/.test(id)) return new Response("Not found", { status: 404 });
+  const buf = await env.ADMIN_KV.get("img:" + id, "arrayBuffer");
+  if (!buf) return new Response("Not found", { status: 404 });
+  return new Response(buf, { headers: { "Content-Type": "image/jpeg", "Cache-Control": "public, max-age=31536000, immutable", "X-Content-Type-Options": "nosniff" } });
 }
