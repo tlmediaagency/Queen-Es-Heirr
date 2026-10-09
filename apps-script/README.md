@@ -13,3 +13,10 @@ logs every form there, one tab per form (the footer signup goes to the "Mailing 
 After pasting new code, run the `setup` function once from the editor (it asks for spreadsheet permission and
 logs the sheet's link). Then deploy a new version (Deploy > Manage deployments > pencil > New version).
 Each submitter also receives an HTML confirmation email; mailing-list signups get a welcome version.
+
+## Unsubscribe and sending to the list
+
+- Subscribers are kept on the "Subscribers" tab (Status = subscribed / unsubscribed). Signing up again re-subscribes.
+- Every email to a subscriber has a signed unsubscribe link; it opens a confirmation page and updates the sheet automatically.
+- To email the list: open the spreadsheet, fill in the "Newsletter" tab (B1 = subject, B2 = message), then in the
+  Apps Script editor choose `sendNewsletter` and click Run. Only people still "subscribed" get it. The first run creates the tab.

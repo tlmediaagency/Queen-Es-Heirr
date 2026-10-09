@@ -35,8 +35,9 @@ function doPost(e) {
           const name = String(fields.name || "").replace(/[\r\n]+/g, " ").slice(0, 80);
           const when = new Date().toLocaleString("en-US", { timeZone: "America/Chicago" }) + " (Central)";
           const isList = /mailing list/i.test(subject);
+          const unsubUrl = unsubscribeUrl_(replyTo);
           const plain = isList
-            ? (name ? "Hi " + name + ",\n\n" : "Hello,\n\n") + "You're on the Queen E's Heirr mailing list. Thank you! We'll send occasional news about new flavors, classes, and recipes. Reply to this email with \"unsubscribe\" any time to be removed.\n\nQueen E's Heirr\nhttps://queenesheirr.com\n" + TO + "\n"
+            ? (name ? "Hi " + name + ",\n\n" : "Hello,\n\n") + "You're on the Queen E's Heirr mailing list. Thank you! We'll send occasional news about new flavors, classes, and recipes. Unsubscribe any time: " + unsubUrl + "\n\nQueen E's Heirr\nhttps://queenesheirr.com\n" + TO + "\n"
             : (name ? "Hi " + name + ",\n\n" : "Hello,\n\n") +
             "Thank you for reaching out to Queen E's Heirr. We received your request and will reply by email soon.\n\n" +
             "Here is a copy of what you sent, for your records:\n\n" + lines.join("\n\n") +
@@ -47,7 +48,7 @@ function doPost(e) {
             name: "Queen E's Heirr",
             subject: isList ? "Welcome to the Queen E's Heirr list" : "We received your request: " + subject,
             body: plain,
-            htmlBody: confirmationHtml_(name, subject, keys, fields, when, isList),
+            htmlBody: confirmationHtml_(name, subject, keys, fields, when, isList, unsubUrl),
           });
         }
       } catch (ignore) {}
@@ -68,6 +69,7 @@ function doPost(e) {
       });
       sheet.appendRow(row);
     }
+    if (/mailing list/i.test(subject) && replyTo) addSubscriber_(String(fields.name || "").slice(0, 100), replyTo);
     return out_({ ok: true });
   } catch (err) {
     return out_({ ok: false });
@@ -83,7 +85,7 @@ function esc_(v) {
 }
 
 // Branded HTML confirmation. All visitor-supplied text is escaped.
-function confirmationHtml_(name, subject, keys, fields, when, isList) {
+function confirmationHtml_(name, subject, keys, fields, when, isList, unsubUrl) {
   const forest = "#1b3b22", gold = "#d4af37", goldDark = "#aa8c2c", cream = "#fcfaf7", linen = "#e5dbd1", muted = "#5c6b5a";
   const serif = "Georgia, 'Times New Roman', serif", sans = "Helvetica, Arial, sans-serif";
   const rows = keys.map(function (k) {
@@ -113,7 +115,7 @@ function confirmationHtml_(name, subject, keys, fields, when, isList) {
     '</td></tr>' +
     '<tr><td style="padding:22px 30px 6px">' +
       '<div style="font:700 18px ' + serif + ';color:' + forest + ';margin-bottom:6px">' + (isList ? 'Good to know' : 'What happens next') + '</div>' +
-      '<p style="font:15px/1.6 ' + sans + ';color:#0e2012;margin:0">' + (isList ? 'Not what you expected? Reply to this email with &ldquo;unsubscribe&rdquo; and we will remove you right away.' : 'We read every request personally and respond within a few business days. If something above needs fixing, just reply to this email.') + '</p>' +
+      '<p style="font:15px/1.6 ' + sans + ';color:#0e2012;margin:0">' + (isList ? 'Changed your mind? You can <a href="' + esc_(unsubUrl || "#") + '" style="color:' + forest + ';font-weight:600">unsubscribe here</a> any time, and you will be removed right away.' : 'We read every request personally and respond within a few business days. If something above needs fixing, just reply to this email.') + '</p>' +
     '</td></tr>' +
     '<tr><td align="center" style="padding:22px 30px 8px">' +
       '<a href="https://queenesheirr.com/shop/" style="display:inline-block;background:' + forest + ';color:#ffffff;font:700 15px ' + sans + ';text-decoration:none;padding:13px 28px;border-radius:999px;border:2px solid ' + gold + '">Browse the shop</a>' +
@@ -129,7 +131,7 @@ function confirmationHtml_(name, subject, keys, fields, when, isList) {
         '</td></tr>' +
       '</table>' +
     '</td></tr>' +
-    '<tr><td align="center" style="background:' + forest + ';padding:16px 24px;font:12px/1.6 ' + sans + ';color:#cfd8cd">You are receiving this because you submitted a form at queenesheirr.com.<br>&copy; Queen E\'s Heirr, LLC</td></tr>' +
+    '<tr><td align="center" style="background:' + forest + ';padding:16px 24px;font:12px/1.6 ' + sans + ';color:#cfd8cd">You are receiving this because you submitted a form at queenesheirr.com.' + (isList && unsubUrl ? ' <a href="' + esc_(unsubUrl) + '" style="color:#d4af37">Unsubscribe</a>' : '') + '<br>&copy; Queen E\'s Heirr, LLC</td></tr>' +
   '</table></div>';
 }
 
@@ -146,4 +148,119 @@ function spreadsheet_() {
 // Run this once from the editor to authorize spreadsheet access and see the spreadsheet's link in the log.
 function setup() {
   Logger.log(spreadsheet_().getUrl());
+}
+
+// ---------- Mailing list ----------
+// "Subscribers" tab: Subscribed on | Name | Email | Status (subscribed / unsubscribed) | Updated
+
+function subscribersSheet_() {
+  const ss = spreadsheet_();
+  let sh = ss.getSheetByName("Subscribers");
+  if (!sh) {
+    sh = ss.insertSheet("Subscribers");
+    sh.appendRow(["Subscribed on", "Name", "Email", "Status", "Updated"]);
+  }
+  return sh;
+}
+
+function findSubscriberRow_(sh, email) {
+  const vals = sh.getDataRange().getValues();
+  for (let i = 1; i < vals.length; i++) if (String(vals[i][2]).toLowerCase() === email.toLowerCase()) return i + 1;
+  return 0;
+}
+
+function addSubscriber_(name, email) {
+  const lock = LockService.getScriptLock();
+  lock.waitLock(10000);
+  try {
+    const sh = subscribersSheet_();
+    const safe = function (v) { v = String(v).slice(0, 200); return /^[=+\-@]/.test(v) ? "'" + v : v; };
+    const row = findSubscriberRow_(sh, email);
+    if (row) { sh.getRange(row, 4, 1, 2).setValues([["subscribed", new Date()]]); }
+    else sh.appendRow([new Date(), safe(name), email, "subscribed", new Date()]);
+  } finally { lock.releaseLock(); }
+}
+
+function secret_() {
+  const props = PropertiesService.getScriptProperties();
+  let k = props.getProperty("UNSUB_SECRET");
+  if (!k) { k = Utilities.getUuid() + Utilities.getUuid(); props.setProperty("UNSUB_SECRET", k); }
+  return k;
+}
+
+function token_(email) {
+  const sig = Utilities.computeHmacSha256Signature(email.toLowerCase(), secret_());
+  return Utilities.base64EncodeWebSafe(sig).replace(/=+$/, "");
+}
+
+function unsubscribeUrl_(email) {
+  return ScriptApp.getService().getUrl() + "?a=unsub&e=" + encodeURIComponent(email) + "&t=" + token_(email);
+}
+
+// Called by the confirmation page's button (google.script.run). Only works with a valid signed token.
+function unsubscribe_(email, t) {
+  if (!email || t !== token_(email)) return false;
+  const lock = LockService.getScriptLock();
+  lock.waitLock(10000);
+  try {
+    const sh = subscribersSheet_();
+    const row = findSubscriberRow_(sh, email);
+    if (row) sh.getRange(row, 4, 1, 2).setValues([["unsubscribed", new Date()]]);
+    return true;
+  } finally { lock.releaseLock(); }
+}
+
+// Opening the link shows a page with a button, so email link scanners can't unsubscribe anyone by accident.
+function doGet(e) {
+  const p = (e && e.parameter) || {};
+  if (p.a !== "unsub" || !p.e || !p.t) return HtmlService.createHtmlOutput("Queen E's Heirr form service.");
+  const email = String(p.e).slice(0, 200), t = String(p.t);
+  const j = function (v) { return JSON.stringify(v).replace(/</g, "\\u003c"); };
+  const html = '<!doctype html><meta name="viewport" content="width=device-width,initial-scale=1">' +
+    '<body style="margin:0;background:#fcfaf7;font-family:Helvetica,Arial,sans-serif;color:#0e2012">' +
+    '<div style="max-width:480px;margin:48px auto;background:#fff;border:1px solid #e5dbd1;border-radius:18px;overflow:hidden;text-align:center">' +
+    '<div style="background:#1b3b22;color:#fff;padding:24px;font:700 24px Georgia,serif">Queen E\'s Heirr</div>' +
+    '<div style="height:5px;background:#d4af37"></div><div style="padding:28px 24px">' +
+    '<h2 id="h" style="font-family:Georgia,serif;color:#1b3b22;margin:0 0 10px">Unsubscribe from our emails?</h2>' +
+    '<p id="m" style="line-height:1.6">' + esc_(email) + '</p>' +
+    '<button id="b" style="background:#1b3b22;color:#fff;border:2px solid #d4af37;border-radius:999px;padding:12px 28px;font:700 15px Helvetica,Arial,sans-serif;cursor:pointer">Yes, unsubscribe me</button>' +
+    '</div></div><script>' +
+    'document.getElementById("b").onclick=function(){this.disabled=true;google.script.run' +
+    '.withSuccessHandler(function(ok){document.getElementById("h").textContent=ok?"You are unsubscribed":"That link is not valid";' +
+    'document.getElementById("m").textContent=ok?"You will not receive any more emails from us. Sorry to see you go!":"Please email info@queenesheirr.com and we will remove you.";' +
+    'document.getElementById("b").style.display="none";})' +
+    '.withFailureHandler(function(){document.getElementById("m").textContent="Something went wrong. Please email info@queenesheirr.com.";})' +
+    '.unsubscribe_(' + j(email) + ',' + j(t) + ');};</script>';
+  return HtmlService.createHtmlOutput(html).setTitle("Unsubscribe - Queen E's Heirr");
+}
+
+// To email the list: fill in the "Newsletter" tab (B1 = subject, B2 = message text), then run sendNewsletter.
+// Sends one email per person who is still "subscribed", each with their own unsubscribe link.
+function sendNewsletter() {
+  const ss = spreadsheet_();
+  let nl = ss.getSheetByName("Newsletter");
+  if (!nl) {
+    nl = ss.insertSheet("Newsletter");
+    nl.getRange("A1:A2").setValues([["Subject"], ["Message"]]);
+    nl.getRange("B1").setValue("Your subject here");
+    nl.getRange("B2").setValue("Write your message here.");
+    Logger.log("Created the Newsletter tab. Fill in B1 and B2, then run sendNewsletter again.");
+    return;
+  }
+  const subject = String(nl.getRange("B1").getValue()).trim();
+  const message = String(nl.getRange("B2").getValue()).trim();
+  if (!subject || !message) throw new Error("Fill in B1 (subject) and B2 (message) on the Newsletter tab.");
+  const rows = subscribersSheet_().getDataRange().getValues().slice(1).filter(function (r) { return r[3] === "subscribed" && r[2]; });
+  if (rows.length > MailApp.getRemainingDailyQuota()) throw new Error("Not enough daily email quota for " + rows.length + " subscribers. Try again tomorrow.");
+  rows.forEach(function (r) {
+    const email = String(r[2]), name = String(r[1] || "").split(" ")[0];
+    const url = unsubscribeUrl_(email);
+    MailApp.sendEmail({
+      to: email, replyTo: TO, name: "Queen E's Heirr", subject: subject,
+      body: (name ? "Hi " + name + ",\n\n" : "") + message + "\n\n--\nQueen E's Heirr | https://queenesheirr.com\nUnsubscribe: " + url + "\n",
+      htmlBody: '<div style="font:16px/1.6 Helvetica,Arial,sans-serif;color:#0e2012;max-width:560px">' + (name ? "<p>Hi " + esc_(name) + ",</p>" : "") +
+        "<p>" + esc_(message) + "</p><hr style=\"border:0;border-top:1px solid #e5dbd1\"><p style=\"font-size:13px;color:#5c6b5a\">Queen E's Heirr &middot; <a href=\"https://queenesheirr.com\">queenesheirr.com</a><br><a href=\"" + esc_(url) + "\">Unsubscribe</a></p></div>",
+    });
+  });
+  Logger.log("Sent to " + rows.length + " subscribers.");
 }
