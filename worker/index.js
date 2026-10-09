@@ -324,6 +324,24 @@ async function handleStripeWebhook(request, env) {
   return new Response("ok", { status: 200 });
 }
 
+// One-time bulk stock: sets metadata stock=N on every active price that has no stock yet. ADMIN_TOKEN required.
+async function handleSetStock(request, env, c, url) {
+  const auth = request.headers.get("Authorization") || "";
+  if (!env.ADMIN_TOKEN || auth !== `Bearer ${env.ADMIN_TOKEN}`) return json({ error: "Not found" }, 404, c.headers);
+  const n = parseInt(url.searchParams.get("n"), 10);
+  if (!Number.isInteger(n) || n < 0 || n > 100000) return json({ error: "Bad n" }, 400, c.headers);
+  const out = { set: [], kept: [], soldOutLeftAlone: [], errors: [] };
+  const prices = await stripeGet(env, "/prices?active=true&limit=100&type=one_time");
+  for (const pr of prices.data) {
+    const label = `${typeof pr.product === "string" ? pr.product : pr.product.id} ${pr.nickname || "Regular"}`;
+    if (pr.metadata && pr.metadata.sold_out === "true") { out.soldOutLeftAlone.push(label); continue; }
+    if (stockOf(pr) !== null) { out.kept.push(`${label} (${stockOf(pr)})`); continue; }
+    try { await stripePost(env, `/prices/${pr.id}`, new URLSearchParams({ "metadata[stock]": String(n) })); out.set.push(label); }
+    catch (e) { out.errors.push(`${label}: ${String(e)}`); }
+  }
+  return json(out, out.errors.length ? 502 : 200, c.headers);
+}
+
 export default {
   async fetch(request, env0, ctx) {
     const env = { ALLOWED_ORIGINS: "https://queenesheirr.com,https://www.queenesheirr.com", SITE_URL: "https://queenesheirr.com", SHIPPING_CENTS: "1000", ...env0 };
@@ -341,6 +359,7 @@ export default {
       return handleClassRequest(request, env, c);
     }
     if (url.pathname === "/stripe-webhook" && request.method === "POST") return handleStripeWebhook(request, env);
+    if (url.pathname === "/admin/set-stock" && request.method === "POST") return handleSetStock(request, env, c, url);
     if (url.pathname === "/admin/seed" && request.method === "POST") return handleSeed(request, env, c);
     return json({ error: "Not found" }, 404, c.headers);
   },
