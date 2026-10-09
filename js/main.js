@@ -230,12 +230,28 @@
   }
   function fulfillment() {
     var r = document.querySelector('input[name="fulfillment"]:checked');
-    return r && r.value === "pickup" ? "pickup" : "ship";
+    return r && (r.value === "pickup" || r.value === "event") ? r.value : "ship";
   }
+  var eventSel = document.querySelector("[data-event-select]");
+  var eventOpt = document.querySelector("[data-event-option]");
+  if (eventSel && eventOpt && CFG.CHECKOUT_URL) {
+    fetch(CFG.CHECKOUT_URL.replace(/\/checkout$/, "/events")).then(function (r) { return r.json(); }).then(function (list) {
+      if (!Array.isArray(list) || !list.length) return;
+      list.forEach(function (e) {
+        var when = new Date(e.date + "T12:00:00").toLocaleDateString("en-US", { month: "short", day: "numeric" });
+        eventSel.appendChild(el("option", { value: e.id }, e.name + " - " + when + (e.location ? " - " + e.location : "")));
+      });
+      eventOpt.hidden = false;
+    }).catch(function () {});
+  }
+  function syncEventSelect() { if (eventSel) eventSel.hidden = fulfillment() !== "event"; }
   document.querySelectorAll('input[name="fulfillment"]').forEach(function (r) {
     r.addEventListener("change", function () {
       var note = document.querySelector("[data-fulfill-note]");
-      if (note) note.textContent = fulfillment() === "pickup"
+      syncEventSelect();
+      if (note) note.textContent = fulfillment() === "event"
+        ? "No shipping charge. Pick up your order at the event you choose. Any sales tax is added at secure checkout."
+        : fulfillment() === "pickup"
         ? "No shipping charge. We will email you to arrange pickup. Any sales tax is added at secure checkout."
         : "Shipping and any sales tax are added at secure checkout.";
     });
@@ -254,7 +270,7 @@
       fetch(CFG.CHECKOUT_URL, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ items: lines, fulfillment: fulfillment() })
+        body: JSON.stringify({ items: lines, fulfillment: fulfillment(), eventId: fulfillment() === "event" && eventSel ? eventSel.value : undefined })
       }).then(function (r) {
         return r.json().then(function (d) { if (!r.ok) throw new Error(d.error || "Checkout failed"); return d; });
       }).then(function (d) {

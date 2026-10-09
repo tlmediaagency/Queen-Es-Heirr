@@ -1,0 +1,253 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="robots" content="noindex,nofollow"><title>Queen E's Heirr Admin</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;700&family=Playfair+Display:wght@500;700&display=swap">
+<style>
+:root{--cream:#fcfaf7;--cream-deep:#f4f0eb;--linen:#e5dbd1;--forest:#1b3b22;--forest-deep:#142d19;--ink:#0e2012;--gold:#d4af37;--gold-light:#f7f1d8;--muted:#5c6b5a;--sage:#7a8c79;--red:#9b2c2c}
+*{box-sizing:border-box}body{margin:0;background:var(--cream);color:var(--forest-deep);font-family:Inter,system-ui,sans-serif;line-height:1.5}
+h1,h2,h3{font-family:'Playfair Display',Georgia,serif;color:var(--forest);margin:0 0 .4em}
+.wrap{max-width:900px;margin:0 auto;padding:16px}
+header{background:var(--ink);color:var(--cream-deep);padding:14px 16px}header .in{max-width:900px;margin:0 auto;display:flex;justify-content:space-between;align-items:center;gap:12px}
+header b{font-family:'Playfair Display',serif;color:var(--gold);font-size:1.1rem}header small{opacity:.8}
+nav{display:flex;gap:8px;margin:16px 0;flex-wrap:wrap}
+.tab,.btn{font:600 .72rem Inter;letter-spacing:.1em;text-transform:uppercase;border-radius:999px;padding:0 18px;min-height:44px;border:1px solid var(--linen);background:#fff;color:var(--forest);cursor:pointer}
+.tab[aria-selected=true],.btn.primary{background:var(--forest);color:var(--gold-light);border-color:var(--forest)}
+.btn.danger{color:var(--red)}.btn.small{min-height:36px;padding:0 14px}
+.btn:disabled{opacity:.5;cursor:not-allowed}
+:focus-visible{outline:3px solid var(--gold);outline-offset:2px}
+.card{background:#fff;border:1px solid var(--linen);border-radius:20px;padding:16px;margin:12px 0}
+label{display:grid;gap:4px;font:600 .68rem Inter;letter-spacing:.08em;text-transform:uppercase}
+input,select,textarea{font:400 .95rem Inter;border:1px solid var(--linen);background:var(--cream);border-radius:12px;padding:10px 12px;width:100%;text-transform:none;letter-spacing:0}
+.row{display:grid;gap:10px;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));align-items:end}
+.muted{color:var(--muted);font-size:.9rem}.msg{min-height:1.4em;font-size:.9rem}.err{color:var(--red)}.ok{color:var(--forest)}
+.pill{display:inline-block;font:600 .68rem Inter;letter-spacing:.08em;text-transform:uppercase;padding:3px 10px;border-radius:999px;background:var(--gold-light);color:var(--forest)}
+.pill.event{background:var(--forest);color:var(--gold-light)}.pill.pickup{background:var(--cream-deep)}
+.chk{display:flex;gap:8px;align-items:center;font:400 .9rem Inter;text-transform:none;letter-spacing:0}.chk input{width:auto}
+.sizes .row{padding:10px 0;border-top:1px solid var(--linen)}
+.hide{display:none}
+.toast{position:fixed;left:50%;bottom:20px;transform:translateX(-50%);background:var(--ink);color:var(--cream-deep);padding:10px 18px;border-radius:999px;font-size:.9rem;z-index:9}
+</style></head><body>
+<div id="app"></div>
+<script>
+"use strict";
+var TOKEN = null, EMAIL = "";
+try { TOKEN = sessionStorage.getItem("qe_t"); EMAIL = sessionStorage.getItem("qe_e") || ""; } catch (e) {}
+var app = document.getElementById("app");
+function h(tag, attrs, kids) {
+  var n = document.createElement(tag);
+  if (attrs) Object.keys(attrs).forEach(function (k) {
+    if (k === "text") n.textContent = attrs[k];
+    else if (k.slice(0, 2) === "on") n.addEventListener(k.slice(2), attrs[k]);
+    else if (attrs[k] !== false && attrs[k] != null) n.setAttribute(k, attrs[k] === true ? "" : attrs[k]);
+  });
+  (kids || []).forEach(function (c) { if (c != null) n.appendChild(typeof c === "string" ? document.createTextNode(c) : c); });
+  return n;
+}
+function clear(n) { while (n.firstChild) n.removeChild(n.firstChild); }
+function toast(t) { var x = h("div", { "class": "toast", role: "status", text: t }); document.body.appendChild(x); setTimeout(function () { x.remove(); }, 2200); }
+function money(c) { return (c / 100).toLocaleString("en-US", { style: "currency", currency: "USD" }); }
+function api(method, path, body) {
+  var opt = { method: method, headers: { "Content-Type": "application/json" } };
+  if (TOKEN) opt.headers.Authorization = "Bearer " + TOKEN;
+  if (body) opt.body = JSON.stringify(body);
+  return fetch("/admin/api/" + path, opt).then(function (r) {
+    return r.json().catch(function () { return {}; }).then(function (d) {
+      if (r.status === 401 && TOKEN) { signOut(); throw new Error("Please sign in again"); }
+      if (!r.ok) throw new Error(d.error || "Something went wrong");
+      return d;
+    });
+  });
+}
+function signOut() { TOKEN = null; try { sessionStorage.removeItem("qe_t"); } catch (e) {} renderLogin(); }
+
+function shell(content) {
+  clear(app);
+  app.appendChild(h("header", null, [h("div", { "class": "in" }, [
+    h("div", null, [h("b", { text: "Queen E's Heirr" }), h("br"), h("small", { text: "Shop admin" })]),
+    h("button", { "class": "btn small", onclick: signOut, text: "Sign out" })])]));
+  app.appendChild(h("div", { "class": "wrap" }, content));
+}
+
+function renderLogin(step) {
+  clear(app);
+  var msg = h("p", { "class": "msg", role: "status" });
+  var email = h("input", { type: "email", autocomplete: "email", required: true, value: EMAIL });
+  var code = h("input", { inputmode: "numeric", autocomplete: "one-time-code", maxlength: "6", placeholder: "6-digit code" });
+  var form = h("form", { "class": "card", onsubmit: function (e) {
+    e.preventDefault();
+    if (!step) {
+      msg.className = "msg"; msg.textContent = "Sending...";
+      EMAIL = email.value.trim();
+      api("POST", "login", { email: EMAIL }).then(function () { renderLogin("code"); }).catch(function (er) { msg.className = "msg err"; msg.textContent = er.message; });
+    } else {
+      msg.className = "msg"; msg.textContent = "Checking...";
+      api("POST", "verify", { email: EMAIL, code: code.value }).then(function (d) {
+        TOKEN = d.token; try { sessionStorage.setItem("qe_t", TOKEN); sessionStorage.setItem("qe_e", EMAIL); } catch (e) {}
+        start();
+      }).catch(function (er) { msg.className = "msg err"; msg.textContent = er.message; });
+    }
+  } }, [
+    h("h1", { text: "Sign in" }),
+    h("p", { "class": "muted", text: step ? "We emailed a 6-digit code to " + EMAIL + ". It works for 10 minutes." : "Enter your email and we will send you a sign-in code." }),
+    step ? h("label", null, ["Code", code]) : h("label", null, ["Email", email]),
+    h("p"), h("button", { "class": "btn primary", type: "submit", text: step ? "Sign in" : "Email me a code" }),
+    step ? h("button", { "class": "btn small", type: "button", style: "margin-left:8px", onclick: function () { renderLogin(); }, text: "Start over" }) : null, msg]);
+  app.appendChild(h("div", { "class": "wrap" }, [h("div", { style: "height:24px" }), form]));
+  (step ? code : email).focus();
+}
+
+var tabs = [["orders", "Orders"], ["products", "Products"], ["events", "Events"]];
+var current = "orders";
+function start() {
+  var body = h("div");
+  var nav = h("nav", { role: "tablist" }, tabs.map(function (t) {
+    return h("button", { "class": "tab", role: "tab", "aria-selected": String(t[0] === current), onclick: function () { current = t[0]; start(); }, text: t[1] });
+  }));
+  shell([nav, body]);
+  ({ orders: viewOrders, products: viewProducts, events: viewEvents })[current](body);
+}
+function loading(n) { clear(n); n.appendChild(h("p", { "class": "muted", text: "Loading..." })); }
+function failed(n, er) { clear(n); n.appendChild(h("p", { "class": "msg err", text: er.message })); }
+
+/* ORDERS */
+var STATUS = [["new", "New"], ["in_production", "In production"], ["ready", "Ready"], ["fulfilled", "Fulfilled"]];
+function viewOrders(n) {
+  loading(n);
+  api("GET", "orders").then(function (d) {
+    clear(n);
+    var filter = "open";
+    var list = h("div");
+    function draw() {
+      clear(list);
+      var rows = d.orders.filter(function (o) { return filter === "all" || (filter === "open" ? o.status !== "fulfilled" : o.status === filter); });
+      if (!rows.length) list.appendChild(h("p", { "class": "muted", text: "No orders here." }));
+      rows.forEach(function (o) {
+        var sel = h("select", { "aria-label": "Order status", onchange: function () {
+          api("POST", "order-status", { id: o.id, status: sel.value }).then(function () { o.status = sel.value; toast("Saved"); }).catch(function (er) { toast(er.message); });
+        } }, STATUS.map(function (s) { return h("option", { value: s[0], selected: s[0] === o.status, text: s[1] }); }));
+        var how = o.fulfillment === "event" ? h("span", { "class": "pill event", text: "Event: " + o.event }) : o.fulfillment === "pickup" ? h("span", { "class": "pill pickup", text: "Pickup" }) : h("span", { "class": "pill", text: "Ship" });
+        list.appendChild(h("div", { "class": "card" }, [
+          h("div", { style: "display:flex;justify-content:space-between;gap:8px;flex-wrap:wrap" }, [
+            h("strong", { text: o.name || o.email }), h("span", { "class": "muted", text: new Date(o.created).toLocaleString() + " · " + money(o.total) })]),
+          h("p", null, [how]),
+          h("ul", null, o.items.map(function (i) { return h("li", { text: i.qty + " x " + i.name }); })),
+          h("p", { "class": "muted", text: [o.email, o.phone].filter(Boolean).join(" · ") }),
+          o.address ? h("p", { "class": "muted", text: "Ship to: " + o.address }) : null,
+          h("label", null, ["Status", sel])]));
+      });
+    }
+    var chips = h("nav", null, [["open", "Open"], ["new", "New"], ["in_production", "In production"], ["ready", "Ready"], ["fulfilled", "Fulfilled"], ["all", "All"]].map(function (f) {
+      return h("button", { "class": "tab", "aria-selected": String(f[0] === filter), onclick: function (e) {
+        filter = f[0]; chips.querySelectorAll("button").forEach(function (b) { b.setAttribute("aria-selected", "false"); }); e.currentTarget.setAttribute("aria-selected", "true"); draw();
+      }, text: f[1] });
+    }));
+    n.appendChild(chips); n.appendChild(list); draw();
+  }).catch(function (er) { failed(n, er); });
+}
+
+/* PRODUCTS */
+function viewProducts(n) {
+  loading(n);
+  api("GET", "products").then(function (d) {
+    clear(n);
+    n.appendChild(h("p", { "class": "muted", text: "Leave Stock blank for unlimited. Changes show on the website within about a minute." }));
+    n.appendChild(addProductCard(function () { viewProducts(n); }));
+    d.products.forEach(function (p) { n.appendChild(productCard(p, function () { viewProducts(n); })); });
+    if (d.hidden.length) {
+      n.appendChild(h("h2", { text: "Hidden products" }));
+      d.hidden.forEach(function (p) { n.appendChild(productCard(p, function () { viewProducts(n); })); });
+    }
+  }).catch(function (er) { failed(n, er); });
+}
+function sizeRow(p, s, reload) {
+  var price = h("input", { inputmode: "decimal", value: (s.cents / 100).toFixed(2), "aria-label": "Price" });
+  var stock = h("input", { inputmode: "numeric", value: s.stock == null ? "" : String(s.stock), placeholder: "unlimited", "aria-label": "Stock" });
+  var sold = h("input", { type: "checkbox", checked: s.soldOut });
+  var b = h("button", { "class": "btn small primary", text: "Save", onclick: function () {
+    b.disabled = true;
+    var steps = api("POST", "price/" + s.priceId, { stock: stock.value.trim() === "" ? null : stock.value.trim(), soldOut: sold.checked });
+    if (parseFloat(price.value) !== s.cents / 100) {
+      steps = steps.then(function () { return api("POST", "price-change/" + s.priceId, { price: price.value }); });
+    }
+    steps.then(function () { toast("Saved"); reload(); }).catch(function (er) { toast(er.message); b.disabled = false; });
+  } });
+  return h("div", { "class": "row" }, [
+    h("strong", { text: s.label }), h("label", null, ["Price $", price]), h("label", null, ["Stock", stock]),
+    h("label", { "class": "chk" }, [sold, "Sold out"]), b]);
+}
+function productCard(p, reload) {
+  var card = h("div", { "class": "card" });
+  card.appendChild(h("div", { style: "display:flex;justify-content:space-between;gap:8px;flex-wrap:wrap;align-items:center" }, [
+    h("h3", { text: p.name + (p.active ? "" : " (hidden)") }),
+    h("div", null, [
+      h("button", { "class": "btn small", onclick: function () { details.classList.toggle("hide"); }, text: "Edit details" }), " ",
+      h("button", { "class": "btn small" + (p.active ? " danger" : ""), text: p.active ? "Hide from shop" : "Show in shop", onclick: function () {
+        api("POST", "product/" + p.id, { active: !p.active }).then(function () { toast("Saved"); reload(); }).catch(function (er) { toast(er.message); });
+      } })])]));
+  var name = h("input", { value: p.name }), desc = h("textarea", { rows: "3", text: p.description }), img = h("input", { type: "url", placeholder: "https://... (optional)" });
+  var cat = h("select", null, ["Jams", "Pickled goods"].map(function (c) { return h("option", { value: c, selected: c === p.category, text: c }); }));
+  var details = h("div", { "class": "hide" }, [
+    h("label", null, ["Name", name]), h("label", null, ["Category", cat]), h("label", null, ["Description", desc]), h("label", null, ["Photo web address (from Stripe or this site)", img]),
+    h("p"), h("button", { "class": "btn small primary", text: "Save details", onclick: function () {
+      var body = { name: name.value, description: desc.value, category: cat.value }; if (img.value.trim()) body.image = img.value.trim();
+      api("POST", "product/" + p.id, body).then(function () { toast("Saved"); reload(); }).catch(function (er) { toast(er.message); });
+    } })]);
+  card.appendChild(details);
+  var sizes = h("div", { "class": "sizes" }, p.sizes.map(function (s) { return sizeRow(p, s, reload); }));
+  card.appendChild(sizes);
+  var l = h("input", { placeholder: "e.g. 16 oz" }), pr = h("input", { inputmode: "decimal", placeholder: "10.00" }), st = h("input", { inputmode: "numeric", placeholder: "unlimited" });
+  card.appendChild(h("div", { "class": "row", style: "margin-top:8px" }, [h("label", null, ["New size", l]), h("label", null, ["Price $", pr]), h("label", null, ["Stock", st]),
+    h("button", { "class": "btn small", text: "Add size", onclick: function () {
+      api("POST", "size/" + p.id, { label: l.value, price: pr.value, stock: st.value.trim() === "" ? null : st.value.trim() }).then(function () { toast("Added"); reload(); }).catch(function (er) { toast(er.message); });
+    } })]));
+  return card;
+}
+function addProductCard(reload) {
+  var name = h("input"), desc = h("textarea", { rows: "2" }), img = h("input", { type: "url", placeholder: "https://... (optional)" });
+  var cat = h("select", null, ["Jams", "Pickled goods"].map(function (c) { return h("option", { value: c, text: c }); }));
+  var rows = [0, 1, 2].map(function (i) { return { l: h("input", { placeholder: i ? "" : "8 oz" }), p: h("input", { inputmode: "decimal", placeholder: i ? "" : "7.00" }), s: h("input", { inputmode: "numeric", placeholder: "unlimited" }) }; });
+  var box = h("div", { "class": "hide" }, [
+    h("label", null, ["Product name", name]), h("label", null, ["Category", cat]), h("label", null, ["Description", desc]), h("label", null, ["Photo web address (from Stripe or this site)", img]),
+    h("p", { "class": "muted", text: "Sizes (fill one, two or three rows)" })].concat(rows.map(function (r) {
+      return h("div", { "class": "row" }, [h("label", null, ["Size", r.l]), h("label", null, ["Price $", r.p]), h("label", null, ["Stock", r.s])]);
+    })).concat([h("p"), h("button", { "class": "btn primary", text: "Add product", onclick: function () {
+      var sizes = rows.filter(function (r) { return r.l.value.trim() || r.p.value.trim(); }).map(function (r) { return { label: r.l.value, price: r.p.value, stock: r.s.value.trim() === "" ? null : r.s.value.trim() }; });
+      api("POST", "product", { name: name.value, category: cat.value, description: desc.value, image: img.value.trim(), sizes: sizes }).then(function () { toast("Product added"); reload(); }).catch(function (er) { toast(er.message); });
+    } })]));
+  return h("div", { "class": "card" }, [h("button", { "class": "btn primary", text: "+ Add a new product", onclick: function () { box.classList.toggle("hide"); } }), box]);
+}
+
+/* EVENTS */
+function viewEvents(n) {
+  loading(n);
+  api("GET", "events").then(function (d) {
+    clear(n);
+    var events = d.events;
+    var list = h("div"), msg = h("p", { "class": "msg", role: "status" });
+    function draw() {
+      clear(list);
+      events.sort(function (a, b) { return (a.date || "9999").localeCompare(b.date || "9999"); });
+      events.forEach(function (e, i) {
+        var f = function (k, type, label) { var inp = h("input", { type: type, value: e[k] || "" }); inp.addEventListener("input", function () { e[k] = inp.value; }); return h("label", null, [label, inp]); };
+        var show = h("input", { type: "checkbox", checked: e.show !== false }); show.addEventListener("change", function () { e.show = show.checked; });
+        list.appendChild(h("div", { "class": "card" }, [h("div", { "class": "row" }, [f("name", "text", "Event name"), f("date", "date", "Event date"), f("location", "text", "Place"), f("orderBy", "date", "Order by (last day)")]),
+          h("div", { style: "display:flex;justify-content:space-between;margin-top:10px;gap:8px;flex-wrap:wrap" }, [h("label", { "class": "chk" }, [show, "Show in cart"]),
+            h("button", { "class": "btn small danger", text: "Delete", onclick: function () { events.splice(i, 1); draw(); } })])]));
+      });
+      if (!events.length) list.appendChild(h("p", { "class": "muted", text: "No events yet. Click Add event." }));
+    }
+    n.appendChild(h("p", { "class": "muted", text: "Events appear as a pickup choice in the cart until the order-by date passes (or the event date if no order-by date is set)." }));
+    n.appendChild(list);
+    n.appendChild(h("div", { "class": "row" }, [
+      h("button", { "class": "btn", text: "+ Add event", onclick: function () { events.push({ name: "", date: "", location: "", orderBy: "", show: true }); draw(); } }),
+      h("button", { "class": "btn primary", text: "Save events", onclick: function () {
+        msg.className = "msg"; msg.textContent = "Saving...";
+        api("PUT", "events", { events: events }).then(function (r) { events = r.events; draw(); msg.className = "msg ok"; msg.textContent = "Saved. The shop is updated."; }).catch(function (er) { msg.className = "msg err"; msg.textContent = er.message; });
+      } })]));
+    n.appendChild(msg);
+    draw();
+  }).catch(function (er) { failed(n, er); });
+}
+
+if (TOKEN) start(); else renderLogin();
+</script></body></html>

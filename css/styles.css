@@ -151,3 +151,4 @@ form.stack { display: grid; gap: 1rem; background: #fff; border: 1px solid var(-
 .fulfill legend { font-size: .72rem; font-weight: 600; letter-spacing: .08em; text-transform: uppercase; padding: 0 .3rem; }
 .fulfill label { display: flex; gap: .5rem; align-items: center; font-size: .92rem; }
 .fulfill input { width: auto; }
+.fulfill [hidden] { display: none; }

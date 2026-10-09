@@ -10,3 +10,9 @@ Reads products/prices/availability from Stripe and creates Checkout Sessions. Pr
 
 Manage products in Stripe: product id = site slug (e.g. `peach`), metadata `category`, one active price per size with the size as the price nickname. Mark sold out with metadata `sold_out=true` on the product or on one price. `js/products.js` is only a fallback.
 Never commit a Stripe secret key.
+
+## Admin app (client back office)
+Served by the Worker at `/admin`. Emailed 6-digit sign-in code (sent through the Apps Script web app).
+Needs: KV namespace bound as `ADMIN_KV`; secrets `SESSION_SECRET`, `MAIL_SECRET` (same value as the Apps Script property `MAIL_SECRET`); variables `ADMIN_EMAILS` (comma list) and `MAIL_URL` (Apps Script web app URL).
+After editing `admin-ui.html`, run `node worker/build-ui.mjs`, then rebuild the bundle with esbuild.
+Public `GET /events` lists upcoming pickup events for the cart.

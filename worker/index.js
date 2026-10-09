@@ -9,6 +9,7 @@
 
 import { CATALOG } from "./catalog.js";
 import { SEED } from "./seed-data.js";
+import { handleAdmin, readEvents, upcoming } from "./admin.js";
 
 const API = "https://api.stripe.com/v1";
 const MAX_LINES = 40;
@@ -163,17 +164,23 @@ async function handleCheckout(request, env, c) {
     params.set(`line_items[${i}][quantity]`, String(qty));
     i++;
   }
-  const pickup = payload.fulfillment === "pickup";
+  const pickup = payload.fulfillment === "pickup" || payload.fulfillment === "event";
+  let ev = null;
+  if (payload.fulfillment === "event") {
+    ev = upcoming(await readEvents(env)).find((e) => e.id === payload.eventId);
+    if (!ev) return json({ error: "That event is no longer taking orders" }, 400, c.headers);
+  }
   const site = env.SITE_URL || "https://queenesheirr.com";
   params.set("mode", "payment");
   params.set("success_url", `${site}/order-confirmed/?session_id={CHECKOUT_SESSION_ID}`);
   params.set("cancel_url", `${site}/shop/`);
   params.set("phone_number_collection[enabled]", "true");
-  params.set("metadata[fulfillment]", pickup ? "pickup" : "ship");
+  params.set("metadata[fulfillment]", ev ? "event" : pickup ? "pickup" : "ship");
+  if (ev) params.set("metadata[event]", `${ev.name} (${ev.date})`.slice(0, 200));
   if (pickup) {
     // No shipping address or fee. Customers are contacted by email to arrange pickup.
     params.set("billing_address_collection", "required");
-    params.set("custom_text[submit][message]", "Local pickup: we will email you to arrange a pickup time and place.");
+    params.set("custom_text[submit][message]", ev ? `Pickup at ${ev.name} on ${ev.date}${ev.location ? " (" + ev.location + ")" : ""}. We will email you the details.` : "Local pickup: we will email you to arrange a pickup time and place.");
   } else {
     params.set("shipping_address_collection[allowed_countries][0]", "US");
     params.set("shipping_options[0][shipping_rate_data][type]", "fixed_amount");
@@ -359,6 +366,13 @@ export default {
     const c = cors(env, request.headers.get("Origin") || "");
     if (request.method === "OPTIONS") return new Response(null, { status: 204, headers: c.headers });
     if (!env.STRIPE_SECRET_KEY) return json({ error: "Not configured" }, 500, c.headers);
+    if (url.pathname === "/admin" || url.pathname.startsWith("/admin/api/") || url.pathname === "/admin/") {
+      const r = await handleAdmin(request, env, url, { stripeGet, stripePost, stockOf });
+      if (r) return r;
+    }
+    if (url.pathname === "/events" && request.method === "GET") {
+      return json(upcoming(await readEvents(env)), 200, { ...c.headers, "Cache-Control": "public, max-age=60" });
+    }
     if (url.pathname === "/products" && request.method === "GET") return handleProducts(request, env, c, ctx);
     if (url.pathname === "/checkout" && request.method === "POST") {
       if (!c.ok) return json({ error: "Origin not allowed" }, 403, c.headers);

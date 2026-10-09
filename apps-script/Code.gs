@@ -6,6 +6,19 @@ const TO = "info@queenesheirr.com";
 function doPost(e) {
   try {
     const data = JSON.parse(e.postData.contents);
+    // Admin sign-in code email (called by the Cloudflare Worker, never by browsers).
+    if (data.action === "send_code") {
+      const want = PropertiesService.getScriptProperties().getProperty("MAIL_SECRET");
+      if (!want || data.secret !== want || !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(data.to || "") || !/^\d{6}$/.test(data.code || "")) return out_({ ok: false });
+      MailApp.sendEmail({
+        to: data.to,
+        subject: "Your Queen E's Heirr admin code: " + data.code,
+        body: "Your sign-in code is " + data.code + ". It works for 10 minutes. If you did not ask for it, ignore this email.",
+        htmlBody: '<div style="font-family:Georgia,serif;max-width:420px;margin:auto;border:1px solid #e5dbd1;border-radius:16px;overflow:hidden"><div style="background:#1b3b22;padding:18px;text-align:center;border-bottom:3px solid #d4af37;color:#f7f1d8;font-size:20px">Queen E\'s Heirr</div><div style="padding:24px;text-align:center;color:#142d19"><p>Your admin sign-in code</p><p style="font-size:34px;letter-spacing:8px;font-weight:bold;color:#1b3b22;margin:8px 0">' + data.code + '</p><p style="font-size:13px;color:#5c6b5a">Works for 10 minutes. Did not ask for this? Ignore this email.</p></div></div>',
+        name: "Queen E's Heirr",
+      });
+      return out_({ ok: true });
+    }
     const fields = data.fields || {};
     if (fields.website) return out_({ ok: true }); // honeypot: bots fill this hidden field
 
