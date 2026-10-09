@@ -1,0 +1,9 @@
+name = "queenes-checkout"
+main = "index.js"
+compatibility_date = "2025-01-01"
+
+[vars]
+ALLOWED_ORIGINS = "https://queenesheirr.com,https://www.queenesheirr.com"
+SITE_URL = "https://queenesheirr.com"
+SHIPPING_CENTS = "1000"
+# STRIPE_SECRET_KEY is NOT stored here. Set it with:  npx wrangler secret put STRIPE_SECRET_KEY
