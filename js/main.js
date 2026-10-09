@@ -113,6 +113,7 @@
     linesEl.textContent = "";
     var sub = 0;
     if (!lines.length) linesEl.appendChild(el("p", { "class": "muted" }, "Your bag is empty."));
+    lines = lines.filter(function (l) { return findProduct(l.id) && sizeOf(l.id, l.size); });
     lines.forEach(function (line) {
       var product = findProduct(line.id);
       var cents = sizeOf(line.id, line.size).cents;
@@ -207,7 +208,16 @@
       if (!r.ok) throw new Error("bad status");
       return r.json();
     }).then(function (list) {
-      if (Array.isArray(list) && list.length) { catalog = list; renderShop(); render(); }
+      if (Array.isArray(list) && list.length) {
+        var local = {};
+        catalog.forEach(function (p) { local[p.id] = p; });
+        list.forEach(function (p) {
+          var l = local[p.id] || {};
+          if (!p.image) p.image = l.image || PLACEHOLDER;
+          if (!p.description) p.description = l.description || "";
+        });
+        catalog = list; renderShop(); render();
+      }
     }).catch(function () {});
   }
 

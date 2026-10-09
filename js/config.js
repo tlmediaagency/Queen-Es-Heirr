@@ -4,7 +4,7 @@ window.SITE_CONFIG = {
   // Leave empty until the Worker is live: the cart then falls back to an emailed order request.
   CHECKOUT_URL: "https://queenes-checkout.summer-paper-e090.workers.dev/checkout",
   // Live catalog from Stripe, e.g. "https://queenes-checkout.<you>.workers.dev/products". Empty = use js/products.js.
-  PRODUCTS_URL: "",
+  PRODUCTS_URL: "https://queenes-checkout.summer-paper-e090.workers.dev/products",
   // Creates a draft Stripe quote for class registrations.
   QUOTE_URL: "https://queenes-checkout.summer-paper-e090.workers.dev/class-request",
   // Google Apps Script web app URL (see apps-script/README.md). Empty = visitor's email app (mailto).
