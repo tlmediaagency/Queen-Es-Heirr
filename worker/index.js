@@ -8,6 +8,7 @@
 // Sold out: set metadata sold_out=true on the product (all sizes) or on one price (that size).
 
 import { CATALOG } from "./catalog.js";
+import { SEED } from "./seed-data.js";
 
 const API = "https://api.stripe.com/v1";
 const MAX_LINES = 40;
@@ -229,6 +230,35 @@ async function handleClassRequest(request, env, c) {
   }
 }
 
+// One-time catalog seed. Disabled unless the ADMIN_TOKEN secret is set. Idempotent: skips what exists.
+async function handleSeed(request, env, c) {
+  const auth = request.headers.get("Authorization") || "";
+  if (!env.ADMIN_TOKEN || auth !== `Bearer ${env.ADMIN_TOKEN}`) return json({ error: "Not found" }, 404, c.headers);
+  const out = { created: [], skipped: [], errors: [] };
+  for (const p of SEED) {
+    try {
+      let exists = true;
+      try { await stripeGet(env, `/products/${p.id}`); } catch { exists = false; }
+      if (!exists) {
+        await stripePost(env, "/products", new URLSearchParams({
+          id: p.id, name: p.name, description: p.description || "",
+          "metadata[category]": p.category, "metadata[sort]": String(p.sort),
+        }));
+      }
+      const have = await stripeGet(env, `/prices?product=${encodeURIComponent(p.id)}&active=true&limit=20`);
+      const labels = new Set(have.data.map((x) => x.nickname));
+      for (const s of p.sizes) {
+        if (labels.has(s.label)) { out.skipped.push(`${p.id} ${s.label}`); continue; }
+        const q = new URLSearchParams({ product: p.id, currency: "usd", unit_amount: String(s.cents), nickname: s.label });
+        if (s.soldOut) q.set("metadata[sold_out]", "true");
+        await stripePost(env, "/prices", q);
+        out.created.push(`${p.id} ${s.label}`);
+      }
+    } catch (e) { out.errors.push(`${p.id}: ${String(e)}`); }
+  }
+  return json(out, out.errors.length ? 502 : 200, c.headers);
+}
+
 export default {
   async fetch(request, env0, ctx) {
     const env = { ALLOWED_ORIGINS: "https://queenesheirr.com,https://www.queenesheirr.com", SITE_URL: "https://queenesheirr.com", SHIPPING_CENTS: "1000", ...env0 };
@@ -245,6 +275,7 @@ export default {
       if (!c.ok) return json({ error: "Origin not allowed" }, 403, c.headers);
       return handleClassRequest(request, env, c);
     }
+    if (url.pathname === "/admin/seed" && request.method === "POST") return handleSeed(request, env, c);
     return json({ error: "Not found" }, 404, c.headers);
   },
 };
