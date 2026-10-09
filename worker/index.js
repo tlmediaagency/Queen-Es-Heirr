@@ -6,6 +6,8 @@
 // one active price per size with the size as the price "nickname" (e.g. "8 oz").
 // Sold out: set metadata sold_out=true on the product (all sizes) or on one price (that size).
 
+import { CATALOG } from "./catalog.js";
+
 const API = "https://api.stripe.com/v1";
 const MAX_LINES = 40;
 const MAX_QTY = 20;
@@ -109,7 +111,19 @@ async function handleCheckout(request, env, c) {
     console.log("catalog error", String(e));
     return json({ error: "Could not start checkout" }, 502, c.headers);
   }
-  // Prices come ONLY from Stripe; client-sent prices are ignored.
+  // Until products exist in Stripe, fall back to the built-in price list (catalog.js).
+  if (!catalog.length) {
+    catalog = Object.keys(CATALOG).map((id) => ({
+      id,
+      name: CATALOG[id].name,
+      sizes: Object.keys(CATALOG[id].sizes).map((label) => ({
+        label,
+        cents: CATALOG[id].sizes[label],
+        soldOut: CATALOG[id].soldOut.includes(label),
+      })),
+    }));
+  }
+  // Prices come ONLY from Stripe (or the built-in list); client-sent prices are ignored.
   const params = new URLSearchParams();
   let i = 0;
   for (const it of items) {
@@ -120,7 +134,13 @@ async function handleCheckout(request, env, c) {
       return json({ error: "An item in your bag is no longer available" }, 400, c.headers);
     }
     if (size.soldOut) return json({ error: `${product.name} (${size.label}) is sold out` }, 400, c.headers);
-    params.set(`line_items[${i}][price]`, size.priceId);
+    if (size.priceId) {
+      params.set(`line_items[${i}][price]`, size.priceId);
+    } else {
+      params.set(`line_items[${i}][price_data][currency]`, "usd");
+      params.set(`line_items[${i}][price_data][unit_amount]`, String(size.cents));
+      params.set(`line_items[${i}][price_data][product_data][name]`, `${product.name} (${size.label})`);
+    }
     params.set(`line_items[${i}][quantity]`, String(qty));
     i++;
   }
