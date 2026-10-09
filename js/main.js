@@ -185,7 +185,7 @@
       var select = el("select");
       var firstOpen = null;
       p.sizes.forEach(function (s) {
-        var o = el("option", { value: s.label }, s.label + " \u00b7 " + money(s.cents) + (s.soldOut ? " (sold out)" : ""));
+        var o = el("option", { value: s.label }, s.label + " \u00b7 " + money(s.cents) + (s.soldOut ? " (sold out)" : (typeof s.stock === "number" && s.stock <= 5 ? " (only " + s.stock + " left)" : "")));
         if (s.soldOut) o.disabled = true; else if (!firstOpen) firstOpen = s.label;
         select.appendChild(o);
       });

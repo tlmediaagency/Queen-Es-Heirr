@@ -42,6 +42,14 @@ async function stripeGet(env, path) {
   return res.json();
 }
 
+// Optional stock count kept in price metadata "stock" (a whole number). Missing = unlimited.
+function stockOf(pr) {
+  const v = pr && pr.metadata && pr.metadata.stock;
+  if (v === undefined || v === null || String(v).trim() === "") return null;
+  const n = parseInt(v, 10);
+  return Number.isInteger(n) ? Math.max(0, n) : null;
+}
+
 async function loadCatalog(env) {
   const [prods, prices] = await Promise.all([
     stripeGet(env, "/products?active=true&limit=100"),
@@ -64,7 +72,8 @@ async function loadCatalog(env) {
         label: pr.nickname || "Regular",
         priceId: pr.id,
         cents: pr.unit_amount,
-        soldOut: productSold || (pr.metadata && pr.metadata.sold_out) === "true",
+        stock: stockOf(pr),
+        soldOut: productSold || (pr.metadata && pr.metadata.sold_out) === "true" || (stockOf(pr) !== null && stockOf(pr) <= 0),
       }))
       .sort((a, b) => a.cents - b.cents || a.label.localeCompare(b.label));
     out.push({
@@ -127,6 +136,7 @@ async function handleCheckout(request, env, c) {
   }
   // Prices come ONLY from Stripe (or the built-in list); client-sent prices are ignored.
   const params = new URLSearchParams();
+  const wanted = new Map();
   let i = 0;
   for (const it of items) {
     const product = catalog.find((p) => p.id === (it && it.id));
@@ -136,6 +146,12 @@ async function handleCheckout(request, env, c) {
       return json({ error: "An item in your bag is no longer available" }, 400, c.headers);
     }
     if (size.soldOut) return json({ error: `${product.name} (${size.label}) is sold out` }, 400, c.headers);
+    const key = `${product.id}|${size.label}`;
+    const total = (wanted.get(key) || 0) + qty;
+    wanted.set(key, total);
+    if (typeof size.stock === "number" && total > size.stock) {
+      return json({ error: `Only ${size.stock} left of ${product.name} (${size.label})` }, 400, c.headers);
+    }
     if (size.priceId) {
       params.set(`line_items[${i}][price]`, size.priceId);
     } else {
@@ -259,6 +275,55 @@ async function handleSeed(request, env, c) {
   return json(out, out.errors.length ? 502 : 200, c.headers);
 }
 
+// Stripe webhook: subtract purchased quantities from price metadata "stock".
+async function verifyStripeSignature(secret, header, body) {
+  if (!secret || !header) return false;
+  const parts = Object.fromEntries(header.split(",").map((kv) => kv.split("=").map((x) => x.trim())).filter((a) => a.length === 2));
+  const t = parts.t;
+  const sigs = header.split(",").map((kv) => kv.trim()).filter((kv) => kv.startsWith("v1=")).map((kv) => kv.slice(3));
+  if (!t || !sigs.length || Math.abs(Date.now() / 1000 - Number(t)) > 300) return false;
+  const key = await crypto.subtle.importKey("raw", new TextEncoder().encode(secret), { name: "HMAC", hash: "SHA-256" }, false, ["sign"]);
+  const mac = new Uint8Array(await crypto.subtle.sign("HMAC", key, new TextEncoder().encode(`${t}.${body}`)));
+  const hex = Array.from(mac).map((b) => b.toString(16).padStart(2, "0")).join("");
+  return sigs.some((s) => s.length === hex.length && s.split("").reduce((d, ch, k) => d | (ch.charCodeAt(0) ^ hex.charCodeAt(k)), 0) === 0);
+}
+
+async function handleStripeWebhook(request, env) {
+  const body = await request.text();
+  if (!(await verifyStripeSignature(env.STRIPE_WEBHOOK_SECRET, request.headers.get("Stripe-Signature"), body))) {
+    return new Response("bad signature", { status: 400 });
+  }
+  let evt;
+  try { evt = JSON.parse(body); } catch { return new Response("bad json", { status: 400 }); }
+  if (evt.type !== "checkout.session.completed" && evt.type !== "checkout.session.async_payment_succeeded") {
+    return new Response("ignored", { status: 200 });
+  }
+  const session = evt.data && evt.data.object;
+  if (!session || session.payment_status !== "paid") return new Response("not paid", { status: 200 });
+  try {
+    const li = await stripeGet(env, `/checkout/sessions/${session.id}/line_items?limit=100`);
+    for (const line of li.data) {
+      const priceId = line.price && line.price.id;
+      if (!priceId) continue;
+      const pr = await stripeGet(env, `/prices/${priceId}`);
+      const stock = stockOf(pr);
+      if (stock === null) continue;
+      const done = String((pr.metadata && pr.metadata.applied) || "").split(",").filter(Boolean);
+      if (done.includes(session.id)) continue; // retry of an event already counted
+      done.push(session.id);
+      const q = new URLSearchParams({
+        "metadata[stock]": String(Math.max(0, stock - (line.quantity || 0))),
+        "metadata[applied]": done.slice(-5).join(","),
+      });
+      await stripePost(env, `/prices/${priceId}`, q);
+    }
+  } catch (e) {
+    console.log("webhook error", String(e));
+    return new Response("error", { status: 500 }); // Stripe will retry
+  }
+  return new Response("ok", { status: 200 });
+}
+
 export default {
   async fetch(request, env0, ctx) {
     const env = { ALLOWED_ORIGINS: "https://queenesheirr.com,https://www.queenesheirr.com", SITE_URL: "https://queenesheirr.com", SHIPPING_CENTS: "1000", ...env0 };
@@ -275,6 +340,7 @@ export default {
       if (!c.ok) return json({ error: "Origin not allowed" }, 403, c.headers);
       return handleClassRequest(request, env, c);
     }
+    if (url.pathname === "/stripe-webhook" && request.method === "POST") return handleStripeWebhook(request, env);
     if (url.pathname === "/admin/seed" && request.method === "POST") return handleSeed(request, env, c);
     return json({ error: "Not found" }, 404, c.headers);
   },
