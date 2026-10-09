@@ -171,7 +171,8 @@ async function handleCheckout(request, env, c) {
 }
 
 export default {
-  async fetch(request, env, ctx) {
+  async fetch(request, env0, ctx) {
+    const env = { ALLOWED_ORIGINS: "https://queenesheirr.com,https://www.queenesheirr.com", SITE_URL: "https://queenesheirr.com", SHIPPING_CENTS: "1000", ...env0 };
     const url = new URL(request.url);
     const c = cors(env, request.headers.get("Origin") || "");
     if (request.method === "OPTIONS") return new Response(null, { status: 204, headers: c.headers });
