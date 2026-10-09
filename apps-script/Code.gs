@@ -1,8 +1,7 @@
 // Queen E's Heirr: website form handler.
-// Emails every request to the shop and logs it in the Google Sheet this script is attached to.
+// Emails every request to the shop and logs it in the Google Sheet this script is attached to, one tab per form.
 
 const TO = "info@queenesheirr.com";
-const SHEET_NAME = "Requests";
 
 function doPost(e) {
   try {
@@ -25,11 +24,20 @@ function doPost(e) {
     if (replyTo) opts.replyTo = replyTo;
     MailApp.sendEmail(opts);
 
+    // One tab per form (named after the form), one column per field.
     const ss = SpreadsheetApp.getActiveSpreadsheet();
     if (ss) {
-      const sheet = ss.getSheetByName(SHEET_NAME) || ss.insertSheet(SHEET_NAME);
-      const safe = function (v) { return /^[=+\-@]/.test(v) ? "'" + v : v; }; // block spreadsheet formula injection
-      sheet.appendRow([new Date(), safe(subject), safe(lines.join(" | ").slice(0, 45000))]);
+      const tab = subject.replace(/[\[\]\*\?\:\/\\]/g, " ").slice(0, 90);
+      const sheet = ss.getSheetByName(tab) || ss.insertSheet(tab);
+      if (sheet.getLastRow() === 0) sheet.appendRow(["Received"].concat(keys.map(function (k) { return k.replace(/_/g, " "); })));
+      const header = sheet.getRange(1, 1, 1, Math.max(sheet.getLastColumn(), 1)).getValues()[0];
+      const safe = function (v) { v = String(v).slice(0, 4000); return /^[=+\-@]/.test(v) ? "'" + v : v; }; // block formula injection
+      const row = header.map(function (h, i) {
+        if (i === 0) return new Date();
+        const k = keys.filter(function (key) { return key.replace(/_/g, " ") === h; })[0];
+        return k ? safe(fields[k]) : "";
+      });
+      sheet.appendRow(row);
     }
     return out_({ ok: true });
   } catch (err) {
