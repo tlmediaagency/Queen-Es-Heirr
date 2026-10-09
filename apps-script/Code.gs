@@ -1,5 +1,5 @@
 // Queen E's Heirr: website form handler.
-// Emails every request to the shop and logs it in the Google Sheet this script is attached to, one tab per form.
+// Emails every request to the shop and logs it in one Google Sheet (created automatically), one tab per form.
 
 const TO = "info@queenesheirr.com";
 
@@ -34,7 +34,10 @@ function doPost(e) {
           cache.put(key, "1", 3600);
           const name = String(fields.name || "").replace(/[\r\n]+/g, " ").slice(0, 80);
           const when = new Date().toLocaleString("en-US", { timeZone: "America/Chicago" }) + " (Central)";
-          const plain = (name ? "Hi " + name + ",\n\n" : "Hello,\n\n") +
+          const isList = /mailing list/i.test(subject);
+          const plain = isList
+            ? (name ? "Hi " + name + ",\n\n" : "Hello,\n\n") + "You're on the Queen E's Heirr mailing list. Thank you! We'll send occasional news about new flavors, classes, and recipes. Reply to this email with \"unsubscribe\" any time to be removed.\n\nQueen E's Heirr\nhttps://queenesheirr.com\n" + TO + "\n"
+            : (name ? "Hi " + name + ",\n\n" : "Hello,\n\n") +
             "Thank you for reaching out to Queen E's Heirr. We received your request and will reply by email soon.\n\n" +
             "Here is a copy of what you sent, for your records:\n\n" + lines.join("\n\n") +
             "\n\nSubmitted: " + when + "\n\nQueen E's Heirr\nhttps://queenesheirr.com\n" + TO + "\n";
@@ -42,16 +45,16 @@ function doPost(e) {
             to: replyTo,
             replyTo: TO,
             name: "Queen E's Heirr",
-            subject: "We received your request: " + subject,
+            subject: isList ? "Welcome to the Queen E's Heirr list" : "We received your request: " + subject,
             body: plain,
-            htmlBody: confirmationHtml_(name, subject, keys, fields, when),
+            htmlBody: confirmationHtml_(name, subject, keys, fields, when, isList),
           });
         }
       } catch (ignore) {}
     }
 
     // One tab per form (named after the form), one column per field.
-    const ss = SpreadsheetApp.getActiveSpreadsheet();
+    const ss = spreadsheet_();
     if (ss) {
       const tab = subject.replace(/[\[\]\*\?\:\/\\]/g, " ").slice(0, 90);
       const sheet = ss.getSheetByName(tab) || ss.insertSheet(tab);
@@ -80,7 +83,7 @@ function esc_(v) {
 }
 
 // Branded HTML confirmation. All visitor-supplied text is escaped.
-function confirmationHtml_(name, subject, keys, fields, when) {
+function confirmationHtml_(name, subject, keys, fields, when, isList) {
   const forest = "#1b3b22", gold = "#d4af37", goldDark = "#aa8c2c", cream = "#fcfaf7", linen = "#e5dbd1", muted = "#5c6b5a";
   const serif = "Georgia, 'Times New Roman', serif", sans = "Helvetica, Arial, sans-serif";
   const rows = keys.map(function (k) {
@@ -96,21 +99,21 @@ function confirmationHtml_(name, subject, keys, fields, when) {
     '<tr><td align="center" style="background:' + forest + ';padding:30px 24px 22px">' +
       '<img src="https://queenesheirr.com/images/logo.jpg" alt="Queen E\'s Heirr" width="84" height="84" style="border-radius:50%;border:3px solid ' + gold + ';display:block;margin:0 auto 12px">' +
       '<div style="font:700 26px ' + serif + ';color:#ffffff;letter-spacing:.02em">Queen E\'s Heirr</div>' +
-      '<div style="font:italic 14px ' + serif + ';color:' + gold + ';margin-top:4px">Small-batch jams, pickles &amp; good manners</div>' +
+      '<div style="font:italic 14px ' + serif + ';color:' + gold + ';margin-top:4px">Curating Culture &amp; Confections</div>' +
     '</td></tr>' +
     '<tr><td style="height:5px;background:' + gold + ';font-size:0;line-height:0">&nbsp;</td></tr>' +
     '<tr><td style="padding:32px 30px 8px">' +
       '<div style="font:700 24px ' + serif + ';color:' + forest + '">Thank you' + (name ? ', ' + esc_(name) : '') + '! &#128081;</div>' +
-      '<p style="font:16px/1.6 ' + sans + ';color:#0e2012;margin:14px 0 0">We received your request and a real person will reply by email soon. Keep this message handy &mdash; it is your copy of what you sent.</p>' +
+      '<p style="font:16px/1.6 ' + sans + ';color:#0e2012;margin:14px 0 0">' + (isList ? 'You are on the list! We will send occasional news about new flavors, class dates, and recipes.' : 'We received your request and a real person will reply by email soon. Keep this message handy &mdash; it is your copy of what you sent.') + '</p>' +
     '</td></tr>' +
     '<tr><td style="padding:18px 30px 6px">' +
-      '<div style="font:700 13px ' + sans + ';letter-spacing:.12em;text-transform:uppercase;color:' + muted + ';margin-bottom:8px">Your request &middot; ' + esc_(subject) + '</div>' +
+      '<div style="font:700 13px ' + sans + ';letter-spacing:.12em;text-transform:uppercase;color:' + muted + ';margin-bottom:8px">' + (isList ? 'Your signup' : 'Your request') + ' &middot; ' + esc_(subject) + '</div>' +
       '<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:' + cream + ';border:1px solid ' + linen + ';border-radius:12px">' + rows + '</table>' +
       '<div style="font:12px ' + sans + ';color:' + muted + ';margin-top:8px">Submitted ' + esc_(when) + '</div>' +
     '</td></tr>' +
     '<tr><td style="padding:22px 30px 6px">' +
-      '<div style="font:700 18px ' + serif + ';color:' + forest + ';margin-bottom:6px">What happens next</div>' +
-      '<p style="font:15px/1.6 ' + sans + ';color:#0e2012;margin:0">We read every request personally and respond within a few business days. If something above needs fixing, just reply to this email.</p>' +
+      '<div style="font:700 18px ' + serif + ';color:' + forest + ';margin-bottom:6px">' + (isList ? 'Good to know' : 'What happens next') + '</div>' +
+      '<p style="font:15px/1.6 ' + sans + ';color:#0e2012;margin:0">' + (isList ? 'Not what you expected? Reply to this email with &ldquo;unsubscribe&rdquo; and we will remove you right away.' : 'We read every request personally and respond within a few business days. If something above needs fixing, just reply to this email.') + '</p>' +
     '</td></tr>' +
     '<tr><td align="center" style="padding:22px 30px 8px">' +
       '<a href="https://queenesheirr.com/shop/" style="display:inline-block;background:' + forest + ';color:#ffffff;font:700 15px ' + sans + ';text-decoration:none;padding:13px 28px;border-radius:999px;border:2px solid ' + gold + '">Browse the shop</a>' +
@@ -128,4 +131,19 @@ function confirmationHtml_(name, subject, keys, fields, when) {
     '</td></tr>' +
     '<tr><td align="center" style="background:' + forest + ';padding:16px 24px;font:12px/1.6 ' + sans + ';color:#cfd8cd">You are receiving this because you submitted a form at queenesheirr.com.<br>&copy; Queen E\'s Heirr, LLC</td></tr>' +
   '</table></div>';
+}
+
+// One spreadsheet for every form, created on first use (one tab per form). Its link is in the script's properties.
+function spreadsheet_() {
+  const props = PropertiesService.getScriptProperties();
+  const id = props.getProperty("SHEET_ID");
+  if (id) { try { return SpreadsheetApp.openById(id); } catch (err) { /* recreate below */ } }
+  const ss = SpreadsheetApp.create("Queen E's Heirr - Website Submissions");
+  props.setProperty("SHEET_ID", ss.getId());
+  return ss;
+}
+
+// Run this once from the editor to authorize spreadsheet access and see the spreadsheet's link in the log.
+function setup() {
+  Logger.log(spreadsheet_().getUrl());
 }

@@ -251,7 +251,7 @@
   // Forms: POST to FORM_ENDPOINT (Google Apps Script) so every request is emailed to the shop.
   // Without an endpoint, open the visitor's email app. Never fake success.
   document.querySelectorAll("form[data-form]").forEach(function (form) {
-    var status = el("p", { "class": "muted", role: "status", "aria-live": "polite" });
+    var status = el("p", { "class": "muted", role: "status", "aria-live": "polite", style: "grid-column:1/-1" });
     form.appendChild(status);
     var trap = el("input", { type: "text", name: "website", tabindex: "-1", autocomplete: "off", "aria-hidden": "true", style: "position:absolute;left:-9999px;height:0;width:0;opacity:0" });
     form.appendChild(trap);

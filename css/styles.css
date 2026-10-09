@@ -135,3 +135,14 @@ form.stack { display: grid; gap: 1rem; background: #fff; border: 1px solid var(-
 .prose h2 { margin-top: 2rem; }
 .cart-panel { box-sizing: border-box; }
 .card-body .btn { margin-top: 1rem; }
+
+/* Mailing list signup (footer) */
+.signup { margin-top: 2rem; padding-top: 1.75rem; border-top: 1px solid rgba(255,255,255,0.15); }
+.signup-form { display: grid; gap: 1rem; align-items: end; }
+.signup-form h3 { color: var(--gold); margin: 0 0 .25rem; }
+.signup-form p { margin: 0; }
+.signup-form .field { color: var(--cream-deep); }
+.signup-form .muted { color: var(--cream-deep); }
+.signup-note { font-size: 0.8rem; opacity: .8; }
+@media (min-width: 900px) { .signup-form { grid-template-columns: 1.3fr 1fr 1fr auto; } .signup-note { grid-column: 1 / -1; } }
+.site-footer h2, .site-footer h3 { color: var(--gold); }
