@@ -24,6 +24,32 @@ function doPost(e) {
     if (replyTo) opts.replyTo = replyTo;
     MailApp.sendEmail(opts);
 
+    // Confirmation copy to the person who submitted (best effort; never blocks the request).
+    // Limited to one per address per hour so the form can't be used to spam someone.
+    if (replyTo) {
+      try {
+        const cache = CacheService.getScriptCache();
+        const key = "conf:" + replyTo.toLowerCase().slice(0, 200);
+        if (!cache.get(key)) {
+          cache.put(key, "1", 3600);
+          const name = String(fields.name || "").replace(/[\r\n]+/g, " ").slice(0, 80);
+          MailApp.sendEmail({
+            to: replyTo,
+            replyTo: TO,
+            name: "Queen E's Heirr",
+            subject: "We received your request: " + subject,
+            body: (name ? "Hi " + name + ",\n\n" : "Hello,\n\n") +
+              "Thank you for reaching out to Queen E's Heirr. We received your request and will reply by email soon.\n\n" +
+              "Here is a copy of what you sent, for your records:\n\n" +
+              lines.join("\n\n") +
+              "\n\nSubmitted: " + new Date().toLocaleString("en-US", { timeZone: "America/Chicago" }) + " (Central)\n\n" +
+              "If anything above needs correcting, just reply to this email.\n\n" +
+              "Queen E's Heirr\nhttps://queenesheirr.com\n" + TO + "\n",
+          });
+        }
+      } catch (ignore) {}
+    }
+
     // One tab per form (named after the form), one column per field.
     const ss = SpreadsheetApp.getActiveSpreadsheet();
     if (ss) {
