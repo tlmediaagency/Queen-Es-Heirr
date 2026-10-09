@@ -146,3 +146,8 @@ form.stack { display: grid; gap: 1rem; background: #fff; border: 1px solid var(-
 .signup-note { font-size: 0.8rem; opacity: .8; }
 @media (min-width: 900px) { .signup-form { grid-template-columns: 1.3fr 1fr 1fr auto; } .signup-note { grid-column: 1 / -1; } }
 .site-footer h2, .site-footer h3 { color: var(--gold); }
+
+.fulfill { border: 1px solid var(--linen); border-radius: 12px; padding: .6rem .9rem; margin: .5rem 0; display: grid; gap: .4rem; background: #fff; }
+.fulfill legend { font-size: .72rem; font-weight: 600; letter-spacing: .08em; text-transform: uppercase; padding: 0 .3rem; }
+.fulfill label { display: flex; gap: .5rem; align-items: center; font-size: .92rem; }
+.fulfill input { width: auto; }

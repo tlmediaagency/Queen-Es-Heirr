@@ -228,6 +228,18 @@
       "&body=" + encodeURIComponent("Hello, I'd like to order:\n\n" + body + "\n\nName:\nShipping address:\nPhone:\n");
     window.location.href = href;
   }
+  function fulfillment() {
+    var r = document.querySelector('input[name="fulfillment"]:checked');
+    return r && r.value === "pickup" ? "pickup" : "ship";
+  }
+  document.querySelectorAll('input[name="fulfillment"]').forEach(function (r) {
+    r.addEventListener("change", function () {
+      var note = document.querySelector("[data-fulfill-note]");
+      if (note) note.textContent = fulfillment() === "pickup"
+        ? "No shipping charge. We will email you to arrange pickup. Any sales tax is added at secure checkout."
+        : "Shipping and any sales tax are added at secure checkout.";
+    });
+  });
   if (checkoutBtn) {
     checkoutBtn.addEventListener("click", function () {
       var lines = loadCart();
@@ -242,7 +254,7 @@
       fetch(CFG.CHECKOUT_URL, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ items: lines })
+        body: JSON.stringify({ items: lines, fulfillment: fulfillment() })
       }).then(function (r) {
         return r.json().then(function (d) { if (!r.ok) throw new Error(d.error || "Checkout failed"); return d; });
       }).then(function (d) {

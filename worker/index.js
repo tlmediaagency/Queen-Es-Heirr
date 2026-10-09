@@ -157,23 +157,33 @@ async function handleCheckout(request, env, c) {
     } else {
       params.set(`line_items[${i}][price_data][currency]`, "usd");
       params.set(`line_items[${i}][price_data][unit_amount]`, String(size.cents));
+      if (env.TAX_ENABLED === "true") params.set(`line_items[${i}][price_data][tax_behavior]`, "exclusive");
       params.set(`line_items[${i}][price_data][product_data][name]`, `${product.name} (${size.label})`);
     }
     params.set(`line_items[${i}][quantity]`, String(qty));
     i++;
   }
+  const pickup = payload.fulfillment === "pickup";
   const site = env.SITE_URL || "https://queenesheirr.com";
   params.set("mode", "payment");
   params.set("success_url", `${site}/order-confirmed/?session_id={CHECKOUT_SESSION_ID}`);
   params.set("cancel_url", `${site}/shop/`);
-  params.set("shipping_address_collection[allowed_countries][0]", "US");
   params.set("phone_number_collection[enabled]", "true");
-  params.set("shipping_options[0][shipping_rate_data][type]", "fixed_amount");
-  params.set("shipping_options[0][shipping_rate_data][display_name]", "Flat-rate shipping");
-  params.set("shipping_options[0][shipping_rate_data][fixed_amount][amount]", String(parseInt(env.SHIPPING_CENTS || "1000", 10)));
-  params.set("shipping_options[0][shipping_rate_data][fixed_amount][currency]", "usd");
-  // Uncomment once Stripe Tax is set up in the dashboard:
-  // params.set("automatic_tax[enabled]", "true");
+  params.set("metadata[fulfillment]", pickup ? "pickup" : "ship");
+  if (pickup) {
+    // No shipping address or fee. Customers are contacted by email to arrange pickup.
+    params.set("billing_address_collection", "required");
+    params.set("custom_text[submit][message]", "Local pickup: we will email you to arrange a pickup time and place.");
+  } else {
+    params.set("shipping_address_collection[allowed_countries][0]", "US");
+    params.set("shipping_options[0][shipping_rate_data][type]", "fixed_amount");
+    params.set("shipping_options[0][shipping_rate_data][display_name]", "Flat-rate shipping");
+    params.set("shipping_options[0][shipping_rate_data][fixed_amount][amount]", String(parseInt(env.SHIPPING_CENTS || "1000", 10)));
+    params.set("shipping_options[0][shipping_rate_data][fixed_amount][currency]", "usd");
+    if (env.TAX_ENABLED === "true") params.set("shipping_options[0][shipping_rate_data][tax_behavior]", "exclusive");
+  }
+  // Sales tax: set the Worker variable TAX_ENABLED=true once Stripe Tax is configured in the dashboard.
+  if (env.TAX_ENABLED === "true") params.set("automatic_tax[enabled]", "true");
 
   const res = await fetch(`${API}/checkout/sessions`, {
     method: "POST",

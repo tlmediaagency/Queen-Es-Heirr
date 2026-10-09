@@ -125,7 +125,10 @@
   </div>
   <div data-cart-lines></div>
   <p>Subtotal <strong data-cart-subtotal>$0.00</strong></p>
-  <p class="cart-note">Flat-rate shipping ($10) and any tax are added at secure checkout.</p>
+  <fieldset class="fulfill"><legend>How would you like to get your order?</legend>
+    <label><input type="radio" name="fulfillment" value="ship" checked> Ship to me (flat rate $10)</label>
+    <label><input type="radio" name="fulfillment" value="pickup"> Local pickup (free, we email you to arrange)</label></fieldset>
+  <p class="cart-note" data-fulfill-note>Shipping and any sales tax are added at secure checkout.</p>
   <p class="muted" role="status" aria-live="polite" data-cart-msg></p>
   <button class="btn" type="button" id="checkout" disabled>Checkout</button>
 </aside>
