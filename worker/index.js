@@ -2,6 +2,7 @@
 // Stripe is the source of truth for products, prices and availability.
 //   GET  /products  -> catalog read from Stripe (cached ~60s)
 //   POST /checkout  -> { items:[{id,size,qty}] } -> Stripe Checkout Session URL
+//   POST /class-request -> { name,email,class,date,attendees,notes } -> DRAFT Stripe quote for review/sending
 // Stripe setup per product: product id = site slug (e.g. "peach"), metadata.category ("Jams"|"Pickled goods"),
 // one active price per size with the size as the price "nickname" (e.g. "8 oz").
 // Sold out: set metadata sold_out=true on the product (all sizes) or on one price (that size).
@@ -170,6 +171,64 @@ async function handleCheckout(request, env, c) {
   return json({ url: data.url }, 200, c.headers);
 }
 
+const CLASSES = {
+  "Standalone Jam Making & STEM Lab": { id: "class-jam-stem-lab", cents: 5500 },
+  "Jam Making & Etiquette Combined Class": { id: "class-jam-etiquette", cents: 8500 },
+};
+
+async function stripePost(env, path, params) {
+  const res = await fetch(API + path, {
+    method: "POST",
+    headers: { Authorization: `Bearer ${env.STRIPE_SECRET_KEY}`, "Content-Type": "application/x-www-form-urlencoded" },
+    body: params,
+  });
+  const data = await res.json();
+  if (!res.ok) throw new Error(`Stripe ${res.status} ${data.error && data.error.message}`);
+  return data;
+}
+
+async function ensureClassProduct(env, cls, name) {
+  try { return await stripeGet(env, `/products/${cls.id}`); } catch { /* not created yet */ }
+  const p = new URLSearchParams({ id: cls.id, name, "metadata[kind]": "class" });
+  return stripePost(env, "/products", p);
+}
+
+async function handleClassRequest(request, env, c) {
+  let b;
+  try { b = await request.json(); } catch { return json({ error: "Invalid request" }, 400, c.headers); }
+  const name = String((b && b.name) || "").trim().slice(0, 100);
+  const email = String((b && b.email) || "").trim().slice(0, 200);
+  const cls = CLASSES[b && b.class];
+  const attendees = parseInt(b && b.attendees, 10);
+  const date = String((b && b.date) || "").slice(0, 10);
+  const notes = String((b && b.notes) || "").slice(0, 1000);
+  if ((b && b.website) || !name || !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email) || !cls || !(attendees >= 1 && attendees <= 30) || !/^\d{4}-\d{2}-\d{2}$/.test(date)) {
+    return json({ error: "Invalid request" }, 400, c.headers);
+  }
+  try {
+    await ensureClassProduct(env, cls, b.class);
+    const found = await stripeGet(env, `/customers?email=${encodeURIComponent(email)}&limit=1`);
+    const customer = found.data[0] || (await stripePost(env, "/customers", new URLSearchParams({ name, email })));
+    const q = new URLSearchParams({
+      customer: customer.id,
+      description: `${b.class} - requested date ${date}, ${attendees} attendee(s).`,
+      "metadata[requested_date]": date,
+      "metadata[attendees]": String(attendees),
+      "metadata[notes]": notes.slice(0, 480),
+      "metadata[source]": "queenesheirr.com class request",
+      "line_items[0][price_data][currency]": "usd",
+      "line_items[0][price_data][product]": cls.id,
+      "line_items[0][price_data][unit_amount]": String(cls.cents),
+      "line_items[0][quantity]": String(attendees),
+    });
+    const quote = await stripePost(env, "/quotes", q);
+    return json({ ok: true, quote: quote.id }, 200, c.headers);
+  } catch (e) {
+    console.log("quote error", String(e));
+    return json({ error: "Could not create quote" }, 502, c.headers);
+  }
+}
+
 export default {
   async fetch(request, env0, ctx) {
     const env = { ALLOWED_ORIGINS: "https://queenesheirr.com,https://www.queenesheirr.com", SITE_URL: "https://queenesheirr.com", SHIPPING_CENTS: "1000", ...env0 };
@@ -181,6 +240,10 @@ export default {
     if (url.pathname === "/checkout" && request.method === "POST") {
       if (!c.ok) return json({ error: "Origin not allowed" }, 403, c.headers);
       return handleCheckout(request, env, c);
+    }
+    if (url.pathname === "/class-request" && request.method === "POST") {
+      if (!c.ok) return json({ error: "Origin not allowed" }, 403, c.headers);
+      return handleClassRequest(request, env, c);
     }
     return json({ error: "Not found" }, 404, c.headers);
   },

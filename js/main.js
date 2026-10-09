@@ -267,6 +267,10 @@
         // A resolved no-cors fetch means the request reached Google; a network failure rejects.
         fetch(CFG.FORM_ENDPOINT, { method: "POST", mode: "no-cors", body: JSON.stringify({ subject: subject, page: location.pathname, fields: fields }) })
           .then(function () {
+            // Class registrations also create a draft quote in Stripe (best effort; the email above is the record).
+            if (form.hasAttribute("data-quote") && CFG.QUOTE_URL) {
+              fetch(CFG.QUOTE_URL, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(fields) }).catch(function () {});
+            }
             form.reset();
             status.textContent = "Thank you. We received it and will reply by email.";
           })
