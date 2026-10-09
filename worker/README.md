@@ -1,6 +1,6 @@
 # Checkout Worker (Stripe)
 
-Creates a Stripe Checkout Session from the cart. Prices are read from `catalog.js` on the server, never from the browser.
+Reads products/prices/availability from Stripe and creates Checkout Sessions. Prices are never taken from the browser.
 
 1. `cd worker && npx wrangler login`
 2. `npx wrangler secret put STRIPE_SECRET_KEY`  (paste a **test** key `sk_test_...` first)
@@ -8,5 +8,5 @@ Creates a Stripe Checkout Session from the cart. Prices are read from `catalog.j
 4. Put `https://queenes-checkout.<you>.workers.dev/checkout` in `js/config.js` as `CHECKOUT_URL`.
 5. Test with card 4242 4242 4242 4242. Then swap the secret to the live `sk_live_...` key and redeploy.
 
-When prices or availability change, edit `js/products.js` AND `worker/catalog.js`.
+Manage products in Stripe: product id = site slug (e.g. `peach`), metadata `category`, one active price per size with the size as the price nickname. Mark sold out with metadata `sold_out=true` on the product or on one price. `js/products.js` is only a fallback.
 Never commit a Stripe secret key.

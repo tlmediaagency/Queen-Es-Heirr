@@ -80,8 +80,10 @@
   function money(cents) {
     return (cents / 100).toLocaleString("en-US", { style: "currency", currency: "USD" });
   }
+  var catalog = window.PRODUCTS || [];
+  var PLACEHOLDER = "/images/jar-placeholder.jpg";
   function findProduct(id) {
-    return (window.PRODUCTS || []).find(function (p) { return p.id === id; });
+    return catalog.find(function (p) { return p.id === id; });
   }
   function sizeOf(id, label) {
     var p = findProduct(id);
@@ -167,10 +169,13 @@
 
   // Shop grid
   var shop = document.querySelector("[data-shop]");
-  if (shop && window.PRODUCTS) {
-    window.PRODUCTS.forEach(function (p) {
+  function renderShop() {
+    if (!shop) return;
+    shop.textContent = "";
+    catalog.forEach(function (p) {
       var card = el("article", { "class": "card" });
-      var img = el("img", { src: p.image, alt: p.image.indexOf("placeholder") > -1 ? p.name + " (photo coming soon)" : p.name + " jar", loading: "lazy" });
+      var imgSrc = p.image || PLACEHOLDER;
+      var img = el("img", { src: imgSrc, alt: imgSrc === PLACEHOLDER ? p.name + " (photo coming soon)" : p.name + " jar", loading: "lazy" });
       var body = el("div", { "class": "card-body" });
       body.appendChild(el("p", { "class": "kicker" }, p.category));
       body.appendChild(el("h3", null, p.name));
@@ -179,7 +184,7 @@
       var select = el("select");
       var firstOpen = null;
       p.sizes.forEach(function (s) {
-        var o = el("option", { value: s.label }, s.label + " · " + money(s.cents) + (s.soldOut ? " (sold out)" : ""));
+        var o = el("option", { value: s.label }, s.label + " \u00b7 " + money(s.cents) + (s.soldOut ? " (sold out)" : ""));
         if (s.soldOut) o.disabled = true; else if (!firstOpen) firstOpen = s.label;
         select.appendChild(o);
       });
@@ -193,6 +198,17 @@
       card.appendChild(img); card.appendChild(body);
       shop.appendChild(card);
     });
+  }
+  renderShop();
+
+  // Live catalog from Stripe (via the Worker). Falls back to js/products.js if unavailable.
+  if (CFG.PRODUCTS_URL) {
+    fetch(CFG.PRODUCTS_URL).then(function (r) {
+      if (!r.ok) throw new Error("bad status");
+      return r.json();
+    }).then(function (list) {
+      if (Array.isArray(list) && list.length) { catalog = list; renderShop(); render(); }
+    }).catch(function () {});
   }
 
   // Checkout
@@ -232,21 +248,26 @@
   // Order confirmation page clears the bag
   if (document.querySelector("[data-clear-cart]")) { saveCart([]); }
 
-  // Forms: send to FORM_ENDPOINT if set, else open the visitor's email app. Never fake success.
+  // Forms: POST to FORM_ENDPOINT (Google Apps Script) so every request is emailed to the shop.
+  // Without an endpoint, open the visitor's email app. Never fake success.
   document.querySelectorAll("form[data-form]").forEach(function (form) {
     var status = el("p", { "class": "muted", role: "status", "aria-live": "polite" });
     form.appendChild(status);
+    var trap = el("input", { type: "text", name: "website", tabindex: "-1", autocomplete: "off", "aria-hidden": "true", style: "position:absolute;left:-9999px;height:0;width:0;opacity:0" });
+    form.appendChild(trap);
     form.addEventListener("submit", function (e) {
       e.preventDefault();
       if (!form.reportValidity()) return;
-      var data = new FormData(form);
+      var fields = {};
+      new FormData(form).forEach(function (v, k) { fields[k] = String(v); });
       var subject = form.getAttribute("data-form");
       if (CFG.FORM_ENDPOINT) {
-        data.append("_subject", subject);
         status.textContent = "Sending...";
-        fetch(CFG.FORM_ENDPOINT, { method: "POST", body: data, headers: { Accept: "application/json" } })
-          .then(function (r) {
-            if (!r.ok) throw new Error("bad status");
+        // text/plain keeps this a "simple" request so Google Apps Script accepts it without a CORS preflight.
+        fetch(CFG.FORM_ENDPOINT, { method: "POST", body: JSON.stringify({ subject: subject, page: location.pathname, fields: fields }) })
+          .then(function (r) { return r.json(); })
+          .then(function (d) {
+            if (!d || !d.ok) throw new Error("not ok");
             form.reset();
             status.textContent = "Thank you. We received it and will reply by email.";
           })
@@ -255,7 +276,7 @@
           });
       } else {
         var body = [];
-        data.forEach(function (v, k) { body.push(k.replace(/_/g, " ") + ": " + v); });
+        Object.keys(fields).forEach(function (k) { if (k !== "website") body.push(k.replace(/_/g, " ") + ": " + fields[k]); });
         status.textContent = "Your email app should open with this message ready to send. If it doesn't, email " + CFG.CONTACT_EMAIL + ".";
         window.location.href = "mailto:" + CFG.CONTACT_EMAIL + "?subject=" + encodeURIComponent(subject) + "&body=" + encodeURIComponent(body.join("\n"));
       }
