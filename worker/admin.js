@@ -1,6 +1,7 @@
 // Client admin API + app. Same-origin only (served by this Worker). Login: emailed 6-digit code.
 // Needs: KV binding ADMIN_KV; secrets SESSION_SECRET, MAIL_SECRET; var ADMIN_EMAILS; var MAIL_URL (Apps Script web app URL).
 import UI from "./admin-ui.js";
+import { ICON_192, ICON_512 } from "./admin-icons.js";
 
 const enc = new TextEncoder();
 const STATUSES = ["new", "in_production", "ready", "fulfilled"];
@@ -112,8 +113,19 @@ export async function handleAdmin(request, env, url, d) {
   if (path === "/admin" || path === "/admin/") {
     return new Response(UI, { headers: {
       "Content-Type": "text/html; charset=utf-8", "Cache-Control": "no-store", "X-Frame-Options": "DENY", "Referrer-Policy": "no-referrer",
-      "Content-Security-Policy": "default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self' data: https:; connect-src 'self'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'",
+      "Content-Security-Policy": "default-src 'none'; manifest-src 'self'; script-src 'unsafe-inline'; style-src 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self' data: https:; connect-src 'self'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'",
     } });
+  }
+  if (path === "/admin/manifest.webmanifest") {
+    return new Response(JSON.stringify({
+      name: "Queen E's Heirr Shop Admin Portal", short_name: "QE Admin", start_url: "/admin", scope: "/admin", display: "standalone",
+      background_color: "#fcfaf7", theme_color: "#1b3b22",
+      icons: [{ src: "/admin/icon-192.png", sizes: "192x192", type: "image/png" }, { src: "/admin/icon-512.png", sizes: "512x512", type: "image/png" }],
+    }), { headers: { "Content-Type": "application/manifest+json", "Cache-Control": "public, max-age=3600" } });
+  }
+  if (path === "/admin/icon-192.png" || path === "/admin/icon-512.png") {
+    const bytes = Uint8Array.from(atob(path.includes("192") ? ICON_192 : ICON_512), (ch) => ch.charCodeAt(0));
+    return new Response(bytes, { headers: { "Content-Type": "image/png", "Cache-Control": "public, max-age=86400" } });
   }
   if (!path.startsWith("/admin/api/")) return null;
   const route = path.slice(11);

@@ -367,7 +367,7 @@ export default {
     if (request.method === "OPTIONS") return new Response(null, { status: 204, headers: c.headers });
     if (env.ADMIN_HOST && url.hostname === env.ADMIN_HOST && url.pathname === "/") return Response.redirect(`https://${env.ADMIN_HOST}/admin`, 302);
     if (!env.STRIPE_SECRET_KEY) return json({ error: "Not configured" }, 500, c.headers);
-    if (url.pathname === "/admin" || url.pathname.startsWith("/admin/api/") || url.pathname === "/admin/") {
+    if (url.pathname === "/admin" || url.pathname.startsWith("/admin/")) {
       const r = await handleAdmin(request, env, url, { stripeGet, stripePost, stockOf });
       if (r) return r;
     }
