@@ -263,11 +263,10 @@
       var subject = form.getAttribute("data-form");
       if (CFG.FORM_ENDPOINT) {
         status.textContent = "Sending...";
-        // text/plain keeps this a "simple" request so Google Apps Script accepts it without a CORS preflight.
-        fetch(CFG.FORM_ENDPOINT, { method: "POST", body: JSON.stringify({ subject: subject, page: location.pathname, fields: fields }) })
-          .then(function (r) { return r.json(); })
-          .then(function (d) {
-            if (!d || !d.ok) throw new Error("not ok");
+        // Google Apps Script doesn't send CORS headers, so the reply is unreadable (opaque).
+        // A resolved no-cors fetch means the request reached Google; a network failure rejects.
+        fetch(CFG.FORM_ENDPOINT, { method: "POST", mode: "no-cors", body: JSON.stringify({ subject: subject, page: location.pathname, fields: fields }) })
+          .then(function () {
             form.reset();
             status.textContent = "Thank you. We received it and will reply by email.";
           })
