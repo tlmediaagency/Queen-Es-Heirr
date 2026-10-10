@@ -203,8 +203,27 @@
     footWrap.appendChild(cs);
   }
 
+
+  // Training inquiry: audience choice shows the matching program checkboxes and keeps the page tabs in sync.
+  var audForm = document.querySelector("[data-audience-form]");
+  if (audForm) {
+    var showAudience = function (a, fromTab) {
+      a = String(a).toLowerCase();
+      audForm.querySelectorAll("[data-interests]").forEach(function (fs) {
+        var on = fs.getAttribute("data-interests") === a;
+        fs.hidden = !on; fs.disabled = !on;
+      });
+      audForm.querySelectorAll('input[name="audience"]').forEach(function (r) { r.checked = r.value.toLowerCase() === a; });
+      if (!fromTab) { var tb = document.querySelector('[data-tab="' + a + '"]'); if (tb) tb.click(); }
+    };
+    audForm.querySelectorAll('input[name="audience"]').forEach(function (r) { r.addEventListener("change", function () { showAudience(r.value, false); }); });
+    document.querySelectorAll("[data-tab]").forEach(function (tb) { tb.addEventListener("click", function () { showAudience(tb.getAttribute("data-tab"), true); }); });
+    audForm.addEventListener("reset", function () { setTimeout(function () { showAudience("students", false); }, 0); });
+  }
+
   // Shop grid
   var shop = document.querySelector("[data-shop]");
+  var sortKey = "featured";
   if (shop) {
     var viewKey = "qe-shop-view", view = "grid";
     try { view = localStorage.getItem(viewKey) === "list" ? "list" : "grid"; } catch (e) {}
@@ -224,12 +243,34 @@
       });
       tog.appendChild(b);
     });
-    shop.parentNode.insertBefore(tog, shop);
+    var sortSel = el("select", { "aria-label": "Sort products" });
+    [["featured", "Featured"], ["name", "Name (A to Z)"], ["price-asc", "Price (low to high)"], ["price-desc", "Price (high to low)"], ["available", "Availability (in stock first)"], ["stock", "Most in stock"]].forEach(function (o) {
+      sortSel.appendChild(el("option", { value: o[0] }, o[1]));
+    });
+    sortSel.addEventListener("change", function () { sortKey = sortSel.value; renderShop(); });
+    var sortLab = el("label", { "class": "sort-field" }, "Sort by");
+    sortLab.appendChild(sortSel);
+    var tools = el("div", { "class": "shop-tools" });
+    tools.appendChild(sortLab); tools.appendChild(tog);
+    shop.parentNode.insertBefore(tools, shop);
+  }
+  function sortedCatalog() {
+    var list = catalog.slice();
+    var open = function (p) { return p.sizes.filter(function (s) { return !s.soldOut; }); };
+    var minPrice = function (p) { var o = open(p); o = o.length ? o : p.sizes; return Math.min.apply(null, o.map(function (s) { return s.cents; })); };
+    var stockOf = function (p) { return open(p).reduce(function (t, s) { return t + (typeof s.stock === "number" ? s.stock : 999); }, 0); };
+    var byName = function (a, b) { return a.name.localeCompare(b.name); };
+    if (sortKey === "name") list.sort(byName);
+    else if (sortKey === "price-asc") list.sort(function (a, b) { return minPrice(a) - minPrice(b) || byName(a, b); });
+    else if (sortKey === "price-desc") list.sort(function (a, b) { return minPrice(b) - minPrice(a) || byName(a, b); });
+    else if (sortKey === "available") list.sort(function (a, b) { return (open(b).length > 0) - (open(a).length > 0) || byName(a, b); });
+    else if (sortKey === "stock") list.sort(function (a, b) { return stockOf(b) - stockOf(a) || byName(a, b); });
+    return list;
   }
   function renderShop() {
     if (!shop) return;
     shop.textContent = "";
-    catalog.forEach(function (p) {
+    sortedCatalog().forEach(function (p) {
       var card = el("article", { "class": "card" });
       var imgSrc = p.image || PLACEHOLDER;
       var img = el("img", { src: imgSrc, alt: imgSrc === PLACEHOLDER ? p.name + " (photo coming soon)" : p.name + " jar", loading: "lazy" });
@@ -415,7 +456,7 @@
       e.preventDefault();
       if (!form.reportValidity()) return;
       var fields = {};
-      new FormData(form).forEach(function (v, k) { fields[k] = String(v); });
+      new FormData(form).forEach(function (v, k) { fields[k] = (k in fields) ? fields[k] + ", " + String(v) : String(v); });
       var subject = form.getAttribute("data-form");
       if (CFG.FORM_ENDPOINT) {
         status.textContent = "Sending...";

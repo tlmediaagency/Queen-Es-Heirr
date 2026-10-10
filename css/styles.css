@@ -87,7 +87,8 @@ button, [role="button"] { cursor: pointer; }
 .center .lede { margin-inline: auto; }
 .portrait { border-radius: 20px; width: 100%; object-fit: cover; aspect-ratio: 3/4; border: 4px solid #fff; }
 .site-footer { background: var(--ink); color: var(--cream-deep); padding: 3rem 0; margin-top: 3rem; }
-.site-footer a { color: var(--gold); }
+.site-footer a, .site-footer a:visited { color: #fff; text-decoration: none; }
+.site-footer a:hover, .site-footer a:focus-visible { color: var(--gold-light); }
 .foot { display: grid; gap: 1.5rem; }
 .muted { color: var(--muted); font-size: 0.92rem; }
 .field { display: grid; gap: 0.35rem; font-size: 0.72rem; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; }
@@ -208,3 +209,17 @@ html { scroll-behavior: smooth; }
 .class-hero { display: grid; gap: 1.5rem; align-items: center; }
 .class-hero img { border-radius: 24px; width: 100%; height: auto; max-height: 460px; object-fit: cover; }
 @media (min-width: 800px) { .class-hero { grid-template-columns: 1.1fr 0.9fr; gap: 3rem; } }
+
+/* Shop tools + seasonal note */
+.shop-tools { display: flex; justify-content: space-between; align-items: center; gap: 0.75rem; flex-wrap: wrap; margin-top: 1.5rem; }
+.shop-tools .view-toggle { margin-top: 0; }
+.sort-field { display: flex; align-items: center; gap: 0.5rem; font-size: 0.78rem; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; }
+.sort-field select { width: auto; padding: 0.5rem 0.8rem; border-radius: 99px; }
+.season-note { max-width: 46rem; margin: 1.25rem auto 0; padding: 0.85rem 1.1rem; background: var(--gold-light); border: 1px solid var(--gold); border-radius: 16px; font-size: 0.92rem; text-align: left; }
+.season-note strong { color: var(--forest); }
+/* Training inquiry */
+.audience, .interests { border: 1px solid var(--linen); border-radius: 14px; padding: 0.8rem 1rem; margin: 0; }
+.audience legend, .interests legend { font-size: 0.72rem; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; padding: 0 0.4rem; }
+.audience label, .interests label { display: flex; align-items: center; gap: 0.6rem; padding: 0.35rem 0; font-size: 0.95rem; text-transform: none; letter-spacing: 0; font-weight: 400; }
+.audience input, .interests input { width: auto; }
+.interests[hidden] { display: none; }
