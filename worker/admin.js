@@ -111,7 +111,7 @@ const stockVal = (v) => (v === null || v === "" || v === undefined ? null : Numb
 function isOurQuote(q) { return !!(q && q.metadata && String(q.metadata.source || "").startsWith("queenesheirr.com class request")); }
 
 export async function handleAdmin(request, env, url, d) {
-  const { stripeGet, stripePost, stockOf, loadCatalog, posCheckout } = d;
+  const { stripeGet, stripePost, stockOf, loadCatalog, posCheckout, posCash } = d;
   const path = url.pathname;
   if (path === "/admin" || path === "/admin/") {
     return new Response(UI, { headers: {
@@ -290,6 +290,9 @@ export async function handleAdmin(request, env, url, d) {
       if (s.status === "open") await stripePost(env, `/checkout/sessions/${body.id}/expire`, new URLSearchParams());
       return j({ ok: true });
     }
+    if (route === "pos-cash" && request.method === "POST") {
+      try { return j(await posCash(env, body.items, body.email, body.taxPct, body.key)); } catch (e) { return j({ error: String(e.message || "Could not record the sale").slice(0, 160) }, 400); }
+    }
     if (route === "pos-session" && request.method === "GET") {
       const sid = url.searchParams.get("id") || "";
       if (!/^cs_[A-Za-z0-9_]+$/.test(sid)) return j({ error: "Bad request" }, 400);
@@ -314,10 +317,17 @@ export async function handleAdmin(request, env, url, d) {
           items: ((s.line_items && s.line_items.data) || []).map((l) => ({ name: l.description, qty: l.quantity })),
         };
       });
+      let cash = [];
+      try { cash = JSON.parse((await env.ADMIN_KV.get("cashsales")) || "[]"); } catch { cash = []; }
+      for (const c of cash.slice(-80)) {
+        orders.push({ id: c.id, created: c.ts, total: c.total, status: st[c.id] || "fulfilled", name: "Cash sale", email: c.email || "", phone: "", fulfillment: "inperson", cash: true, event: "", address: "",
+          items: c.items.map((x) => ({ name: `${x.name} (${x.size})`, qty: x.qty })) });
+      }
+      orders.sort((x, y) => y.created - x.created);
       return j({ orders });
     }
     if (route === "order-status" && request.method === "POST") {
-      if (!/^cs_[A-Za-z0-9_]+$/.test(body.id || "") || !STATUSES.includes(body.status)) return j({ error: "Bad request" }, 400);
+      if (!/^(cs|cash)_[A-Za-z0-9_]+$/.test(body.id || "") || !STATUSES.includes(body.status)) return j({ error: "Bad request" }, 400);
       const st = JSON.parse((await env.ADMIN_KV.get("orderstatus")) || "{}");
       st[body.id] = body.status;
       const keys = Object.keys(st);

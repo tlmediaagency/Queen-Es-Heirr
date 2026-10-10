@@ -217,6 +217,59 @@ async function payRedirect(env, id) {
   } catch { return page("This payment link is not valid."); }
 }
 
+// Cash sale at an event: same stock/price rules as card sales, recorded in KV, optional emailed receipt.
+async function posCash(env, items, email, taxPct, key) {
+  if (!env.ADMIN_KV) throw new Error("Storage is not set up");
+  if (!Array.isArray(items) || items.length === 0 || items.length > 20) throw new Error("The bag is empty");
+  email = String(email || "").trim().slice(0, 200);
+  if (email && !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) throw new Error("That email address does not look right");
+  const rate = Math.min(Math.max(parseFloat(taxPct) || 0, 0), 15);
+  key = /^[A-Za-z0-9_-]{8,64}$/.test(key || "") ? key : "";
+  let sales = [];
+  try { sales = JSON.parse((await env.ADMIN_KV.get("cashsales")) || "[]"); } catch { sales = []; }
+  if (key) { const dup = sales.find((s) => s.key === key); if (dup) return { ok: true, id: dup.id, total: dup.total, emailed: !!dup.email, duplicate: true }; }
+  const catalog = await loadCatalog(env);
+  const wanted = new Map();
+  const lines = [];
+  let subtotal = 0;
+  for (const it of items) {
+    const product = catalog.find((p) => p.id === (it && it.id));
+    const size = product && product.sizes.find((s) => s.label === it.size);
+    const qty = it && it.qty;
+    if (!size || !Number.isInteger(qty) || qty < 1 || qty > MAX_QTY) throw new Error("An item in the bag is no longer available");
+    if (size.soldOut) throw new Error(`${product.name} (${size.label}) is sold out`);
+    const k = `${product.id}|${size.label}`;
+    const total = (wanted.get(k) || 0) + qty;
+    wanted.set(k, total);
+    if (typeof size.stock === "number" && total > size.stock) throw new Error(`Only ${size.stock} left of ${product.name} (${size.label})`);
+    lines.push({ name: product.name, size: size.label, qty, cents: size.cents, priceId: size.priceId });
+    subtotal += size.cents * qty;
+  }
+  const tax = Math.round((subtotal * rate) / 100);
+  const total = subtotal + tax;
+  // Lower stock (fresh read, like the webhook does).
+  for (const l of lines) {
+    if (!l.priceId) continue;
+    const pr = await stripeGet(env, `/prices/${l.priceId}`);
+    const stock = stockOf(pr);
+    if (stock === null) continue;
+    await stripePost(env, `/prices/${l.priceId}`, new URLSearchParams({ "metadata[stock]": String(Math.max(0, stock - l.qty)) }));
+  }
+  const idb = new Uint8Array(6); crypto.getRandomValues(idb);
+  const id = "cash_" + Array.from(idb).map((x) => x.toString(16).padStart(2, "0")).join("");
+  const rec = { id, key, ts: Date.now(), email, subtotal, tax, total, rate, items: lines.map((l) => ({ name: l.name, size: l.size, qty: l.qty, cents: l.cents })) };
+  sales.push(rec);
+  await env.ADMIN_KV.put("cashsales", JSON.stringify(sales.slice(-1000)));
+  let emailed = false;
+  if (email && env.MAIL_URL && env.MAIL_SECRET) {
+    try {
+      const r = await fetch(env.MAIL_URL, { method: "POST", headers: { "Content-Type": "text/plain" }, body: JSON.stringify({ action: "cash_receipt", secret: env.MAIL_SECRET, sale: rec }) });
+      emailed = r.ok;
+    } catch (e) { console.log("cash receipt failed", String(e)); }
+  }
+  return { ok: true, id, total, emailed };
+}
+
 // In-person event sale: same Stripe-only pricing and stock rules as the website, no shipping, returns to /admin/thanks.
 async function posCheckout(env, origin, items) {
   if (!Array.isArray(items) || items.length === 0 || items.length > MAX_LINES) throw new Error("The bag is empty");
@@ -425,7 +478,7 @@ export default {
     if (env.ADMIN_HOST && url.hostname === env.ADMIN_HOST && url.pathname === "/") return Response.redirect(`https://${env.ADMIN_HOST}/admin`, 302);
     if (!env.STRIPE_SECRET_KEY) return json({ error: "Not configured" }, 500, c.headers);
     if (url.pathname === "/admin" || url.pathname.startsWith("/admin/")) {
-      const r = await handleAdmin(request, env, url, { stripeGet, stripePost, stockOf, loadCatalog, posCheckout });
+      const r = await handleAdmin(request, env, url, { stripeGet, stripePost, stockOf, loadCatalog, posCheckout, posCash });
       if (r) return r;
     }
     const im = url.pathname.match(/^\/img\/([a-f0-9]+)\.jpg$/);

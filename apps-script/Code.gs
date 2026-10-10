@@ -26,6 +26,12 @@ function doPost(e) {
       if (!want2 || data.secret !== want2) return out_({ ok: false });
       return out_(bookingNotice_(data.booking || {}, data.cls || {}));
     }
+    // Cash sale receipt from the event sale screen (called by the Cloudflare Worker, never by browsers).
+    if (data.action === "cash_receipt") {
+      const want3 = PropertiesService.getScriptProperties().getProperty("MAIL_SECRET");
+      if (!want3 || data.secret !== want3) return out_({ ok: false });
+      return out_(cashReceipt_(data.sale || {}));
+    }
     const fields = data.fields || {};
     if (fields.website) return out_({ ok: true }); // honeypot: bots fill this hidden field
 
@@ -344,4 +350,31 @@ function bookingNotice_(b, cls) {
 // Run this ONCE from the Apps Script editor (select it in the toolbar, click Run) to grant Calendar access.
 function authorizeCalendar() {
   CalendarApp.getDefaultCalendar().getName();
+}
+
+
+// ---- Cash sale receipts ------------------------------------------------------------------------
+function cashReceipt_(sale) {
+  const email = /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(sale.email || "") ? sale.email : "";
+  if (!email) return { ok: false };
+  const money = function (c) { return "$" + ((+c || 0) / 100).toFixed(2); };
+  const items = (sale.items || []).slice(0, 40);
+  const when = Utilities.formatDate(new Date(+sale.ts || Date.now()), "America/Chicago", "MMMM d, yyyy 'at' h:mm a") + " (Central)";
+  const num = clean_(sale.id, 40).replace("cash_", "").toUpperCase();
+  const rows = items.map(function (x) {
+    return '<tr><td style="padding:6px 0">' + esc_(clean_(x.name, 100)) + ' <span style="color:#5f6f63">(' + esc_(clean_(x.size, 40)) + ')</span> &times; ' + (+x.qty || 1) + '</td><td style="padding:6px 0;text-align:right">' + money((+x.cents || 0) * (+x.qty || 1)) + '</td></tr>';
+  }).join("");
+  const taxRow = +sale.tax > 0 ? '<tr><td style="padding:6px 0">Sales tax (' + esc_(String(+sale.rate || 0)) + '%)</td><td style="text-align:right">' + money(sale.tax) + '</td></tr>' : "";
+  const html = '<div style="font-family:Georgia,serif;max-width:480px;margin:auto;border:1px solid #e5dbd1;border-radius:16px;overflow:hidden">' +
+    '<div style="background:#1b3b22;padding:18px;text-align:center"><div style="color:#d4af37;font-size:20px;letter-spacing:.08em">QUEEN E\'S HEIRR</div></div>' +
+    '<div style="padding:22px;color:#0e2012;line-height:1.5"><p style="margin:0 0 4px;font-size:18px"><strong>Thank you for your purchase!</strong></p><p style="margin:0 0 14px;color:#5f6f63;font-size:14px">Receipt ' + esc_(num) + ' &middot; ' + esc_(when) + '</p>' +
+    '<table style="width:100%;border-collapse:collapse;font-size:15px">' + rows + taxRow + '<tr><td style="padding:10px 0 0;border-top:1px solid #e5dbd1"><strong>Total paid in cash</strong></td><td style="padding:10px 0 0;border-top:1px solid #e5dbd1;text-align:right"><strong>' + money(sale.total) + '</strong></td></tr></table>' +
+    '<p style="margin:16px 0 0;color:#5f6f63;font-size:14px">Questions? Write ' + esc_(TO) + ' or visit queenesheirr.com.</p></div></div>';
+  const plain = "Thank you for your purchase from Queen E's Heirr!\nReceipt " + num + " - " + when + "\n\n" +
+    items.map(function (x) { return (+x.qty || 1) + " x " + clean_(x.name, 100) + " (" + clean_(x.size, 40) + ") " + money((+x.cents || 0) * (+x.qty || 1)); }).join("\n") +
+    (+sale.tax > 0 ? "\nSales tax (" + (+sale.rate || 0) + "%): " + money(sale.tax) : "") + "\nTotal paid in cash: " + money(sale.total) + "\n\nQuestions? " + TO + "\nhttps://queenesheirr.com";
+  try {
+    MailApp.sendEmail({ to: email, replyTo: TO, name: "Queen E's Heirr", subject: "Your Queen E's Heirr receipt (" + money(sale.total) + ")", body: plain, htmlBody: html });
+    return { ok: true };
+  } catch (err) { console.log("cash receipt failed: " + err); return { ok: false }; }
 }

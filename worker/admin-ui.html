@@ -187,7 +187,7 @@ function viewOrders(n) {
         var sel = h("select", { "aria-label": "Order status", onchange: function () {
           api("POST", "order-status", { id: o.id, status: sel.value }).then(function () { o.status = sel.value; toast("Saved"); }).catch(function (er) { toast(er.message); });
         } }, STATUS.map(function (s) { return h("option", { value: s[0], selected: s[0] === o.status, text: s[1] }); }));
-        var how = o.fulfillment === "inperson" ? h("span", { "class": "pill event", text: "In person" }) : o.fulfillment === "event" ? h("span", { "class": "pill event", text: "Event: " + o.event }) : o.fulfillment === "pickup" ? h("span", { "class": "pill pickup", text: "Pickup" }) : h("span", { "class": "pill", text: "Ship" });
+        var how = o.fulfillment === "inperson" ? h("span", { "class": "pill event", text: o.cash ? "In person \u00b7 Cash" : "In person" }) : o.fulfillment === "event" ? h("span", { "class": "pill event", text: "Event: " + o.event }) : o.fulfillment === "pickup" ? h("span", { "class": "pill pickup", text: "Pickup" }) : h("span", { "class": "pill", text: "Ship" });
         list.appendChild(h("div", { "class": "card" }, [
           h("div", { style: "display:flex;justify-content:space-between;gap:8px;flex-wrap:wrap" }, [
             h("strong", { text: o.name || o.email }), h("span", { "class": "muted", text: new Date(o.created).toLocaleString() + " · " + money(o.total) })]),
@@ -483,16 +483,20 @@ function ssSet(k, v) { try { if (v == null) sessionStorage.removeItem(k); else s
 
 function viewSale(n) {
   var pin = h("input", { type: "password", inputmode: "numeric", maxlength: "4", placeholder: "4-digit PIN", autocomplete: "off", "aria-label": "Staff PIN" });
+  var tax = h("input", { type: "number", min: "0", max: "15", step: "0.01", value: "0", inputmode: "decimal" });
   var msg = h("p", { "class": "msg", role: "status" });
   n.appendChild(h("div", { "class": "card" }, [
     h("h2", { text: "Sell at an event" }),
-    h("p", { "class": "muted", text: "This turns the screen into a customer-facing store. Customers tap jars, review their bag, and pay on the screen with a card, Apple Pay, or Google Pay. Receipts are emailed by Stripe, stock goes down automatically, and each sale appears in Orders as In person." }),
+    h("p", { "class": "muted", text: "This turns the screen into a customer-facing store. Customers tap jars, review their bag, and pay by scanning a QR code with their phone, entering a card on the screen, or paying cash (confirmed with your PIN). Stripe emails card receipts, cash receipts are emailed from the shop, stock goes down automatically, and each sale appears in Orders as In person." }),
     h("p", { "class": "muted", text: "Choose a 4-digit staff PIN. Only the PIN gets you back to the admin screens. On an iPad, also turn on Guided Access (Settings, Accessibility) so customers cannot leave the page." }),
     h("label", null, ["Staff PIN", pin]),
     h("p"),
+    h("label", null, ["Sales tax for cash sales, % (optional)", tax]),
+    h("p", { "class": "muted", text: "Card payments use Stripe Tax if you have turned it on. For cash sales, enter the rate you collect (ask your accountant), or leave it at 0." }),
+    h("p"),
     h("button", { "class": "btn primary", text: "Start selling", onclick: function () {
       if (!/^\d{4}$/.test(pin.value)) { msg.className = "msg err"; msg.textContent = "Enter exactly 4 digits."; return; }
-      ssSet(SALE_KEY, { pin: pin.value }); ssSet(CART_KEY, []); ssSet(PAY_KEY, null); renderSale();
+      ssSet(SALE_KEY, { pin: pin.value, taxPct: Math.min(15, Math.max(0, parseFloat(tax.value) || 0)) }); ssSet(CART_KEY, []); ssSet(PAY_KEY, null); renderSale();
     } }), msg]));
 }
 
@@ -553,7 +557,8 @@ function renderSale() {
   }
   function openBag() {
     var bg, box = h("div"), msg = h("p", { "class": "msg", role: "status" });
-    var payBtn = h("button", { "class": "big", style: "width:100%", text: "Pay now", onclick: pay });
+    var payBtn = h("button", { "class": "big", style: "width:100%", text: "Pay by card", onclick: pay });
+    var cashBtn = h("button", { "class": "big alt", style: "width:100%;margin-top:10px", text: "Pay with cash", onclick: function () { bg.remove(); showCash(); } });
     function draw() {
       clear(box);
       cart = cart.filter(function (l) { return l.qty > 0; }); save(); drawBar();
@@ -573,10 +578,35 @@ function renderSale() {
       api("POST", "pos-checkout", { items: cart }).then(function (r) { ssSet(PAY_KEY, r.id); showPay(r, total()); bg.remove(); })
         .catch(function (er) { payBtn.disabled = false; msg.className = "msg err"; msg.textContent = er.message; loadProducts(); });
     }
-    bg = overlay([h("h2", { text: "Your bag" }), box, h("p", { "class": "muted", text: "Tax, if any, and your receipt are handled on the secure payment page." }), payBtn, msg,
+    bg = overlay([h("h2", { text: "Your bag" }), box, h("p", { "class": "muted", text: "Card payments: tax, if any, and your receipt are handled on the secure payment page." }), payBtn, cashBtn, msg,
       h("p"), h("button", { "class": "big alt", style: "width:100%", text: "Keep shopping", onclick: function () { bg.remove(); } }),
       h("p"), h("button", { "class": "staff", style: "color:var(--sage)", text: "Empty the bag", onclick: function () { cart.length = 0; draw(); } })]);
     draw();
+  }
+  function showCash() {
+    var rate = Number(st.taxPct) || 0, sub = total(), tax = Math.round(sub * rate / 100), key = "k" + Math.random().toString(36).slice(2) + Date.now().toString(36);
+    var email = h("input", { type: "email", placeholder: "you@example.com", autocomplete: "email", inputmode: "email", "aria-label": "Email for your receipt" });
+    var pin = h("input", { "class": "pin", type: "password", inputmode: "numeric", maxlength: "4", autocomplete: "off", placeholder: "Staff PIN", "aria-label": "Staff PIN" });
+    var msg = h("p", { "class": "msg err", role: "status" }), cbg;
+    var done = h("button", { "class": "big", style: "width:100%", text: "Cash received", onclick: function () {
+      if (pin.value !== st.pin) { msg.textContent = "Staff PIN needed to confirm the cash."; pin.value = ""; return; }
+      done.disabled = true; msg.className = "msg"; msg.textContent = "Recording the sale...";
+      api("POST", "pos-cash", { items: cart, email: email.value, taxPct: rate, key: key }).then(function (r) {
+        cbg.remove(); cart.length = 0; save(); drawBar();
+        var t = h("div", { "class": "thanks" }, [h("div", null, [h("h1", { text: "Thank you!" }), h("p", { text: r.emailed ? "A receipt is on its way to your email." : "Enjoy your jars!" })])]);
+        root.appendChild(t); setTimeout(function () { t.remove(); }, 5000); loadProducts();
+      }).catch(function (er) { done.disabled = false; msg.className = "msg err"; msg.textContent = er.message; });
+    } });
+    var rows = [h("div", { style: "display:flex;justify-content:space-between" }, [h("span", { text: "Subtotal" }), h("span", { text: money(sub) })])];
+    if (tax > 0) rows.push(h("div", { style: "display:flex;justify-content:space-between" }, [h("span", { text: "Sales tax (" + rate + "%)" }), h("span", { text: money(tax) })]));
+    cbg = overlay([h("h2", { style: "text-align:center", text: "Pay with cash" }),
+      h("div", { style: "font-size:1.05rem;margin:8px 0" }, rows),
+      h("div", { style: "display:flex;justify-content:space-between;font:700 1.6rem 'Playfair Display',serif;color:var(--forest);padding:8px 0 14px;border-top:1px solid var(--linen)" }, [h("span", { text: "Total" }), h("span", { text: money(sub + tax) })]),
+      h("p", { style: "margin:0 0 6px;font-weight:600", text: "Please hand your cash to our team." }),
+      h("label", null, ["Email for a receipt (optional)", email]),
+      h("p", { "class": "muted", text: "Team member: enter the staff PIN once the cash is received." }),
+      pin, msg, h("p"), done, h("p"),
+      h("button", { "class": "big alt", style: "width:100%", text: "Go back", onclick: function () { cbg.remove(); } })]);
   }
   function showPay(r, amount) {
     var pbg, timer, done = false;

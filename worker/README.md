@@ -32,3 +32,5 @@ Stripe returns to the public page `/admin/thanks`. The existing webhook lowers s
 
 QR pay-on-phone: the sales screen shows a QR code for `/pay/<session id>` (public short link that redirects to the Stripe payment page while the session is open).
 Sessions are card-only (Apple Pay / Google Pay included) so Stripe Link's "save my info" prompt does not appear. `pos-cancel` expires an unpaid session.
+
+Cash sales: `pos-cash` records the sale in KV `cashsales`, lowers stock, and emails a receipt through the Apps Script action `cash_receipt` if an email is given. Cash tax rate is set when starting the sale screen (default 0). Shown in Orders as "In person - Cash".
