@@ -19,6 +19,13 @@ function doPost(e) {
       });
       return out_({ ok: true });
     }
+    // Paid class booking (called by the Cloudflare Worker after Stripe confirms payment, never by browsers).
+    // Emails the customer and the shop, and adds the customer as a guest on one Google Calendar event per class date.
+    if (data.action === "booking_notice") {
+      const want2 = PropertiesService.getScriptProperties().getProperty("MAIL_SECRET");
+      if (!want2 || data.secret !== want2) return out_({ ok: false });
+      return out_(bookingNotice_(data.booking || {}, data.cls || {}));
+    }
     const fields = data.fields || {};
     if (fields.website) return out_({ ok: true }); // honeypot: bots fill this hidden field
 
@@ -276,4 +283,65 @@ function sendNewsletter() {
     });
   });
   Logger.log("Sent to " + rows.length + " subscribers.");
+}
+
+
+// ---- Class bookings ----------------------------------------------------------------------------
+function esc_(v) { return String(v == null ? "" : v).replace(/[&<>"]/g, function (c) { return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]; }); }
+function clean_(v, n) { return String(v == null ? "" : v).replace(/[\r\n]+/g, " ").slice(0, n || 200); }
+
+function classStart_(cls) {
+  const d = String(cls.date).split("-"), t = String(cls.time).split(":");
+  return new Date(+d[0], +d[1] - 1, +d[2], +t[0], +t[1], 0); // script time zone (set it to America/Chicago)
+}
+
+function bookingNotice_(b, cls) {
+  const cache = CacheService.getScriptCache();
+  const dedupe = "bk:" + clean_(b.sid, 120);
+  if (cache.get(dedupe)) return { ok: true, duplicate: true };
+  cache.put(dedupe, "1", 21600);
+  const email = /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(b.email || "") ? b.email : "";
+  const name = clean_(b.name, 80), title = clean_(cls.title, 120);
+  const start = classStart_(cls), end = new Date(start.getTime() + (+cls.minutes || 120) * 60000);
+  const when = Utilities.formatDate(start, "America/Chicago", "EEEE, MMMM d, yyyy 'at' h:mm a") + " (Central)";
+  const seats = +b.seats || 1, paid = "$" + ((+b.cents || 0) / 100).toFixed(2);
+  const place = clean_(cls.location, 200), notes = clean_(cls.notes, 500);
+  let calendarOk = false;
+  try {
+    const cal = CalendarApp.getDefaultCalendar();
+    const tag = "[qe:" + clean_(cls.id, 60) + "]";
+    let ev = cal.getEvents(new Date(start.getTime() - 3600000), new Date(end.getTime() + 3600000)).filter(function (e) { return e.getDescription().indexOf(tag) >= 0; })[0];
+    if (!ev) ev = cal.createEvent(title, start, end, { location: place, description: tag + "\n" + (notes ? notes + "\n" : "") + "Booked through queenesheirr.com" });
+    if (email) ev.addGuest(email);
+    ev.setDescription(ev.getDescription() + "\n" + (name || email) + " - " + seats + (seats === 1 ? " seat" : " seats") + " - " + paid);
+    calendarOk = true;
+  } catch (err) { console.log("calendar failed: " + err); }
+  const sheetNote = (cls.booked || cls.booked === 0) ? cls.booked + " of " + cls.seats + " seats booked" : "";
+  try {
+    MailApp.sendEmail({
+      to: TO, name: "Queen E's Heirr site", subject: "New class booking: " + title + " (" + seats + (seats === 1 ? " seat" : " seats") + ")",
+      body: [name, email, clean_(b.phone, 40), seats + " seat(s), paid " + paid, title + " - " + when, sheetNote, calendarOk ? "Added to the Google Calendar." : "Could not add to Google Calendar (check authorization)."].filter(Boolean).join("\n"),
+      replyTo: email || TO,
+    });
+  } catch (err) { console.log("owner mail failed: " + err); }
+  if (email) {
+    const lines = ["Your seat" + (seats === 1 ? " is" : "s are") + " reserved.", "", title, when, place ? "Where: " + place : "", "Seats: " + seats + "   Paid: " + paid, notes ? "\n" + notes : "",
+      "", "A calendar invite is on its way. Questions? Reply to this email or write " + TO + ".", "", "Queen E's Heirr", "https://queenesheirr.com"].filter(function (x) { return x !== null; });
+    const html = '<div style="font-family:Georgia,serif;max-width:480px;margin:auto;border:1px solid #e5dbd1;border-radius:16px;overflow:hidden">' +
+      '<div style="background:#1b3b22;padding:18px;text-align:center"><div style="color:#d4af37;font-size:20px;letter-spacing:.08em">QUEEN E\'S HEIRR</div></div>' +
+      '<div style="padding:22px;color:#0e2012;line-height:1.55"><p style="margin:0 0 10px">' + (name ? "Hi " + esc_(name) + "," : "Hello,") + '</p>' +
+      '<p style="margin:0 0 14px">Your seat' + (seats === 1 ? " is" : "s are") + ' reserved. Thank you!</p>' +
+      '<div style="background:#fcfaf7;border:1px solid #e5dbd1;border-radius:12px;padding:14px"><strong>' + esc_(title) + '</strong><br>' + esc_(when) + (place ? '<br>' + esc_(place) : '') +
+      '<br>Seats: ' + seats + ' &middot; Paid: ' + esc_(paid) + '</div>' + (notes ? '<p style="margin:14px 0 0">' + esc_(notes) + '</p>' : '') +
+      '<p style="margin:14px 0 0;color:#5f6f63;font-size:14px">A calendar invite is on its way. Questions? Reply to this email or write ' + esc_(TO) + '.</p></div></div>';
+    try {
+      MailApp.sendEmail({ to: email, replyTo: TO, name: "Queen E's Heirr", subject: "You're booked: " + title, body: lines.join("\n"), htmlBody: html });
+    } catch (err) { console.log("customer mail failed: " + err); }
+  }
+  return { ok: true, calendar: calendarOk };
+}
+
+// Run this ONCE from the Apps Script editor (select it in the toolbar, click Run) to grant Calendar access.
+function authorizeCalendar_() {
+  CalendarApp.getDefaultCalendar().getName();
 }

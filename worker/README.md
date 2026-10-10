@@ -16,3 +16,11 @@ Served by the Worker at `/admin`. Emailed 6-digit sign-in code (sent through the
 Needs: KV namespace bound as `ADMIN_KV`; secrets `SESSION_SECRET`, `MAIL_SECRET` (same value as the Apps Script property `MAIL_SECRET`); variables `ADMIN_EMAILS` (comma list) and `MAIL_URL` (Apps Script web app URL).
 After editing `admin-ui.html`, run `node worker/build-ui.mjs`, then rebuild the bundle with esbuild.
 Public `GET /events` lists upcoming pickup events for the cart.
+
+
+## Class booking (Classes tab, Bookings tab)
+- Dates live in KV key `classes`; paid bookings in `bookings`. Public: `GET /classes`, `POST /class-checkout`. Webhook branch: sessions with `metadata.kind=class`.
+- Optional Worker variable `CLASS_TAX_ENABLED=true` turns on Stripe automatic tax for class checkouts only (confirm with an accountant first).
+- Apps Script action `booking_notice` (guarded by MAIL_SECRET) emails the customer and the shop and adds the customer as a guest on a Google Calendar event.
+  After pasting the new Code.gs: Run `authorizeCalendar_` once, then Deploy > Manage deployments > edit > New version.
+- `js/config.js` `BOOKING_URL`: paste the Google Calendar appointment page link (https://calendar.google.com/...) to show it on the Classes page (loads only after cookie consent).

@@ -10,6 +10,7 @@
 import { CATALOG } from "./catalog.js";
 import { SEED } from "./seed-data.js";
 import { handleAdmin, readEvents, upcoming, serveImage } from "./admin.js";
+import { publicClasses, classCheckout, recordBooking } from "./classes.js";
 
 const API = "https://api.stripe.com/v1";
 const MAX_LINES = 40;
@@ -317,6 +318,10 @@ async function handleStripeWebhook(request, env) {
   }
   const session = evt.data && evt.data.object;
   if (!session || session.payment_status !== "paid") return new Response("not paid", { status: 200 });
+  if (session.metadata && session.metadata.kind === "class") {
+    try { await recordBooking(env, session); } catch (e) { console.log("booking error", String(e)); return new Response("error", { status: 500 }); }
+    return new Response("ok", { status: 200 });
+  }
   try {
     const li = await stripeGet(env, `/checkout/sessions/${session.id}/line_items?limit=100`);
     for (const line of li.data) {
@@ -375,6 +380,13 @@ export default {
     if (im && request.method === "GET") return serveImage(env, im[1]);
     if (url.pathname === "/events" && request.method === "GET") {
       return json(upcoming(await readEvents(env)), 200, { ...c.headers, "Cache-Control": "public, max-age=60" });
+    }
+    if (url.pathname === "/classes" && request.method === "GET") {
+      return json(await publicClasses(env), 200, { ...c.headers, "Cache-Control": "public, max-age=30" });
+    }
+    if (url.pathname === "/class-checkout" && request.method === "POST") {
+      if (!c.ok) return json({ error: "Origin not allowed" }, 403, c.headers);
+      return classCheckout(request, env, c, { json, stripePost });
     }
     if (url.pathname === "/products" && request.method === "GET") return handleProducts(request, env, c, ctx);
     if (url.pathname === "/checkout" && request.method === "POST") {

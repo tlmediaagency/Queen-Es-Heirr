@@ -98,7 +98,7 @@ function renderLogin(step) {
   (step ? code : email).focus();
 }
 
-var tabs = [["orders", "Orders"], ["products", "Products"], ["events", "Events"]];
+var tabs = [["orders", "Orders"], ["products", "Products"], ["classes", "Classes"], ["bookings", "Bookings"], ["events", "Events"]];
 var current = "orders";
 function start() {
   var body = h("div");
@@ -106,7 +106,7 @@ function start() {
     return h("button", { "class": "tab", role: "tab", "aria-selected": String(t[0] === current), onclick: function () { current = t[0]; start(); }, text: t[1] });
   }));
   shell([nav, body]);
-  ({ orders: viewOrders, products: viewProducts, events: viewEvents })[current](body);
+  ({ orders: viewOrders, products: viewProducts, classes: viewClasses, bookings: viewBookings, events: viewEvents })[current](body);
 }
 function loading(n) { clear(n); n.appendChild(h("p", { "class": "muted", text: "Loading..." })); }
 function failed(n, er) { clear(n); n.appendChild(h("p", { "class": "msg err", text: er.message })); }
@@ -252,6 +252,82 @@ function addProductCard(reload) {
 }
 
 /* EVENTS */
+
+/* CLASSES: dates people can book and pay for online */
+var CLASS_TYPES = [["jam", "Jam making & STEM lab", "55.00"], ["combined", "Jam making & etiquette", "85.00"], ["other", "Other class", "55.00"]];
+function fmtDay(d) { if (!d) return ""; var p = d.split("-"); return new Date(+p[0], +p[1] - 1, +p[2]).toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric", year: "numeric" }); }
+function fmtTime(t) { if (!t) return ""; var p = t.split(":"), x = +p[0]; return (x % 12 || 12) + ":" + p[1] + (x >= 12 ? " PM" : " AM"); }
+function viewClasses(n) {
+  loading(n);
+  api("GET", "classes").then(function (d) {
+    clear(n);
+    var classes = d.classes;
+    var list = h("div"), msg = h("p", { "class": "msg", role: "status" });
+    function draw() {
+      clear(list);
+      classes.sort(function (a, b) { return ((a.date || "9999") + (a.time || "")).localeCompare((b.date || "9999") + (b.time || "")); });
+      classes.forEach(function (c, i) {
+        var f = function (k, type, label, extra) { var inp = h("input", Object.assign({ type: type, value: c[k] == null ? "" : c[k] }, extra || {})); inp.addEventListener("input", function () { c[k] = inp.value; }); return h("label", null, [label, inp]); };
+        var typeSel = h("select", null, CLASS_TYPES.map(function (t) { return h("option", { value: t[0], text: t[1], selected: t[0] === c.type }); }));
+        typeSel.addEventListener("change", function () { var was = c.type; c.type = typeSel.value; var t = CLASS_TYPES.filter(function (x) { return x[0] === c.type; })[0]; if (!c.price || CLASS_TYPES.some(function (x) { return x[0] === was && x[2] === c.price; })) { c.price = t[2]; draw(); } });
+        var show = h("input", { type: "checkbox", checked: c.show !== false }); show.addEventListener("change", function () { c.show = show.checked; });
+        var status = c.id && typeof c.booked === "number" ? c.booked + " of " + c.seats + " seats booked" : "New class";
+        list.appendChild(h("div", { "class": "card" }, [
+          h("div", { "class": "row" }, [f("title", "text", "Class name (shown on the site)"), h("label", null, ["Type", typeSel])]),
+          h("div", { "class": "row", style: "margin-top:10px" }, [f("date", "date", "Date"), f("time", "time", "Start time"), f("minutes", "number", "Length (minutes)", { min: 15, max: 720 }), f("seats", "number", "Seats", { min: 1, max: 200 }), f("price", "number", "Price per person ($)", { min: 1, step: "0.01" })]),
+          h("div", { "class": "row", style: "margin-top:10px" }, [f("location", "text", "Place"), f("notes", "text", "Note for customers (optional)")]),
+          h("div", { style: "display:flex;justify-content:space-between;align-items:center;margin-top:10px;gap:8px;flex-wrap:wrap" }, [
+            h("span", { "class": "pill", text: status }), h("label", { "class": "chk" }, [show, "Show on site"]),
+            h("button", { "class": "btn small danger", text: "Delete", onclick: function () { if (c.booked > 0 && !window.confirm("This class already has bookings. Deleting it hides it from the site; the bookings stay in the Bookings tab. Delete anyway?")) return; classes.splice(i, 1); draw(); } })])]));
+      });
+      if (!classes.length) list.appendChild(h("p", { "class": "muted", text: "No class dates yet. Click Add class date." }));
+    }
+    n.appendChild(h("p", { "class": "muted", text: "Each date appears on the Classes page with a Book & pay button until the date passes or the seats run out. After someone pays, they get a receipt and a calendar invite." }));
+    n.appendChild(list);
+    n.appendChild(h("div", { "class": "row" }, [
+      h("button", { "class": "btn", text: "+ Add class date", onclick: function () { var t = CLASS_TYPES[0]; classes.push({ title: t[1], type: t[0], date: "", time: "14:00", minutes: 120, seats: 10, price: t[2], location: "", notes: "", show: true }); draw(); } }),
+      h("button", { "class": "btn primary", text: "Save classes", onclick: function () {
+        msg.className = "msg"; msg.textContent = "Saving...";
+        api("PUT", "classes", { classes: classes }).then(function (r) { classes = r.classes; draw(); msg.className = "msg ok"; msg.textContent = "Saved. The Classes page is updated."; }).catch(function (er) { msg.className = "msg err"; msg.textContent = er.message; });
+      } })]));
+    n.appendChild(msg);
+    draw();
+  }).catch(function (er) { failed(n, er); });
+}
+
+/* BOOKINGS: who paid for a seat */
+function viewBookings(n) {
+  loading(n);
+  api("GET", "bookings").then(function (d) {
+    clear(n);
+    var all = d.bookings, filter = "";
+    var pick = h("select", { "aria-label": "Filter by class" });
+    var seen = {};
+    pick.appendChild(h("option", { value: "", text: "All classes" }));
+    all.forEach(function (b) { if (b.cls && !seen[b.classId]) { seen[b.classId] = 1; pick.appendChild(h("option", { value: b.classId, text: b.cls.title + " - " + fmtDay(b.cls.date) })); } });
+    var list = h("div");
+    function draw() {
+      clear(list);
+      var rows = all.filter(function (b) { return !filter || b.classId === filter; });
+      var seats = rows.reduce(function (t, b) { return t + (b.seats || 0); }, 0);
+      list.appendChild(h("p", { "class": "muted", text: rows.length + " booking" + (rows.length === 1 ? "" : "s") + ", " + seats + " seat" + (seats === 1 ? "" : "s") }));
+      rows.forEach(function (b) {
+        list.appendChild(h("div", { "class": "card" }, [
+          h("div", { style: "display:flex;justify-content:space-between;gap:8px;flex-wrap:wrap" }, [h("strong", { text: b.name || "(no name)" }), h("span", { "class": "pill", text: b.seats + (b.seats === 1 ? " seat" : " seats") + " \u00b7 $" + (b.cents / 100).toFixed(2) })]),
+          h("div", { "class": "muted", text: b.cls ? b.cls.title + " \u00b7 " + fmtDay(b.cls.date) + " " + fmtTime(b.cls.time) : "Class removed" }),
+          h("div", null, [b.email ? h("a", { href: "mailto:" + b.email, text: b.email }) : "", b.phone ? h("span", { text: "  \u00b7  " }) : "", b.phone ? h("a", { href: "tel:" + b.phone, text: b.phone }) : ""]),
+          h("div", { "class": "muted", text: "Booked " + new Date(b.ts).toLocaleString() })]));
+      });
+      if (!rows.length) list.appendChild(h("p", { "class": "muted", text: "No bookings yet." }));
+    }
+    pick.addEventListener("change", function () { filter = pick.value; draw(); });
+    n.appendChild(h("label", null, ["Show", pick]));
+    n.appendChild(list);
+    n.appendChild(h("p", { "class": "muted", text: "Refunds are done in your Stripe dashboard (Payments)." }));
+    draw();
+  }).catch(function (er) { failed(n, er); });
+}
+
 function viewEvents(n) {
   loading(n);
   api("GET", "events").then(function (d) {

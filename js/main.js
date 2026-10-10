@@ -256,6 +256,75 @@
   }
   renderShop();
 
+
+  // Class dates: paid seat booking (Stripe Checkout through the Worker) + optional Google booking calendar.
+  var classList = document.querySelector("[data-class-list]");
+  function workerUrl(path) { return String(CFG.CHECKOUT_URL || "").replace(/\/checkout$/, path); }
+  function prettyDate(d) {
+    var p = d.split("-"); return new Date(+p[0], +p[1] - 1, +p[2]).toLocaleDateString("en-US", { weekday: "long", month: "long", day: "numeric" });
+  }
+  function prettyTime(t) {
+    var p = t.split(":"), h = +p[0], ap = h >= 12 ? "PM" : "AM"; h = h % 12 || 12; return h + ":" + p[1] + " " + ap;
+  }
+  if (classList && CFG.CHECKOUT_URL) {
+    var cmsg = document.querySelector("[data-class-msg]");
+    fetch(workerUrl("/classes")).then(function (r) { return r.json(); }).then(function (list) {
+      classList.textContent = "";
+      if (!Array.isArray(list) || !list.length) {
+        classList.appendChild(el("p", { "class": "muted" }, "No public class dates are posted right now. Send a request below for a private or group class, or join the mailing list to hear first."));
+        return;
+      }
+      list.forEach(function (c) {
+        var card = el("article", { "class": "card pad class-card" });
+        card.appendChild(el("p", { "class": "kicker" }, prettyDate(c.date) + " \u00b7 " + prettyTime(c.time)));
+        card.appendChild(el("h3", null, c.title));
+        var meta = money(c.cents) + " per person" + (c.location ? " \u00b7 " + c.location : "");
+        card.appendChild(el("p", { "class": "muted" }, meta));
+        if (c.notes) card.appendChild(el("p", null, c.notes));
+        var row = el("div", { "class": "class-book" });
+        if (c.left <= 0) {
+          row.appendChild(el("span", { "class": "pill-full" }, "Class is full"));
+        } else {
+          var sel = el("select", { "aria-label": "Number of seats for " + c.title });
+          for (var n = 1; n <= Math.min(c.left, 10); n++) sel.appendChild(el("option", { value: String(n) }, n + (n === 1 ? " seat" : " seats")));
+          var btn = el("button", { type: "button", "class": "btn" }, "Book & pay");
+          btn.addEventListener("click", function () {
+            btn.disabled = true; if (cmsg) cmsg.textContent = "Taking you to secure checkout...";
+            fetch(workerUrl("/class-checkout"), { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ classId: c.id, seats: +sel.value }) })
+              .then(function (r) { return r.json().then(function (d) { return { ok: r.ok, d: d }; }); })
+              .then(function (x) { if (x.ok && x.d.url) { window.location.href = x.d.url; } else { throw new Error(x.d.error || "Could not start checkout"); } })
+              .catch(function (e) { btn.disabled = false; if (cmsg) cmsg.textContent = e.message + ". Please try again or use the request form below."; });
+          });
+          row.appendChild(sel); row.appendChild(btn);
+          if (c.left <= 5) card.appendChild(el("p", { "class": "cart-note" }, "Only " + c.left + " seat" + (c.left === 1 ? "" : "s") + " left"));
+        }
+        card.appendChild(row); classList.appendChild(card);
+      });
+    }).catch(function () {
+      classList.textContent = "";
+      classList.appendChild(el("p", { "class": "muted" }, "Class dates could not be loaded. Please use the request form below."));
+    });
+  }
+  var bookBox = document.querySelector("[data-booking-embed]");
+  if (bookBox && CFG.BOOKING_URL && /^https:\/\/calendar\.google\.com\//.test(CFG.BOOKING_URL)) {
+    bookBox.hidden = false;
+    var holder = bookBox.querySelector("[data-booking-frame]");
+    var drawEmbed = function () {
+      holder.textContent = "";
+      if (window.QE_hasConsent()) {
+        var f = el("iframe", { src: CFG.BOOKING_URL, title: "Book a private class time", loading: "lazy", "class": "booking-frame" });
+        holder.appendChild(f);
+      } else {
+        holder.appendChild(el("p", { "class": "muted" }, "The booking calendar is provided by Google, which may set its own cookies. Choose Accept to load it."));
+        var go = el("button", { type: "button", "class": "btn" }, "Accept and show calendar");
+        go.addEventListener("click", function () { setConsent("all"); });
+        holder.appendChild(go);
+      }
+    };
+    document.addEventListener("qe-consent", drawEmbed);
+    drawEmbed();
+  }
+
   // Live catalog from Stripe (via the Worker). Falls back to js/products.js if unavailable.
   if (CFG.PRODUCTS_URL) {
     fetch(CFG.PRODUCTS_URL).then(function (r) {
@@ -338,7 +407,14 @@
   }
 
   // Order confirmation page clears the bag
-  if (document.querySelector("[data-clear-cart]")) { saveCart([]); }
+  var clr = document.querySelector("[data-clear-cart]");
+  if (clr && /[?&]class=1/.test(location.search)) {
+    clr.removeAttribute("data-clear-cart"); clr = null;   // a class booking must not empty a shopping bag
+    var h1 = document.querySelector("main h1"), lede = document.querySelector("main .lede");
+    if (h1) h1.textContent = "You're booked.";
+    if (lede) lede.textContent = "Stripe emailed you a receipt, and we'll email your class details and a calendar invite shortly.";
+  }
+  if (clr) { saveCart([]); }
 
   // Forms: POST to FORM_ENDPOINT (Google Apps Script) so every request is emailed to the shop.
   // Without an endpoint, open the visitor's email app. Never fake success.

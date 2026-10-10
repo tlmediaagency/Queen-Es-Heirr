@@ -6,7 +6,7 @@
   <title>Jam Making & Etiquette | Queen E's Heirr</title>
   <meta name="description" content="Hands-on jam making and etiquette classes with a STEM lab, for students and groups. Register with Queen E's Heirr.">
   <link rel="canonical" href="https://queenesheirr.com/classes/">
-  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self' data: https://files.stripe.com https://*.workers.dev; connect-src 'self' https://*.workers.dev https://script.google.com https://script.googleusercontent.com; form-action 'self'; base-uri 'self'; object-src 'none'">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; frame-src https://calendar.google.com; img-src 'self' data: https://files.stripe.com https://*.workers.dev; connect-src 'self' https://*.workers.dev https://script.google.com https://script.googleusercontent.com; form-action 'self'; base-uri 'self'; object-src 'none'">
   <meta name="referrer" content="strict-origin-when-cross-origin">
   <meta property="og:type" content="website">
   <meta property="og:site_name" content="Queen E's Heirr">
@@ -64,14 +64,23 @@
 <main>
 
 <section class="section wrap">
-  <div class="center"><p class="kicker">Science and social mastery</p><h1>Jam making & etiquette classes</h1><p class="lede">Learn why jam sets, then sit down to tea. Prices are per person. Register below and we will send you a quote to confirm.</p></div>
+  <div class="center"><p class="kicker">Science and social mastery</p><h1>Jam making & etiquette classes</h1><p class="lede">Learn why jam sets, then sit down to tea. Prices are per person. Book an open date below, or send a request for a private or group class.</p></div>
   <img src="/images/tasting.jpg" alt="A Queen E jam tasting" style="border-radius:24px;margin:1.5rem 0;max-height:420px;width:100%;object-fit:cover">
+  <h2 style="margin-top:1rem">Upcoming class dates</h2>
+  <p class="muted">Reserve your seats and pay securely online. You'll get a receipt and a calendar invite by email.</p>
+  <div class="class-grid" data-class-list><p class="muted">Loading class dates...</p></div>
+  <p class="muted" role="status" aria-live="polite" data-class-msg></p>
   <div class="grid-2">
     <article class="card pad"><h2>Standalone jam making & STEM lab</h2><p class="muted">Fruit acids, pectin, and temperature. Take home two jars. $55.</p></article>
     <article class="card pad"><h2>Jam making & etiquette combined</h2><p class="muted">The lab plus formal tea, table manners, and hosting. $85.</p></article>
   </div>
+  <div class="card pad" data-booking-embed hidden style="margin-top:1.5rem">
+    <h2>Book a private or group time</h2>
+    <p class="muted">Pick an open time on our calendar for a private party, team event, or family class.</p>
+    <div data-booking-frame></div>
+  </div>
   <form class="stack" data-form="Class registration" data-quote style="margin-top:1.5rem">
-    <h2>Register</h2>
+    <h2>Request a private or group class</h2>
     <label class="field">Name<input name="name" required></label>
     <label class="field">Email<input type="email" name="email" required></label>
     <label class="field">Class
@@ -83,7 +92,7 @@
     <label class="field">Number of attendees<input type="number" name="attendees" min="1" max="30" value="1" required></label>
     <label class="field">Preferred date<input type="date" name="date" required></label>
     <label class="field">Notes<textarea name="notes"></textarea></label>
-    <button class="btn" type="submit">Send registration</button>
+    <button class="btn" type="submit">Send request</button>
   </form>
 </section>
 
