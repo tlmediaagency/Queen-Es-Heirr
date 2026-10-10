@@ -209,6 +209,8 @@ async function handleCheckout(request, env, c) {
 const CLASSES = {
   "Standalone Jam Making & STEM Lab": { id: "class-jam-stem-lab", cents: 5500 },
   "Jam Making & Etiquette Combined Class": { id: "class-jam-etiquette", cents: 8500 },
+  // Starting estimate only: the owner edits the draft quote in Stripe before approving it.
+  "Private group or event (custom quote)": { id: "class-private-event", cents: 8500 },
 };
 
 async function stripePost(env, path, params) {
@@ -251,6 +253,8 @@ async function handleClassRequest(request, env, c) {
       "metadata[attendees]": String(attendees),
       "metadata[notes]": notes.slice(0, 480),
       "metadata[source]": "queenesheirr.com class request",
+      "metadata[class]": String(b.class).slice(0, 100),
+      "metadata[phone]": String((b && b.phone) || "").slice(0, 40),
       "line_items[0][price_data][currency]": "usd",
       "line_items[0][price_data][product]": cls.id,
       "line_items[0][price_data][unit_amount]": String(cls.cents),

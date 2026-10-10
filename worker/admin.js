@@ -108,6 +108,8 @@ const slug = (s) => s.toLowerCase().normalize("NFKD").replace(/[̀-ͯ]/g, "").re
 const cents = (d) => { const n = Math.round(parseFloat(d) * 100); return Number.isFinite(n) && n >= 50 && n <= 1000000 ? n : null; };
 const stockVal = (v) => (v === null || v === "" || v === undefined ? null : Number.isInteger(+v) && +v >= 0 && +v <= 100000 ? +v : NaN);
 
+function isOurQuote(q) { return !!(q && q.metadata && String(q.metadata.source || "").startsWith("queenesheirr.com class request")); }
+
 export async function handleAdmin(request, env, url, d) {
   const { stripeGet, stripePost, stockOf } = d;
   const path = url.pathname;
@@ -249,6 +251,26 @@ export async function handleAdmin(request, env, url, d) {
       return j({ ok: true, classes: await adminClasses(env) });
     }
     if (route === "bookings" && request.method === "GET") return j({ bookings: await adminBookings(env) });
+    if (route === "requests" && request.method === "GET") {
+      const res = await stripeGet(env, "/quotes?limit=40&expand[]=data.customer");
+      const test = /^(sk|rk)_test_/.test(env.STRIPE_SECRET_KEY || "");
+      const requests = res.data.filter(isOurQuote).map((q) => ({
+        id: q.id, status: q.status, created: q.created * 1000, total: q.amount_total || 0,
+        name: (q.customer && q.customer.name) || "", email: (q.customer && q.customer.email) || "",
+        cls: (q.metadata && q.metadata.class) || q.description || "", date: (q.metadata && q.metadata.requested_date) || "",
+        attendees: (q.metadata && q.metadata.attendees) || "", notes: (q.metadata && q.metadata.notes) || "", phone: (q.metadata && q.metadata.phone) || "",
+        url: `https://dashboard.stripe.com/${test ? "test/" : ""}quotes/${q.id}`,
+      }));
+      return j({ requests });
+    }
+    if (route === "request-action" && request.method === "POST") {
+      if (!/^qt_[A-Za-z0-9]+$/.test(body.id || "") || !["approve", "decline"].includes(body.action)) return j({ error: "Bad request" }, 400);
+      const q = await stripeGet(env, `/quotes/${body.id}`);
+      if (!isOurQuote(q)) return j({ error: "Not found" }, 404);
+      if (q.status !== "draft") return j({ error: "That request was already handled" }, 409);
+      const done = await stripePost(env, `/quotes/${body.id}/${body.action === "approve" ? "finalize" : "cancel"}`, new URLSearchParams());
+      return j({ ok: true, status: done.status });
+    }
     if (route === "orders" && request.method === "GET") {
       const [res, raw] = await Promise.all([
         stripeGet(env, "/checkout/sessions?limit=60&expand[]=data.line_items"),

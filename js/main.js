@@ -182,11 +182,13 @@
   function showCookieBar() {
     if (document.querySelector(".cookie-bar")) return;
     var bar = el("div", { "class": "cookie-bar", role: "dialog", "aria-label": "Cookie notice" });
-    var t = el("p", null, "We use only the storage needed to keep your bag and settings. Optional content from other sites (like our booking calendar) is loaded only if you accept. ");
+    var t = el("p");
+    t.appendChild(el("strong", null, "Jam goes great with cookies. \uD83C\uDF6A "));
+    t.appendChild(document.createTextNode("Ours are the necessary, perfectly safe kind that keep your bag and settings in place. Anything extra, like our booking calendar, stays off the table unless you say yes. "));
     var a = el("a", { href: "/privacy-policy/" }, "Privacy policy"); t.appendChild(a);
     var row = el("div", { "class": "cookie-actions" });
-    var no = el("button", { type: "button", "class": "btn btn-ghost" }, "Essential only");
-    var yes = el("button", { type: "button", "class": "btn" }, "Accept all");
+    var no = el("button", { type: "button", "class": "btn btn-ghost" }, "Just the basics");
+    var yes = el("button", { type: "button", "class": "btn" }, "Sweet, accept all");
     no.addEventListener("click", function () { setConsent("essential"); });
     yes.addEventListener("click", function () { setConsent("all"); });
     row.appendChild(no); row.appendChild(yes); bar.appendChild(t); bar.appendChild(row);

@@ -98,7 +98,7 @@ function renderLogin(step) {
   (step ? code : email).focus();
 }
 
-var tabs = [["orders", "Orders"], ["products", "Products"], ["classes", "Classes"], ["bookings", "Bookings"], ["events", "Events"]];
+var tabs = [["orders", "Orders"], ["products", "Products"], ["requests", "Requests"], ["classes", "Classes"], ["bookings", "Bookings"], ["events", "Events"]];
 var current = "orders";
 function start() {
   var body = h("div");
@@ -106,7 +106,7 @@ function start() {
     return h("button", { "class": "tab", role: "tab", "aria-selected": String(t[0] === current), onclick: function () { current = t[0]; start(); }, text: t[1] });
   }));
   shell([nav, body]);
-  ({ orders: viewOrders, products: viewProducts, classes: viewClasses, bookings: viewBookings, events: viewEvents })[current](body);
+  ({ orders: viewOrders, products: viewProducts, requests: viewRequests, classes: viewClasses, bookings: viewBookings, events: viewEvents })[current](body);
 }
 function loading(n) { clear(n); n.appendChild(h("p", { "class": "muted", text: "Loading..." })); }
 function failed(n, er) { clear(n); n.appendChild(h("p", { "class": "msg err", text: er.message })); }
@@ -324,6 +324,54 @@ function viewBookings(n) {
     n.appendChild(h("label", null, ["Show", pick]));
     n.appendChild(list);
     n.appendChild(h("p", { "class": "muted", text: "Refunds are done in your Stripe dashboard (Payments)." }));
+    draw();
+  }).catch(function (er) { failed(n, er); });
+}
+
+
+/* REQUESTS: private group / event quote requests from the website (draft quotes in Stripe) */
+function viewRequests(n) {
+  loading(n);
+  api("GET", "requests").then(function (d) {
+    clear(n);
+    var all = d.requests, filter = "pending";
+    var FILTERS = [["pending", "Pending"], ["approved", "Approved"], ["done", "Done"]];
+    var group = function (s) { return s === "draft" ? "pending" : s === "open" ? "approved" : "done"; };
+    var label = { draft: "Pending your approval", open: "Approved - send it from Stripe", accepted: "Accepted by customer", canceled: "Declined", stale: "Expired" };
+    var tabsEl = h("div", { style: "display:flex;gap:8px;margin:8px 0;flex-wrap:wrap" });
+    var list = h("div"), msg = h("p", { "class": "msg", role: "status" });
+    function draw() {
+      clear(tabsEl); clear(list);
+      FILTERS.forEach(function (f) {
+        var count = all.filter(function (r) { return group(r.status) === f[0]; }).length;
+        tabsEl.appendChild(h("button", { "class": "tab", "aria-selected": String(f[0] === filter), text: f[1] + " (" + count + ")", onclick: function () { filter = f[0]; draw(); } }));
+      });
+      var rows = all.filter(function (r) { return group(r.status) === filter; });
+      rows.forEach(function (r) {
+        var actions = [h("a", { "class": "btn small", href: r.url, target: "_blank", rel: "noopener noreferrer", text: "Open quote in Stripe" })];
+        if (r.status === "draft") {
+          actions.push(h("button", { "class": "btn small primary", text: "Approve", onclick: function () { act(r, "approve"); } }));
+          actions.push(h("button", { "class": "btn small danger", text: "Decline", onclick: function () { if (window.confirm("Decline this request? The quote is cancelled in Stripe.")) act(r, "decline"); } }));
+        }
+        list.appendChild(h("div", { "class": "card" }, [
+          h("div", { style: "display:flex;justify-content:space-between;gap:8px;flex-wrap:wrap" }, [h("strong", { text: r.name || r.email || "(no name)" }), h("span", { "class": "pill", text: label[r.status] || r.status })]),
+          h("div", { text: r.cls + (r.attendees ? " \u00b7 " + r.attendees + " people" : "") }),
+          h("div", { "class": "muted", text: (r.date ? "Wanted: " + fmtDay(r.date) + "  \u00b7  " : "") + "Estimate $" + (r.total / 100).toFixed(2) + "  \u00b7  Sent " + new Date(r.created).toLocaleDateString() }),
+          h("div", null, [r.email ? h("a", { href: "mailto:" + r.email, text: r.email }) : "", r.phone ? h("span", { text: "  \u00b7  " }) : "", r.phone ? h("a", { href: "tel:" + r.phone, text: r.phone }) : ""]),
+          r.notes ? h("p", { style: "margin:8px 0", text: "Notes: " + r.notes }) : null,
+          h("div", { style: "display:flex;gap:8px;flex-wrap:wrap;margin-top:10px" }, actions)]));
+      });
+      if (!rows.length) list.appendChild(h("p", { "class": "muted", text: filter === "pending" ? "Nothing waiting. New requests from the Classes page appear here." : "Nothing here yet." }));
+    }
+    function act(r, action) {
+      msg.className = "msg"; msg.textContent = "Working...";
+      api("POST", "request-action", { id: r.id, action: action }).then(function (x) {
+        r.status = x.status; draw(); msg.className = "msg ok";
+        msg.textContent = action === "approve" ? "Approved. Open the quote in Stripe to adjust it and send it to the customer." : "Declined.";
+      }).catch(function (er) { msg.className = "msg err"; msg.textContent = er.message; });
+    }
+    n.appendChild(h("p", { "class": "muted", text: "Private group and event requests become draft quotes in Stripe. The starting price is only an estimate: open the quote in Stripe to change the price, then Approve here and send it from Stripe." }));
+    n.appendChild(tabsEl); n.appendChild(list); n.appendChild(msg);
     draw();
   }).catch(function (er) { failed(n, er); });
 }
