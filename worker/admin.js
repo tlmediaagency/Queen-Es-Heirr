@@ -111,13 +111,21 @@ const stockVal = (v) => (v === null || v === "" || v === undefined ? null : Numb
 function isOurQuote(q) { return !!(q && q.metadata && String(q.metadata.source || "").startsWith("queenesheirr.com class request")); }
 
 export async function handleAdmin(request, env, url, d) {
-  const { stripeGet, stripePost, stockOf } = d;
+  const { stripeGet, stripePost, stockOf, loadCatalog, posCheckout } = d;
   const path = url.pathname;
   if (path === "/admin" || path === "/admin/") {
     return new Response(UI, { headers: {
       "Content-Type": "text/html; charset=utf-8", "Cache-Control": "no-store", "X-Frame-Options": "DENY", "Referrer-Policy": "no-referrer",
       "Content-Security-Policy": "default-src 'none'; manifest-src 'self'; script-src 'unsafe-inline'; style-src 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self' data: https:; connect-src 'self'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'",
     } });
+  }
+  if (path === "/admin/thanks") {
+    const cancelled = url.searchParams.get("cancelled") === "1";
+    const page = `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="robots" content="noindex"><title>${cancelled ? "Payment cancelled" : "Thank you"}</title>
+<style>body{margin:0;min-height:100vh;display:grid;place-items:center;background:#fcfaf7;color:#0e2012;font:400 18px/1.5 Georgia,serif;text-align:center;padding:24px}main{max-width:460px}img{width:96px;height:96px;border-radius:50%}h1{color:#1b3b22;font-size:2.2rem;margin:.6em 0 .2em}p{color:#5c6b5a}a{display:inline-block;margin-top:18px;padding:14px 26px;border-radius:99px;background:#1b3b22;color:#f7f1d8;text-decoration:none;font:600 14px/1 sans-serif;letter-spacing:.1em;text-transform:uppercase}</style></head>
+<body><main><img src="/admin/icon-192.png" alt=""><h1>${cancelled ? "No payment was taken" : "Thank you!"}</h1><p>${cancelled ? "Nothing was charged. You can close this window and try again." : "Your payment went through and a receipt is on its way to your email. Enjoy your jars!"}</p><p>If this is a window on top of the sales screen, tap <b>Done</b> to go back.</p><a href="/admin">Back to the sale</a></main></body></html>`;
+    return new Response(page, { headers: { "Content-Type": "text/html; charset=utf-8", "Cache-Control": "no-store", "X-Frame-Options": "DENY", "Referrer-Policy": "no-referrer",
+      "Content-Security-Policy": "default-src 'none'; style-src 'unsafe-inline'; img-src 'self'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'" } });
   }
   if (path === "/admin/manifest.webmanifest") {
     return new Response(JSON.stringify({
@@ -271,6 +279,17 @@ export async function handleAdmin(request, env, url, d) {
       const done = await stripePost(env, `/quotes/${body.id}/${body.action === "approve" ? "finalize" : "cancel"}`, new URLSearchParams());
       return j({ ok: true, status: done.status });
     }
+    if (route === "pos-products" && request.method === "GET") return j({ products: await loadCatalog(env) });
+    if (route === "pos-checkout" && request.method === "POST") {
+      try { return j(await posCheckout(env, url.origin, body.items)); } catch (e) { return j({ error: String(e.message || "Could not start the payment").slice(0, 160) }, 400); }
+    }
+    if (route === "pos-session" && request.method === "GET") {
+      const sid = url.searchParams.get("id") || "";
+      if (!/^cs_[A-Za-z0-9_]+$/.test(sid)) return j({ error: "Bad request" }, 400);
+      const s = await stripeGet(env, `/checkout/sessions/${sid}`);
+      if (!s.metadata || s.metadata.fulfillment !== "inperson") return j({ error: "Not found" }, 404);
+      return j({ paid: s.payment_status === "paid", status: s.status });
+    }
     if (route === "orders" && request.method === "GET") {
       const [res, raw] = await Promise.all([
         stripeGet(env, "/checkout/sessions?limit=60&expand[]=data.line_items"),
@@ -280,7 +299,7 @@ export async function handleAdmin(request, env, url, d) {
       const orders = res.data.filter((s) => s.payment_status === "paid" && !(s.metadata && s.metadata.kind === "class")).map((s) => {
         const ship = s.shipping_details || (s.collected_information && s.collected_information.shipping_details) || null;
         return {
-          id: s.id, created: s.created * 1000, total: s.amount_total, status: st[s.id] || "new",
+          id: s.id, created: s.created * 1000, total: s.amount_total, status: st[s.id] || ((s.metadata && s.metadata.fulfillment) === "inperson" ? "fulfilled" : "new"),
           name: (s.customer_details && s.customer_details.name) || "", email: (s.customer_details && s.customer_details.email) || "",
           phone: (s.customer_details && s.customer_details.phone) || "",
           fulfillment: (s.metadata && s.metadata.fulfillment) || "ship", event: (s.metadata && s.metadata.event) || "",

@@ -27,6 +27,34 @@ input,select,textarea{font:400 .95rem Inter;border:1px solid var(--linen);backgr
 .chk{display:flex;gap:8px;align-items:center;font:400 .9rem Inter;text-transform:none;letter-spacing:0}.chk input{width:auto}
 .sizes .row{padding:10px 0;border-top:1px solid var(--linen)}
 .hide{display:none}
+/* EVENT SALE (customer-facing) */
+.sale{position:fixed;inset:0;background:var(--cream);display:flex;flex-direction:column;z-index:20;-webkit-user-select:none;user-select:none;-webkit-touch-callout:none}
+.sale header{display:flex;align-items:center;justify-content:space-between;gap:14px;padding:12px 20px;background:var(--ink)}
+.sale header img{width:52px;height:52px;border-radius:50%;flex:none}
+.sale .brand{display:flex;align-items:center;gap:14px;color:var(--gold)}.sale .brand b{font-family:'Playfair Display',serif;font-size:1.5rem;display:block;line-height:1.1}.sale .brand span{color:var(--cream-deep);font-size:.8rem;letter-spacing:.14em;text-transform:uppercase}
+.sale .staff{background:none;border:0;color:rgba(255,255,255,.35);font:600 .7rem Inter;letter-spacing:.1em;text-transform:uppercase;padding:14px}
+.sale .scroll{flex:1;overflow-y:auto;-webkit-overflow-scrolling:touch;padding:20px 20px 120px}
+.sale .grid{display:grid;gap:16px;grid-template-columns:repeat(auto-fill,minmax(210px,1fr));max-width:1400px;margin:0 auto}
+.sale .tile{background:#fff;border:1.5px solid var(--linen);border-radius:22px;overflow:hidden;text-align:left;padding:0;font:inherit;color:inherit;display:flex;flex-direction:column;position:relative;min-height:56px}
+.sale .tile:active{transform:scale(.98)}
+.sale .tile img{width:100%;aspect-ratio:4/5;object-fit:cover;background:var(--cream-deep)}
+.sale .tile img.ph{object-fit:contain;padding:22px;background:#fff}.sale .tile .meta{padding:12px 14px 16px}.sale .tile h3{font-size:1.15rem;margin:0 0 4px}.sale .tile .price{font-weight:600;color:var(--forest)}
+.sale .tile .low{font-size:.8rem;color:#8a5a00;margin-top:2px}
+.sale .tile.out{opacity:.55}.sale .tile .badge{position:absolute;top:10px;left:10px;background:var(--ink);color:var(--gold-light);font:600 .72rem Inter;letter-spacing:.08em;text-transform:uppercase;padding:6px 12px;border-radius:99px}
+.sale .bar{position:absolute;left:0;right:0;bottom:0;padding:14px 20px calc(14px + env(safe-area-inset-bottom));background:#fff;border-top:1px solid var(--linen);display:flex;align-items:center;justify-content:space-between;gap:12px}
+.sale .bar .tot{font:700 1.25rem 'Playfair Display',serif;color:var(--forest)}
+.sale .big{min-height:58px;padding:0 28px;border-radius:99px;border:0;background:var(--forest);color:var(--gold-light);font:700 1rem Inter;letter-spacing:.1em;text-transform:uppercase}
+.sale .big:disabled{opacity:.45}.sale .big.alt{background:#fff;color:var(--forest);border:1.5px solid var(--forest)}
+.sale .sheet-bg{position:absolute;inset:0;background:rgba(14,32,18,.55);display:flex;align-items:flex-end;justify-content:center;z-index:5}
+.sale .sheet{background:var(--cream);width:min(640px,100%);max-height:88%;overflow-y:auto;border-radius:26px 26px 0 0;padding:22px 22px calc(22px + env(safe-area-inset-bottom))}
+@media(min-width:700px){.sale .sheet-bg{align-items:center}.sale .sheet{border-radius:26px}}
+.sale .sizeopt{display:flex;justify-content:space-between;align-items:center;gap:12px;width:100%;min-height:64px;padding:12px 18px;margin-top:10px;background:#fff;border:1.5px solid var(--linen);border-radius:18px;font:600 1.05rem Inter;color:var(--forest-deep);text-align:left}
+.sale .sizeopt:disabled{opacity:.5}.sale .sizeopt small{display:block;font-weight:400;color:#8a5a00}
+.sale .line{display:grid;grid-template-columns:1fr auto auto;gap:12px;align-items:center;padding:14px 0;border-bottom:1px solid var(--linen)}
+.sale .qty{display:flex;align-items:center;gap:6px}.sale .qty button{width:48px;height:48px;border-radius:50%;border:1.5px solid var(--linen);background:#fff;font:600 1.3rem Inter;color:var(--forest)}.sale .qty span{min-width:30px;text-align:center;font-weight:700}
+.sale .thanks{position:absolute;inset:0;background:var(--forest);color:var(--gold-light);display:grid;place-items:center;text-align:center;z-index:9;padding:24px}.sale .thanks h1{color:var(--gold);font-size:3rem}
+.sale input.pin{font-size:1.6rem;letter-spacing:.5em;text-align:center}
+
 .toast{position:fixed;left:50%;bottom:20px;transform:translateX(-50%);background:var(--ink);color:var(--cream-deep);padding:10px 18px;border-radius:999px;font-size:.9rem;z-index:9}
 </style></head><body>
 <div id="app"></div>
@@ -98,7 +126,7 @@ function renderLogin(step) {
   (step ? code : email).focus();
 }
 
-var tabs = [["orders", "Orders"], ["products", "Products"], ["requests", "Requests"], ["classes", "Classes"], ["bookings", "Bookings"], ["events", "Events"]];
+var tabs = [["orders", "Orders"], ["products", "Products"], ["requests", "Requests"], ["classes", "Classes"], ["bookings", "Bookings"], ["events", "Events"], ["sale", "Event Sale"]];
 var current = "orders";
 function start() {
   var body = h("div");
@@ -106,7 +134,7 @@ function start() {
     return h("button", { "class": "tab", role: "tab", "aria-selected": String(t[0] === current), onclick: function () { current = t[0]; start(); }, text: t[1] });
   }));
   shell([nav, body]);
-  ({ orders: viewOrders, products: viewProducts, requests: viewRequests, classes: viewClasses, bookings: viewBookings, events: viewEvents })[current](body);
+  ({ orders: viewOrders, products: viewProducts, requests: viewRequests, classes: viewClasses, bookings: viewBookings, events: viewEvents, sale: viewSale })[current](body);
 }
 function loading(n) { clear(n); n.appendChild(h("p", { "class": "muted", text: "Loading..." })); }
 function failed(n, er) { clear(n); n.appendChild(h("p", { "class": "msg err", text: er.message })); }
@@ -159,7 +187,7 @@ function viewOrders(n) {
         var sel = h("select", { "aria-label": "Order status", onchange: function () {
           api("POST", "order-status", { id: o.id, status: sel.value }).then(function () { o.status = sel.value; toast("Saved"); }).catch(function (er) { toast(er.message); });
         } }, STATUS.map(function (s) { return h("option", { value: s[0], selected: s[0] === o.status, text: s[1] }); }));
-        var how = o.fulfillment === "event" ? h("span", { "class": "pill event", text: "Event: " + o.event }) : o.fulfillment === "pickup" ? h("span", { "class": "pill pickup", text: "Pickup" }) : h("span", { "class": "pill", text: "Ship" });
+        var how = o.fulfillment === "inperson" ? h("span", { "class": "pill event", text: "In person" }) : o.fulfillment === "event" ? h("span", { "class": "pill event", text: "Event: " + o.event }) : o.fulfillment === "pickup" ? h("span", { "class": "pill pickup", text: "Pickup" }) : h("span", { "class": "pill", text: "Ship" });
         list.appendChild(h("div", { "class": "card" }, [
           h("div", { style: "display:flex;justify-content:space-between;gap:8px;flex-wrap:wrap" }, [
             h("strong", { text: o.name || o.email }), h("span", { "class": "muted", text: new Date(o.created).toLocaleString() + " · " + money(o.total) })]),
@@ -376,6 +404,136 @@ function viewRequests(n) {
   }).catch(function (er) { failed(n, er); });
 }
 
+
+/* EVENT SALE: customer-facing selling screen for an iPad or phone at events. Payment is Stripe Checkout. */
+var SALE_KEY = "qe_sale", CART_KEY = "qe_cart", PAY_KEY = "qe_pay";
+function ssGet(k) { try { return JSON.parse(sessionStorage.getItem(k) || "null"); } catch (e) { return null; } }
+function ssSet(k, v) { try { if (v == null) sessionStorage.removeItem(k); else sessionStorage.setItem(k, JSON.stringify(v)); } catch (e) {} }
+
+function viewSale(n) {
+  var pin = h("input", { type: "password", inputmode: "numeric", maxlength: "4", placeholder: "4-digit PIN", autocomplete: "off", "aria-label": "Staff PIN" });
+  var msg = h("p", { "class": "msg", role: "status" });
+  n.appendChild(h("div", { "class": "card" }, [
+    h("h2", { text: "Sell at an event" }),
+    h("p", { "class": "muted", text: "This turns the screen into a customer-facing store. Customers tap jars, review their bag, and pay on the screen with a card, Apple Pay, or Google Pay. Receipts are emailed by Stripe, stock goes down automatically, and each sale appears in Orders as In person." }),
+    h("p", { "class": "muted", text: "Choose a 4-digit staff PIN. Only the PIN gets you back to the admin screens. On an iPad, also turn on Guided Access (Settings, Accessibility) so customers cannot leave the page." }),
+    h("label", null, ["Staff PIN", pin]),
+    h("p"),
+    h("button", { "class": "btn primary", text: "Start selling", onclick: function () {
+      if (!/^\d{4}$/.test(pin.value)) { msg.className = "msg err"; msg.textContent = "Enter exactly 4 digits."; return; }
+      ssSet(SALE_KEY, { pin: pin.value }); ssSet(CART_KEY, []); ssSet(PAY_KEY, null); renderSale();
+    } }), msg]));
+}
+
+function renderSale() {
+  var st = ssGet(SALE_KEY); if (!st) { start(); return; }
+  var products = [], cart = ssGet(CART_KEY) || [];
+  clear(app);
+  var root = h("div", { "class": "sale" }); app.appendChild(root);
+  var grid = h("div", { "class": "grid" }), scroll = h("div", { "class": "scroll" }, [grid]);
+  var barTot = h("div", { "class": "tot" }), barCnt = h("div", { "class": "muted" });
+  var viewBtn = h("button", { "class": "big", text: "View bag", onclick: function () { openBag(); } });
+  var bar = h("div", { "class": "bar" }, [h("div", null, [barTot, barCnt]), viewBtn]);
+  root.appendChild(h("header", null, [
+    h("div", { "class": "brand" }, [h("img", { src: "/admin/icon-192.png", alt: "" }), h("div", null, [h("b", { text: "Queen E's Heirr" }), h("span", { text: "Curating Culture & Confections" })])]),
+    h("button", { "class": "staff", text: "Staff", onclick: staffExit })]));
+  root.appendChild(scroll); root.appendChild(bar);
+
+  function find(id, size) { var p = products.filter(function (x) { return x.id === id; })[0]; return p ? { p: p, s: p.sizes.filter(function (z) { return z.label === size; })[0] } : null; }
+  function open(p) { return p.sizes.filter(function (s) { return !s.soldOut; }); }
+  function total() { return cart.reduce(function (t, l) { var f = find(l.id, l.size); return t + (f && f.s ? f.s.cents * l.qty : 0); }, 0); }
+  function count() { return cart.reduce(function (t, l) { return t + l.qty; }, 0); }
+  function save() { ssSet(CART_KEY, cart); }
+  function maxQty(s) { return Math.min(20, typeof s.stock === "number" ? s.stock : 20); }
+  function addLine(p, s) {
+    var line = cart.filter(function (l) { return l.id === p.id && l.size === s.label; })[0];
+    if (line) { if (line.qty >= maxQty(s)) { toast("That is all we have of that one"); return; } line.qty++; } else cart.push({ id: p.id, size: s.label, qty: 1 });
+    save(); drawBar(); toast("Added to your bag");
+  }
+  function drawBar() { var c = count(); barTot.textContent = money(total()); barCnt.textContent = c + (c === 1 ? " item" : " items"); viewBtn.disabled = !c; }
+  function overlay(inner) {
+    var bg = h("div", { "class": "sheet-bg", onclick: function (e) { if (e.target === bg) bg.remove(); } }, [h("div", { "class": "sheet", role: "dialog" }, inner)]);
+    root.appendChild(bg); return bg;
+  }
+  function drawGrid() {
+    clear(grid);
+    products.forEach(function (p) {
+      var o = open(p), out = !o.length, from = o.length ? Math.min.apply(null, o.map(function (s) { return s.cents; })) : 0;
+      var low = o.length && o.every(function (s) { return typeof s.stock === "number" && s.stock <= 3; });
+      var t = h("button", { "class": "tile" + (out ? " out" : ""), disabled: out, "aria-label": p.name, onclick: function () { pick(p); } }, [
+        out ? h("span", { "class": "badge", text: "Sold out" }) : null,
+        h("img", { src: p.image || "/admin/icon-512.png", alt: "", loading: "lazy", "class": p.image ? "" : "ph" }),
+        h("div", { "class": "meta" }, [h("h3", { text: p.name }), out ? null : h("div", { "class": "price", text: (o.length > 1 ? "From " : "") + money(from) }), low ? h("div", { "class": "low", text: "Almost gone" }) : null])]);
+      grid.appendChild(t);
+    });
+    if (!products.length) grid.appendChild(h("p", { "class": "muted", text: "Loading the shelf..." }));
+  }
+  function pick(p) {
+    var o = open(p); if (!o.length) return;
+    var bg;
+    var opts = p.sizes.map(function (s) {
+      var low = !s.soldOut && typeof s.stock === "number" && s.stock <= 5;
+      return h("button", { "class": "sizeopt", disabled: s.soldOut, onclick: function () { addLine(p, s); bg.remove(); } }, [
+        h("span", null, [s.label, low ? h("small", { text: "Only " + s.stock + " left" }) : null]),
+        h("span", { text: s.soldOut ? "Sold out" : money(s.cents) })]);
+    });
+    bg = overlay([h("h2", { text: p.name }), p.description ? h("p", { "class": "muted", text: p.description }) : null].concat(opts, [
+      h("p"), h("button", { "class": "big alt", style: "width:100%", text: "Close", onclick: function () { bg.remove(); } })]));
+  }
+  function openBag() {
+    var bg, box = h("div"), msg = h("p", { "class": "msg", role: "status" });
+    var payBtn = h("button", { "class": "big", style: "width:100%", text: "Pay now", onclick: pay });
+    function draw() {
+      clear(box);
+      cart = cart.filter(function (l) { return l.qty > 0; }); save(); drawBar();
+      if (!cart.length) { bg.remove(); return; }
+      cart.forEach(function (l) {
+        var f = find(l.id, l.size); if (!f || !f.s) return;
+        box.appendChild(h("div", { "class": "line" }, [
+          h("div", null, [h("b", { text: f.p.name }), h("div", { "class": "muted", text: f.s.label + " \u00b7 " + money(f.s.cents) })]),
+          h("div", { "class": "qty" }, [h("button", { "aria-label": "Fewer", text: "\u2212", onclick: function () { l.qty--; draw(); } }), h("span", { text: String(l.qty) }),
+            h("button", { "aria-label": "More", text: "+", onclick: function () { if (l.qty < maxQty(f.s)) l.qty++; else toast("That is all we have"); draw(); } })]),
+          h("b", { text: money(f.s.cents * l.qty) })]));
+      });
+      box.appendChild(h("div", { style: "display:flex;justify-content:space-between;padding:16px 0;font:700 1.4rem 'Playfair Display',serif;color:var(--forest)" }, [h("span", { text: "Subtotal" }), h("span", { text: money(total()) })]));
+    }
+    function pay() {
+      payBtn.disabled = true; msg.className = "msg"; msg.textContent = "Opening secure payment...";
+      api("POST", "pos-checkout", { items: cart }).then(function (r) { ssSet(PAY_KEY, r.id); window.location.href = r.url; })
+        .catch(function (er) { payBtn.disabled = false; msg.className = "msg err"; msg.textContent = er.message; loadProducts(); });
+    }
+    bg = overlay([h("h2", { text: "Your bag" }), box, h("p", { "class": "muted", text: "Tax, if any, and your receipt are handled on the secure payment page." }), payBtn, msg,
+      h("p"), h("button", { "class": "big alt", style: "width:100%", text: "Keep shopping", onclick: function () { bg.remove(); } }),
+      h("p"), h("button", { "class": "staff", style: "color:var(--sage)", text: "Empty the bag", onclick: function () { cart.length = 0; draw(); } })]);
+    draw();
+  }
+  function staffExit() {
+    var pin = h("input", { "class": "pin", type: "password", inputmode: "numeric", maxlength: "4", autocomplete: "off", "aria-label": "Staff PIN" });
+    var msg = h("p", { "class": "msg err", role: "status" }), bg;
+    function go() { if (pin.value === st.pin) { ssSet(SALE_KEY, null); ssSet(CART_KEY, null); ssSet(PAY_KEY, null); bg.remove(); start(); } else { msg.textContent = "That PIN is not right."; pin.value = ""; } }
+    pin.addEventListener("input", function () { if (pin.value.length === 4) go(); });
+    bg = overlay([h("h2", { text: "Staff only" }), h("p", { "class": "muted", text: "Enter the staff PIN to leave the sales screen." }), pin, msg, h("p"),
+      h("button", { "class": "big alt", style: "width:100%", text: "Cancel", onclick: function () { bg.remove(); } })]);
+    pin.focus();
+  }
+  function loadProducts() {
+    return api("GET", "pos-products").then(function (d) { products = d.products; drawGrid(); drawBar(); }).catch(function () {});
+  }
+  function checkPaid() {
+    var sid = ssGet(PAY_KEY); if (!sid) return;
+    api("GET", "pos-session?id=" + encodeURIComponent(sid)).then(function (r) {
+      if (r.paid) {
+        ssSet(PAY_KEY, null); cart.length = 0; save(); drawBar();
+        var t = h("div", { "class": "thanks" }, [h("div", null, [h("h1", { text: "Thank you!" }), h("p", { text: "Your payment went through. A receipt is on its way to your email." })])]);
+        root.appendChild(t); setTimeout(function () { t.remove(); }, 6000); loadProducts();
+      } else if (r.status === "expired") ssSet(PAY_KEY, null);
+    }).catch(function () {});
+  }
+  drawGrid(); drawBar(); loadProducts().then(checkPaid);
+  var refresh = setInterval(function () { if (!document.body.contains(root)) { clearInterval(refresh); return; } loadProducts(); }, 60000);
+  document.addEventListener("visibilitychange", function () { if (document.body.contains(root) && !document.hidden) { loadProducts(); checkPaid(); } });
+}
+
 function viewEvents(n) {
   loading(n);
   api("GET", "events").then(function (d) {
@@ -407,5 +565,5 @@ function viewEvents(n) {
   }).catch(function (er) { failed(n, er); });
 }
 
-if (TOKEN) start(); else renderLogin();
+if (TOKEN && ssGet(SALE_KEY)) renderSale(); else if (TOKEN) start(); else renderLogin();
 </script></body></html>

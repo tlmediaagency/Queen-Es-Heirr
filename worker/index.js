@@ -206,6 +206,41 @@ async function handleCheckout(request, env, c) {
   return json({ url: data.url }, 200, c.headers);
 }
 
+// In-person event sale: same Stripe-only pricing and stock rules as the website, no shipping, returns to /admin/thanks.
+async function posCheckout(env, origin, items) {
+  if (!Array.isArray(items) || items.length === 0 || items.length > MAX_LINES) throw new Error("The bag is empty");
+  const catalog = await loadCatalog(env);
+  const params = new URLSearchParams();
+  const wanted = new Map();
+  let n = 0;
+  for (const it of items) {
+    const product = catalog.find((p) => p.id === (it && it.id));
+    const size = product && product.sizes.find((s) => s.label === it.size);
+    const qty = it && it.qty;
+    if (!size || !size.priceId || !Number.isInteger(qty) || qty < 1 || qty > MAX_QTY) throw new Error("An item in the bag is no longer available");
+    if (size.soldOut) throw new Error(`${product.name} (${size.label}) is sold out`);
+    const key = `${product.id}|${size.label}`;
+    const total = (wanted.get(key) || 0) + qty;
+    wanted.set(key, total);
+    if (typeof size.stock === "number" && total > size.stock) throw new Error(`Only ${size.stock} left of ${product.name} (${size.label})`);
+    params.set(`line_items[${n}][price]`, size.priceId);
+    params.set(`line_items[${n}][quantity]`, String(qty));
+    n++;
+  }
+  params.set("mode", "payment");
+  params.set("success_url", `${origin}/admin/thanks`);
+  params.set("cancel_url", `${origin}/admin/thanks?cancelled=1`);
+  params.set("expires_at", String(Math.floor(Date.now() / 1000) + 31 * 60));
+  params.set("metadata[fulfillment]", "inperson");
+  params.set("metadata[event]", "In-person sale");
+  if (env.TAX_ENABLED === "true") {
+    params.set("automatic_tax[enabled]", "true");
+    params.set("billing_address_collection", "required");
+  }
+  const s = await stripePost(env, "/checkout/sessions", params);
+  return { url: s.url, id: s.id };
+}
+
 const CLASSES = {
   "Standalone Jam Making & STEM Lab": { id: "class-jam-stem-lab", cents: 5500 },
   "Jam Making & Etiquette Combined Class": { id: "class-jam-etiquette", cents: 8500 },
@@ -377,7 +412,7 @@ export default {
     if (env.ADMIN_HOST && url.hostname === env.ADMIN_HOST && url.pathname === "/") return Response.redirect(`https://${env.ADMIN_HOST}/admin`, 302);
     if (!env.STRIPE_SECRET_KEY) return json({ error: "Not configured" }, 500, c.headers);
     if (url.pathname === "/admin" || url.pathname.startsWith("/admin/")) {
-      const r = await handleAdmin(request, env, url, { stripeGet, stripePost, stockOf });
+      const r = await handleAdmin(request, env, url, { stripeGet, stripePost, stockOf, loadCatalog, posCheckout });
       if (r) return r;
     }
     const im = url.pathname.match(/^\/img\/([a-f0-9]+)\.jpg$/);

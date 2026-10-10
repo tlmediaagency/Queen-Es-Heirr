@@ -24,3 +24,8 @@ Public `GET /events` lists upcoming pickup events for the cart.
 - Apps Script action `booking_notice` (guarded by MAIL_SECRET) emails the customer and the shop and adds the customer as a guest on a Google Calendar event.
   After pasting the new Code.gs: Run `authorizeCalendar` once, then Deploy > Manage deployments > edit > New version.
 - `js/config.js` `BOOKING_URL`: paste the Google Calendar appointment page link (https://calendar.google.com/...) to show it on the Classes page (loads only after cookie consent).
+
+
+## Event sale mode
+Admin app > Event Sale: customer-facing selling screen (PIN to exit). Admin API: `pos-products`, `pos-checkout`, `pos-session`. Payments are Stripe Checkout sessions with `metadata.fulfillment=inperson`;
+Stripe returns to the public page `/admin/thanks`. The existing webhook lowers stock. Orders from it show as "In person" and default to Fulfilled.
