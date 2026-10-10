@@ -27,6 +27,10 @@ input,select,textarea{font:400 .95rem Inter;border:1px solid var(--linen);backgr
 .chk{display:flex;gap:8px;align-items:center;font:400 .9rem Inter;text-transform:none;letter-spacing:0}.chk input{width:auto}
 .sizes .row{padding:10px 0;border-top:1px solid var(--linen)}
 .hide{display:none}
+.tools{display:flex;flex-wrap:wrap;gap:10px;align-items:end;margin:10px 0 4px}.tools label{min-width:130px;flex:1 1 130px}.tools .btn{min-height:42px}
+.totals{display:flex;flex-wrap:wrap;gap:10px;margin:10px 0}.totals .card{margin:0;padding:10px 16px;flex:1 1 150px}.totals b{display:block;font:700 1.3rem 'Playfair Display',serif;color:var(--forest)}
+table.rep{width:100%;border-collapse:collapse;font-size:.92rem;margin:8px 0 16px}table.rep th,table.rep td{padding:8px 6px;border-bottom:1px solid var(--linen);text-align:right}table.rep th:first-child,table.rep td:first-child{text-align:left}table.rep th{font:600 .68rem Inter;letter-spacing:.08em;text-transform:uppercase;color:var(--muted)}
+.pill.void{background:#f3d9d9;color:var(--red)}
 /* EVENT SALE (customer-facing) */
 .sale{position:fixed;inset:0;background:var(--cream);display:flex;flex-direction:column;z-index:20;-webkit-user-select:none;user-select:none;-webkit-touch-callout:none}
 .sale header{display:flex;align-items:center;justify-content:space-between;gap:14px;padding:12px 20px;background:var(--ink)}
@@ -76,6 +80,55 @@ function h(tag, attrs, kids) {
 function clear(n) { while (n.firstChild) n.removeChild(n.firstChild); }
 function toast(t) { var x = h("div", { "class": "toast", role: "status", text: t }); document.body.appendChild(x); setTimeout(function () { x.remove(); }, 2200); }
 function money(c) { return (c / 100).toLocaleString("en-US", { style: "currency", currency: "USD" }); }
+/* LIST TOOLS: sort, type filter and date range for any list; CSV download */
+function chiDate(ms) { return new Intl.DateTimeFormat("en-CA", { timeZone: "America/Chicago" }).format(new Date(ms)); }
+function addDays(d, k) { var p = d.split("-"); return new Date(Date.UTC(+p[0], +p[1] - 1, +p[2] + k)).toISOString().slice(0, 10); }
+function listTools(cfg, onChange) {
+  var st = { sort: cfg.sorts[0][0], dir: cfg.dir || "desc", type: "", from: "", to: "" };
+  var kids = [];
+  var sortSel = h("select", { "aria-label": "Sort by" }, cfg.sorts.map(function (s) { return h("option", { value: s[0], text: s[1] }); }));
+  var dirBtn = h("button", { "class": "btn small", type: "button", title: "Reverse the order", "aria-label": "Reverse the order", text: st.dir === "desc" ? "\u2193" : "\u2191" });
+  sortSel.addEventListener("change", function () { st.sort = sortSel.value; onChange(st); });
+  dirBtn.addEventListener("click", function () { st.dir = st.dir === "desc" ? "asc" : "desc"; dirBtn.textContent = st.dir === "desc" ? "\u2193" : "\u2191"; onChange(st); });
+  kids.push(h("label", null, ["Sort by", sortSel]), dirBtn);
+  if (cfg.types && cfg.types.length) {
+    var typeSel = h("select", { "aria-label": cfg.typeLabel || "Type" }, [h("option", { value: "", text: "All" })].concat(cfg.types.map(function (t) { return h("option", { value: t, text: t }); })));
+    typeSel.addEventListener("change", function () { st.type = typeSel.value; onChange(st); });
+    kids.push(h("label", null, [cfg.typeLabel || "Type", typeSel]));
+  }
+  if (cfg.dateOf) {
+    var from = h("input", { type: "date", "aria-label": "From date" }), to = h("input", { type: "date", "aria-label": "To date" });
+    from.addEventListener("change", function () { st.from = from.value; onChange(st); });
+    to.addEventListener("change", function () { st.to = to.value; onChange(st); });
+    kids.push(h("label", null, ["From", from]), h("label", null, ["To", to]));
+  }
+  return { el: h("div", { "class": "tools" }, kids), state: st };
+}
+function applyTools(rows, st, cfg) {
+  var out = rows.filter(function (r) {
+    if (st.type && cfg.typeOf && cfg.typeOf(r) !== st.type) return false;
+    if (cfg.dateOf && (st.from || st.to)) { var d = cfg.dateOf(r) || ""; if (st.from && d < st.from) return false; if (st.to && d > st.to) return false; }
+    return true;
+  });
+  var key = cfg.get[st.sort], dir = st.dir === "asc" ? 1 : -1;
+  out.sort(function (a, b) {
+    var x = key(a), y = key(b);
+    if (x === y) return 0;
+    if (x == null || x === "") return 1;
+    if (y == null || y === "") return -1;
+    return (x < y ? -1 : 1) * dir;
+  });
+  return out;
+}
+function uniq(list) { var seen = {}; return list.filter(function (x) { if (!x || seen[x]) return false; seen[x] = 1; return true; }); }
+function csvDownload(name, header, rows) {
+  var esc = function (v) { v = v == null ? "" : String(v); if (/^[=+\-@\t\r]/.test(v)) v = "'" + v; return /[",\n\r]/.test(v) ? '"' + v.replace(/"/g, '""') + '"' : v; };
+  var text = "\ufeff" + [header].concat(rows).map(function (r) { return r.map(esc).join(","); }).join("\r\n");
+  var a = h("a", { href: URL.createObjectURL(new Blob([text], { type: "text/csv;charset=utf-8" })), download: name });
+  document.body.appendChild(a); a.click(); setTimeout(function () { URL.revokeObjectURL(a.href); a.remove(); }, 1500);
+}
+function dollars(c) { return ((c || 0) / 100).toFixed(2); }
+function timeOf(ms) { return new Date(ms).toLocaleTimeString("en-US", { timeZone: "America/Chicago", hour: "numeric", minute: "2-digit" }); }
 function api(method, path, body) {
   var opt = { method: method, headers: { "Content-Type": "application/json" } };
   if (TOKEN) opt.headers.Authorization = "Bearer " + TOKEN;
@@ -126,7 +179,7 @@ function renderLogin(step) {
   (step ? code : email).focus();
 }
 
-var tabs = [["orders", "Orders"], ["products", "Products"], ["requests", "Requests"], ["classes", "Classes"], ["bookings", "Bookings"], ["events", "Events"], ["sale", "Event Sale"]];
+var tabs = [["orders", "Orders"], ["products", "Products"], ["requests", "Requests"], ["classes", "Classes"], ["bookings", "Bookings"], ["events", "Events"], ["ledger", "Cash Ledger"], ["reports", "Reports"], ["sale", "Event Sale"]];
 var current = "orders";
 function start() {
   var body = h("div");
@@ -134,7 +187,7 @@ function start() {
     return h("button", { "class": "tab", role: "tab", "aria-selected": String(t[0] === current), onclick: function () { current = t[0]; start(); }, text: t[1] });
   }));
   shell([nav, body]);
-  ({ orders: viewOrders, products: viewProducts, requests: viewRequests, classes: viewClasses, bookings: viewBookings, events: viewEvents, sale: viewSale })[current](body);
+  ({ orders: viewOrders, products: viewProducts, requests: viewRequests, classes: viewClasses, bookings: viewBookings, events: viewEvents, ledger: viewLedger, reports: viewReports, sale: viewSale })[current](body);
 }
 function loading(n) { clear(n); n.appendChild(h("p", { "class": "muted", text: "Loading..." })); }
 function failed(n, er) { clear(n); n.appendChild(h("p", { "class": "msg err", text: er.message })); }
@@ -179,15 +232,20 @@ function viewOrders(n) {
     clear(n);
     var filter = "open";
     var list = h("div");
+    var orderType = function (o) { return o.fulfillment === "inperson" ? (o.cash ? "In person - Cash" : "In person - Card") : o.fulfillment === "event" ? "Event pickup" : o.fulfillment === "pickup" ? "Pickup" : "Ship"; };
+    var OCFG = { get: { date: function (o) { return o.created; }, amount: function (o) { return o.total; }, name: function (o) { return (o.name || o.email || "").toLowerCase(); } },
+      dateOf: function (o) { return chiDate(o.created); }, typeOf: orderType };
+    var tools = listTools({ sorts: [["date", "Date"], ["amount", "Amount"], ["name", "Name"]], types: ["Ship", "Pickup", "Event pickup", "In person - Card", "In person - Cash"], dateOf: true }, function () { draw(); });
     function draw() {
       clear(list);
       var rows = d.orders.filter(function (o) { return filter === "all" || (filter === "open" ? o.status !== "fulfilled" : o.status === filter); });
+      rows = applyTools(rows, tools.state, OCFG);
       if (!rows.length) list.appendChild(h("p", { "class": "muted", text: "No orders here." }));
       rows.forEach(function (o) {
         var sel = h("select", { "aria-label": "Order status", onchange: function () {
           api("POST", "order-status", { id: o.id, status: sel.value }).then(function () { o.status = sel.value; toast("Saved"); }).catch(function (er) { toast(er.message); });
         } }, STATUS.map(function (s) { return h("option", { value: s[0], selected: s[0] === o.status, text: s[1] }); }));
-        var how = o.fulfillment === "inperson" ? h("span", { "class": "pill event", text: o.cash ? "In person \u00b7 Cash" : "In person" }) : o.fulfillment === "event" ? h("span", { "class": "pill event", text: "Event: " + o.event }) : o.fulfillment === "pickup" ? h("span", { "class": "pill pickup", text: "Pickup" }) : h("span", { "class": "pill", text: "Ship" });
+        var how = o.fulfillment === "inperson" ? h("span", { "class": "pill event", text: (o.cash ? "In person \u00b7 Cash" : "In person") + (o.event ? " \u00b7 " + o.event : "") }) : o.fulfillment === "event" ? h("span", { "class": "pill event", text: "Event: " + o.event }) : o.fulfillment === "pickup" ? h("span", { "class": "pill pickup", text: "Pickup" }) : h("span", { "class": "pill", text: "Ship" });
         list.appendChild(h("div", { "class": "card" }, [
           h("div", { style: "display:flex;justify-content:space-between;gap:8px;flex-wrap:wrap" }, [
             h("strong", { text: o.name || o.email }), h("span", { "class": "muted", text: new Date(o.created).toLocaleString() + " · " + money(o.total) })]),
@@ -203,7 +261,7 @@ function viewOrders(n) {
         filter = f[0]; chips.querySelectorAll("button").forEach(function (b) { b.setAttribute("aria-selected", "false"); }); e.currentTarget.setAttribute("aria-selected", "true"); draw();
       }, text: f[1] });
     }));
-    n.appendChild(chips); n.appendChild(list); draw();
+    n.appendChild(chips); n.appendChild(tools.el); n.appendChild(list); n.appendChild(h("p", { "class": "muted", text: "Shows the most recent orders. Use Reports for full history." })); draw();
   }).catch(function (er) { failed(n, er); });
 }
 
@@ -214,11 +272,20 @@ function viewProducts(n) {
     clear(n);
     n.appendChild(h("p", { "class": "muted", text: "Leave Stock blank for unlimited. Changes show on the website within about a minute." }));
     n.appendChild(addProductCard(function () { viewProducts(n); }));
-    d.products.forEach(function (p) { n.appendChild(productCard(p, function () { viewProducts(n); })); });
-    if (d.hidden.length) {
-      n.appendChild(h("h2", { text: "Hidden products" }));
-      d.hidden.forEach(function (p) { n.appendChild(productCard(p, function () { viewProducts(n); })); });
+    var PCFG = { get: { name: function (p) { return p.name.toLowerCase(); }, price: function (p) { return p.sizes.length ? Math.min.apply(null, p.sizes.map(function (s) { return s.cents; })) : null; },
+      stock: function (p) { return p.sizes.length ? p.sizes.reduce(function (t, s) { return t + (s.stock == null ? 100000 : s.stock); }, 0) : null; }, category: function (p) { return (p.category || "").toLowerCase(); } },
+      typeOf: function (p) { return p.category; } };
+    var ptools = listTools({ sorts: [["name", "Name"], ["price", "Price"], ["stock", "Stock"], ["category", "Category"]], dir: "asc", types: uniq(d.products.concat(d.hidden).map(function (p) { return p.category; })), typeLabel: "Category" }, function () { draw(); });
+    var plist = h("div");
+    function draw() {
+      clear(plist);
+      applyTools(d.products, ptools.state, PCFG).forEach(function (p) { plist.appendChild(productCard(p, function () { viewProducts(n); })); });
+      if (d.hidden.length && !ptools.state.type) {
+        plist.appendChild(h("h2", { text: "Hidden products" }));
+        d.hidden.forEach(function (p) { plist.appendChild(productCard(p, function () { viewProducts(n); })); });
+      }
     }
+    n.appendChild(ptools.el); n.appendChild(plist); draw();
   }).catch(function (er) { failed(n, er); });
 }
 function sizeRow(p, s, reload) {
@@ -291,15 +358,18 @@ function viewClasses(n) {
     clear(n);
     var classes = d.classes;
     var list = h("div"), msg = h("p", { "class": "msg", role: "status" });
+    var CCFG = { get: { date: function (c) { return c.date ? c.date + (c.time || "") : null; }, price: function (c) { return parseFloat(c.price) || 0; }, booked: function (c) { return c.booked || 0; }, name: function (c) { return (c.title || "").toLowerCase(); } },
+      dateOf: function (c) { return c.date; }, typeOf: function (c) { return (CLASS_TYPES.filter(function (t) { return t[0] === c.type; })[0] || ["", "Class"])[1]; } };
+    var ctools = listTools({ sorts: [["date", "Date"], ["price", "Price"], ["booked", "Spots booked"], ["name", "Name"]], dir: "asc", types: CLASS_TYPES.map(function (t) { return t[1]; }), typeLabel: "Class type", dateOf: true }, function () { draw(); });
     function draw() {
       clear(list);
-      classes.sort(function (a, b) { return ((a.date || "9999") + (a.time || "")).localeCompare((b.date || "9999") + (b.time || "")); });
-      classes.forEach(function (c, i) {
+      applyTools(classes.slice(), ctools.state, CCFG).forEach(function (c) {
+        var i = classes.indexOf(c);
         var f = function (k, type, label, extra) { var inp = h("input", Object.assign({ type: type, value: c[k] == null ? "" : c[k] }, extra || {})); inp.addEventListener("input", function () { c[k] = inp.value; }); return h("label", null, [label, inp]); };
         var typeSel = h("select", null, CLASS_TYPES.map(function (t) { return h("option", { value: t[0], text: t[1], selected: t[0] === c.type }); }));
         typeSel.addEventListener("change", function () { var was = c.type; c.type = typeSel.value; var t = CLASS_TYPES.filter(function (x) { return x[0] === c.type; })[0]; if (!c.price || CLASS_TYPES.some(function (x) { return x[0] === was && x[2] === c.price; })) { c.price = t[2]; draw(); } });
         var show = h("input", { type: "checkbox", checked: c.show !== false }); show.addEventListener("change", function () { c.show = show.checked; });
-        var status = c.id && typeof c.booked === "number" ? c.booked + " of " + c.seats + " seats booked" : "New class";
+        var status = c.id && typeof c.booked === "number" ? c.booked + " of " + c.seats + " spots booked" : "New class";
         list.appendChild(h("div", { "class": "card" }, [
           h("div", { "class": "row" }, [f("title", "text", "Class name (shown on the site)"), h("label", null, ["Type", typeSel])]),
           h("div", { "class": "row", style: "margin-top:10px" }, [f("date", "date", "Date"), f("time", "time", "Start time"), f("minutes", "number", "Length (minutes)", { min: 15, max: 720 }), f("seats", "number", "Seats", { min: 1, max: 200 }), f("price", "number", "Price per person ($)", { min: 1, step: "0.01" })]),
@@ -311,6 +381,7 @@ function viewClasses(n) {
       if (!classes.length) list.appendChild(h("p", { "class": "muted", text: "No class dates yet. Click Add class date." }));
     }
     n.appendChild(h("p", { "class": "muted", text: "Each date appears on the Classes page with a Book & pay button until the date passes or the seats run out. After someone pays, they get a receipt and a calendar invite." }));
+    n.appendChild(ctools.el);
     n.appendChild(list);
     n.appendChild(h("div", { "class": "row" }, [
       h("button", { "class": "btn", text: "+ Add class date", onclick: function () { var t = CLASS_TYPES[0]; classes.push({ title: t[1], type: t[0], date: "", time: "14:00", minutes: 120, seats: 10, price: t[2], location: "", notes: "", show: true }); draw(); } }),
@@ -323,7 +394,7 @@ function viewClasses(n) {
   }).catch(function (er) { failed(n, er); });
 }
 
-/* BOOKINGS: who paid for a seat */
+/* BOOKINGS: who paid for a spot in a class */
 function viewBookings(n) {
   loading(n);
   api("GET", "bookings").then(function (d) {
@@ -334,14 +405,17 @@ function viewBookings(n) {
     pick.appendChild(h("option", { value: "", text: "All classes" }));
     all.forEach(function (b) { if (b.cls && !seen[b.classId]) { seen[b.classId] = 1; pick.appendChild(h("option", { value: b.classId, text: b.cls.title + " - " + fmtDay(b.cls.date) })); } });
     var list = h("div");
+    var BCFG = { get: { date: function (b) { return b.ts; }, amount: function (b) { return b.cents; }, classdate: function (b) { return b.cls ? b.cls.date : null; }, name: function (b) { return (b.name || "").toLowerCase(); } },
+      dateOf: function (b) { return chiDate(b.ts); } };
+    var btools = listTools({ sorts: [["date", "Date booked"], ["amount", "Amount"], ["classdate", "Class date"], ["name", "Name"]], dateOf: true }, function () { draw(); });
     function draw() {
       clear(list);
-      var rows = all.filter(function (b) { return !filter || b.classId === filter; });
+      var rows = applyTools(all.filter(function (b) { return !filter || b.classId === filter; }), btools.state, BCFG);
       var seats = rows.reduce(function (t, b) { return t + (b.seats || 0); }, 0);
-      list.appendChild(h("p", { "class": "muted", text: rows.length + " booking" + (rows.length === 1 ? "" : "s") + ", " + seats + " seat" + (seats === 1 ? "" : "s") }));
+      list.appendChild(h("p", { "class": "muted", text: rows.length + " booking" + (rows.length === 1 ? "" : "s") + ", " + seats + " spot" + (seats === 1 ? "" : "s") + " reserved" }));
       rows.forEach(function (b) {
         list.appendChild(h("div", { "class": "card" }, [
-          h("div", { style: "display:flex;justify-content:space-between;gap:8px;flex-wrap:wrap" }, [h("strong", { text: b.name || "(no name)" }), h("span", { "class": "pill", text: b.seats + (b.seats === 1 ? " seat" : " seats") + " \u00b7 $" + (b.cents / 100).toFixed(2) })]),
+          h("div", { style: "display:flex;justify-content:space-between;gap:8px;flex-wrap:wrap" }, [h("strong", { text: b.name || "(no name)" }), h("span", { "class": "pill", text: b.seats + (b.seats === 1 ? " spot" : " spots") + " \u00b7 $" + (b.cents / 100).toFixed(2) })]),
           h("div", { "class": "muted", text: b.cls ? b.cls.title + " \u00b7 " + fmtDay(b.cls.date) + " " + fmtTime(b.cls.time) : "Class removed" }),
           h("div", null, [b.email ? h("a", { href: "mailto:" + b.email, text: b.email }) : "", b.phone ? h("span", { text: "  \u00b7  " }) : "", b.phone ? h("a", { href: "tel:" + b.phone, text: b.phone }) : ""]),
           h("div", { "class": "muted", text: "Booked " + new Date(b.ts).toLocaleString() })]));
@@ -349,7 +423,9 @@ function viewBookings(n) {
       if (!rows.length) list.appendChild(h("p", { "class": "muted", text: "No bookings yet." }));
     }
     pick.addEventListener("change", function () { filter = pick.value; draw(); });
+    n.appendChild(h("p", { "class": "muted", text: "These are people who paid online to join one of your hosted classes (like jam making). Each booking shows how many spots they reserved, which counts against the class size you set on the Classes tab. Nothing to do here unless you want to contact someone." }));
     n.appendChild(h("label", null, ["Show", pick]));
+    n.appendChild(btools.el);
     n.appendChild(list);
     n.appendChild(h("p", { "class": "muted", text: "Refunds are done in your Stripe dashboard (Payments)." }));
     draw();
@@ -368,13 +444,16 @@ function viewRequests(n) {
     var label = { draft: "Pending your approval", open: "Approved - send it from Stripe", accepted: "Accepted by customer", canceled: "Declined", stale: "Expired" };
     var tabsEl = h("div", { style: "display:flex;gap:8px;margin:8px 0;flex-wrap:wrap" });
     var list = h("div"), msg = h("p", { "class": "msg", role: "status" });
+    var RCFG = { get: { date: function (r) { return r.created; }, amount: function (r) { return r.total; }, wanted: function (r) { return r.date || null; }, name: function (r) { return (r.name || r.email || "").toLowerCase(); } },
+      dateOf: function (r) { return chiDate(r.created); }, typeOf: function (r) { return r.cls; } };
+    var rtools = listTools({ sorts: [["date", "Date sent"], ["amount", "Estimate"], ["wanted", "Wanted date"], ["name", "Name"]], types: uniq(all.map(function (r) { return r.cls; })), typeLabel: "Class", dateOf: true }, function () { draw(); });
     function draw() {
       clear(tabsEl); clear(list);
       FILTERS.forEach(function (f) {
         var count = all.filter(function (r) { return group(r.status) === f[0]; }).length;
         tabsEl.appendChild(h("button", { "class": "tab", "aria-selected": String(f[0] === filter), text: f[1] + " (" + count + ")", onclick: function () { filter = f[0]; draw(); } }));
       });
-      var rows = all.filter(function (r) { return group(r.status) === filter; });
+      var rows = applyTools(all.filter(function (r) { return group(r.status) === filter; }), rtools.state, RCFG);
       rows.forEach(function (r) {
         var actions = [h("a", { "class": "btn small", href: r.url, target: "_blank", rel: "noopener noreferrer", text: "Open quote in Stripe" })];
         if (r.status === "draft") {
@@ -399,7 +478,7 @@ function viewRequests(n) {
       }).catch(function (er) { msg.className = "msg err"; msg.textContent = er.message; });
     }
     n.appendChild(h("p", { "class": "muted", text: "Private group and event requests become draft quotes in Stripe. The starting price is only an estimate: open the quote in Stripe to change the price, then Approve here and send it from Stripe." }));
-    n.appendChild(tabsEl); n.appendChild(list); n.appendChild(msg);
+    n.appendChild(tabsEl); n.appendChild(rtools.el); n.appendChild(list); n.appendChild(msg);
     draw();
   }).catch(function (er) { failed(n, er); });
 }
@@ -476,6 +555,109 @@ function qrSvg(text, px) {
   return '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ' + n + " " + n + '" width="' + px + '" height="' + px + '" shape-rendering="crispEdges" role="img" aria-label="QR code to pay on your phone"><rect width="100%" height="100%" fill="#fff"/><path d="' + d + '" fill="#000"/></svg>';
 }
 
+/* CASH LEDGER */
+function viewLedger(n) {
+  loading(n);
+  api("GET", "cash-ledger").then(function (d) {
+    clear(n);
+    var all = d.sales, list = h("div"), totals = h("div", { "class": "totals" }), msg = h("p", { "class": "msg", role: "status" });
+    var CFG = { get: { date: function (s) { return s.ts; }, amount: function (s) { return s.total; }, location: function (s) { return (s.location || "").toLowerCase(); }, name: function (s) { return (s.name || "").toLowerCase(); } },
+      dateOf: function (s) { return chiDate(s.ts); }, typeOf: function (s) { return s.location; } };
+    var tools = listTools({ sorts: [["date", "Date"], ["amount", "Amount"], ["location", "Location"], ["name", "Customer"]], types: uniq(all.map(function (s) { return s.location; })), typeLabel: "Location", dateOf: true }, function () { draw(); });
+    var shown = [];
+    function draw() {
+      clear(list); clear(totals);
+      shown = applyTools(all, tools.state, CFG);
+      var live = shown.filter(function (s) { return !s.voided; });
+      var sum = function (k) { return live.reduce(function (t, s) { return t + (s[k] || 0); }, 0); };
+      [["Cash sales", String(live.length)], ["Subtotal", money(sum("subtotal"))], ["Tax", money(sum("tax"))], ["Total collected", money(sum("total"))]].forEach(function (x) {
+        totals.appendChild(h("div", { "class": "card" }, [h("span", { "class": "muted", text: x[0] }), h("b", { text: x[1] })]));
+      });
+      if (!shown.length) list.appendChild(h("p", { "class": "muted", text: "No cash sales match." }));
+      shown.forEach(function (s) {
+        var head = [h("b", { text: money(s.total) }), " ", h("span", { "class": "pill", text: s.location || "No location" })];
+        if (s.voided) head.push(" ", h("span", { "class": "pill void", text: "Voided" }));
+        var kids = [h("div", null, head),
+          h("div", { "class": "muted", text: new Date(s.ts).toLocaleDateString("en-US", { timeZone: "America/Chicago", month: "short", day: "numeric", year: "numeric" }) + " " + timeOf(s.ts) + (s.name ? " \u00b7 " + s.name : "") + (s.email ? " \u00b7 " + s.email : "") }),
+          h("div", { text: s.items.map(function (x) { return x.qty + " \u00d7 " + x.name + (x.size ? " (" + x.size + ")" : ""); }).join(", ") }),
+          h("div", { "class": "muted", text: "Subtotal " + money(s.subtotal) + (s.tax ? " \u00b7 Tax " + money(s.tax) : "") })];
+        if (!s.voided) kids.push(h("button", { "class": "btn small", text: "Void this sale", onclick: function () {
+          if (!confirm("Void this cash sale? Stock goes back up. Use this for a mistake or a return.")) return;
+          api("POST", "cash-void", { id: s.id }).then(function () { s.voided = true; draw(); }).catch(function (e) { msg.className = "msg err"; msg.textContent = e.message; });
+        } }));
+        list.appendChild(h("div", { "class": "card" }, kids));
+      });
+    }
+    n.appendChild(h("h2", { text: "Cash ledger" }));
+    n.appendChild(h("p", { "class": "muted", text: "Every cash sale taken in the Event Sale screen. Void a sale to correct a mistake." }));
+    n.appendChild(tools.el); n.appendChild(totals);
+    n.appendChild(h("button", { "class": "btn", text: "Download CSV", onclick: function () {
+      csvDownload("cash-ledger.csv", ["Date", "Time", "Location", "Customer", "Email", "Items", "Subtotal", "Tax", "Total", "Voided"], shown.map(function (s) {
+        return [chiDate(s.ts), timeOf(s.ts), s.location, s.name, s.email, s.items.map(function (x) { return x.qty + " x " + x.name + (x.size ? " (" + x.size + ")" : ""); }).join("; "), dollars(s.subtotal), dollars(s.tax), dollars(s.total), s.voided ? "yes" : ""];
+      }));
+    } }));
+    n.appendChild(list); n.appendChild(msg); draw();
+  }).catch(function (e) { failed(n, e); });
+}
+
+/* REPORTS */
+function viewReports(n) {
+  var today = chiDate(Date.now()), y = today.slice(0, 4), m = today.slice(0, 7);
+  function monthEnd(ym) { var p = ym.split("-"); return new Date(Date.UTC(+p[0], +p[1], 0)).toISOString().slice(0, 10); }
+  var lm = (function () { var p = m.split("-"); var d = new Date(Date.UTC(+p[0], +p[1] - 2, 1)); return d.toISOString().slice(0, 7); })();
+  var from = h("input", { type: "date", value: m + "-01" }), to = h("input", { type: "date", value: today });
+  var out = h("div"), msg = h("p", { "class": "msg", role: "status" }), rows = [];
+  function preset(label, a, b) { return h("button", { "class": "btn small", type: "button", text: label, onclick: function () { from.value = a; to.value = b; run(); } }); }
+  n.appendChild(h("h2", { text: "Reports" }));
+  n.appendChild(h("p", { "class": "muted", text: "Sales across the website, event card payments, cash and class bookings. Refunds are not subtracted, so check Stripe for refunds." }));
+  n.appendChild(h("div", { "class": "row", style: "flex-wrap:wrap" }, [preset("This month", m + "-01", today), preset("Last month", lm + "-01", monthEnd(lm)), preset("Year to date", y + "-01-01", today)]));
+  n.appendChild(h("div", { "class": "tools" }, [h("label", null, ["From", from]), h("label", null, ["To", to]), h("button", { "class": "btn primary", text: "Run report", onclick: run })]));
+  n.appendChild(msg); n.appendChild(out);
+  function group(key) {
+    var g = {};
+    rows.forEach(function (r) { if (r.status === "voided") return; var k = r[key] || "(none)"; var x = g[k] || (g[k] = { n: 0, sub: 0, ship: 0, tax: 0, total: 0 }); x.n++; x.sub += r.subtotal; x.ship += r.shipping; x.tax += r.tax; x.total += r.total; });
+    return g;
+  }
+  function table(title, g) {
+    var keys = Object.keys(g).sort(function (a, b) { return g[b].total - g[a].total; });
+    if (!keys.length) return h("p", { "class": "muted", text: "No sales in this range." });
+    var t = h("table", { "class": "rep" }, [h("tr", null, [title, "Sales", "Subtotal", "Shipping", "Tax", "Total"].map(function (x) { return h("th", { text: x }); }))]);
+    var tot = { n: 0, sub: 0, ship: 0, tax: 0, total: 0 };
+    keys.forEach(function (k) { var x = g[k]; ["n", "sub", "ship", "tax", "total"].forEach(function (f) { tot[f] += x[f]; });
+      t.appendChild(h("tr", null, [k, String(x.n), money(x.sub), money(x.ship), money(x.tax), money(x.total)].map(function (v) { return h("td", { text: v }); }))); });
+    t.appendChild(h("tr", null, ["All", String(tot.n), money(tot.sub), money(tot.ship), money(tot.tax), money(tot.total)].map(function (v) { return h("td", { style: "font-weight:700", text: v }); })));
+    return t;
+  }
+  function run() {
+    if (!from.value || !to.value || from.value > to.value) { msg.className = "msg err"; msg.textContent = "Choose a start date that is on or before the end date."; return; }
+    msg.className = "msg"; msg.textContent = "Building report..."; clear(out);
+    api("GET", "report?from=" + from.value + "&to=" + to.value).then(function (d) {
+      rows = d.rows; msg.textContent = d.truncated ? "This range is very large, so older orders may be missing. Try a shorter range." : "";
+      if (d.truncated) msg.className = "msg err";
+      var live = rows.filter(function (r) { return r.status !== "voided"; });
+      var sum = live.reduce(function (t, r) { return t + r.total; }, 0);
+      out.appendChild(h("div", { "class": "totals" }, [["Transactions", String(live.length)], ["Total sales", money(sum)]].map(function (x) { return h("div", { "class": "card" }, [h("span", { "class": "muted", text: x[0] }), h("b", { text: x[1] })]); })));
+      out.appendChild(h("h3", { text: "By type" })); out.appendChild(table("Type", group("channel")));
+      out.appendChild(h("h3", { text: "By location / event" })); out.appendChild(table("Location", group("location")));
+      out.appendChild(h("h3", { text: "Download" }));
+      var dl = function (label, fn) { return h("button", { "class": "btn", text: label, onclick: fn }); };
+      var span = from.value + "_to_" + to.value;
+      out.appendChild(h("div", { "class": "row", style: "flex-wrap:wrap" }, [
+        dl("All sales (CSV)", function () { csvDownload("sales-" + span + ".csv", ["Date", "Time", "Type", "Location", "Customer", "Email", "Items", "Subtotal", "Shipping", "Tax", "Total", "Status", "Reference"],
+          rows.map(function (r) { return [r.date, timeOf(r.ts), r.channel, r.location, r.customer, r.email, r.items, dollars(r.subtotal), dollars(r.shipping), dollars(r.tax), dollars(r.total), r.status, r.id]; })); }),
+        dl("Cash sales (CSV)", function () { csvDownload("cash-" + span + ".csv", ["Date", "Time", "Location", "Customer", "Email", "Items", "Subtotal", "Tax", "Total", "Status"],
+          rows.filter(function (r) { return r.channel === "In person - Cash"; }).map(function (r) { return [r.date, timeOf(r.ts), r.location, r.customer, r.email, r.items, dollars(r.subtotal), dollars(r.tax), dollars(r.total), r.status]; })); }),
+        dl("Class bookings (CSV)", function () { csvDownload("classes-" + span + ".csv", ["Booked", "Class", "Customer", "Email", "Spots", "Paid"],
+          rows.filter(function (r) { return r.channel === "Class booking"; }).map(function (r) { return [r.date, r.location, r.customer, r.email, r.items, dollars(r.total)]; })); }),
+        dl("Inventory (CSV)", function () {
+          api("GET", "products").then(function (p) { csvDownload("inventory-" + today + ".csv", ["Product", "Category", "Size", "Price", "Stock", "Sold out"],
+            p.products.concat(p.hidden || []).reduce(function (a, pr) { return a.concat(pr.sizes.map(function (s) { return [pr.name, pr.category, s.label, dollars(s.cents), s.stock == null ? "unlimited" : s.stock, s.soldOut ? "yes" : ""]; })); }, [])); })
+            .catch(function (e) { msg.className = "msg err"; msg.textContent = e.message; });
+        })]));
+    }).catch(function (e) { msg.className = "msg err"; msg.textContent = e.message; });
+  }
+}
+
 /* EVENT SALE: customer-facing selling screen for an iPad or phone at events. Payment is Stripe Checkout. */
 var SALE_KEY = "qe_sale", CART_KEY = "qe_cart", PAY_KEY = "qe_pay";
 function ssGet(k) { try { return JSON.parse(sessionStorage.getItem(k) || "null"); } catch (e) { return null; } }
@@ -485,10 +667,28 @@ function viewSale(n) {
   var pin = h("input", { type: "password", inputmode: "numeric", maxlength: "4", placeholder: "4-digit PIN", autocomplete: "off", "aria-label": "Staff PIN" });
   var tax = h("input", { type: "number", min: "0", max: "15", step: "0.01", value: "0", inputmode: "decimal" });
   var msg = h("p", { "class": "msg", role: "status" });
+  var loc = h("input", { type: "text", maxlength: "80", placeholder: "Type a place", "aria-label": "Where are you selling today" });
+  var pickEv = h("select", { "aria-label": "Choose from your events" }, [h("option", { value: "", text: "Loading your events..." })]);
+  pickEv.addEventListener("change", function () { loc.className = pickEv.value === "__other" ? "" : "hide"; if (pickEv.value !== "__other") loc.value = pickEv.value; else { loc.value = ""; loc.focus(); } });
+  api("GET", "events").then(function (d) {
+    var t = chiDate(Date.now());
+    var soon = d.events.filter(function (e) { return e.name && e.date && e.date >= t; }).sort(function (a, b) { return a.date.localeCompare(b.date); });
+    clear(pickEv);
+    pickEv.appendChild(h("option", { value: "", text: soon.length ? "Choose an event..." : "No upcoming events listed" }));
+    soon.forEach(function (e) { pickEv.appendChild(h("option", { value: e.name, text: e.name + " - " + fmtDay(e.date) + (e.date === t ? " (today)" : "") })); });
+    pickEv.appendChild(h("option", { value: "__other", text: "Somewhere else (type it)" }));
+    var today = soon.filter(function (e) { return e.date === t; })[0];
+    if (today) { pickEv.value = today.name; loc.value = today.name; loc.className = "hide"; }
+    else if (!soon.length) { pickEv.value = "__other"; }
+  }).catch(function () { clear(pickEv); pickEv.appendChild(h("option", { value: "__other", text: "Somewhere else (type it)" })); pickEv.value = "__other"; });
   n.appendChild(h("div", { "class": "card" }, [
     h("h2", { text: "Sell at an event" }),
     h("p", { "class": "muted", text: "This turns the screen into a customer-facing store. Customers tap jars, review their bag, and pay by scanning a QR code with their phone, entering a card on the screen, or paying cash (confirmed with your PIN). Stripe emails card receipts, cash receipts are emailed from the shop, stock goes down automatically, and each sale appears in Orders as In person." }),
     h("p", { "class": "muted", text: "Choose a 4-digit staff PIN. Only the PIN gets you back to the admin screens. On an iPad, also turn on Guided Access (Settings, Accessibility) so customers cannot leave the page." }),
+    h("label", null, ["Where are you selling today?", pickEv]),
+    h("p", { "class": "muted", text: "Events listed on the Events tab show up here, and today's event is picked for you. The place is saved with each sale for the cash ledger and reports." }),
+    loc,
+    h("p"),
     h("label", null, ["Staff PIN", pin]),
     h("p"),
     h("label", null, ["Sales tax for cash sales, % (optional)", tax]),
@@ -496,7 +696,7 @@ function viewSale(n) {
     h("p"),
     h("button", { "class": "btn primary", text: "Start selling", onclick: function () {
       if (!/^\d{4}$/.test(pin.value)) { msg.className = "msg err"; msg.textContent = "Enter exactly 4 digits."; return; }
-      ssSet(SALE_KEY, { pin: pin.value, taxPct: Math.min(15, Math.max(0, parseFloat(tax.value) || 0)) }); ssSet(CART_KEY, []); ssSet(PAY_KEY, null); renderSale();
+      ssSet(SALE_KEY, { pin: pin.value, location: loc.value.trim().slice(0, 80), taxPct: Math.min(15, Math.max(0, parseFloat(tax.value) || 0)) }); ssSet(CART_KEY, []); ssSet(PAY_KEY, null); renderSale();
     } }), msg]));
 }
 
@@ -575,7 +775,7 @@ function renderSale() {
     }
     function pay() {
       payBtn.disabled = true; msg.className = "msg"; msg.textContent = "Getting your payment ready...";
-      api("POST", "pos-checkout", { items: cart }).then(function (r) { ssSet(PAY_KEY, r.id); showPay(r, total()); bg.remove(); })
+      api("POST", "pos-checkout", { items: cart, location: st.location || "" }).then(function (r) { ssSet(PAY_KEY, r.id); showPay(r, total()); bg.remove(); })
         .catch(function (er) { payBtn.disabled = false; msg.className = "msg err"; msg.textContent = er.message; loadProducts(); });
     }
     bg = overlay([h("h2", { text: "Your bag" }), box, h("p", { "class": "muted", text: "Card payments: tax, if any, and your receipt are handled on the secure payment page." }), payBtn, cashBtn, msg,
@@ -586,12 +786,13 @@ function renderSale() {
   function showCash() {
     var rate = Number(st.taxPct) || 0, sub = total(), tax = Math.round(sub * rate / 100), key = "k" + Math.random().toString(36).slice(2) + Date.now().toString(36);
     var email = h("input", { type: "email", placeholder: "you@example.com", autocomplete: "email", inputmode: "email", "aria-label": "Email for your receipt" });
+    var cname = h("input", { type: "text", maxlength: "100", placeholder: "Name (optional)", autocomplete: "name", "aria-label": "Name (optional)" });
     var pin = h("input", { "class": "pin", type: "password", inputmode: "numeric", maxlength: "4", autocomplete: "off", placeholder: "Staff PIN", "aria-label": "Staff PIN" });
     var msg = h("p", { "class": "msg err", role: "status" }), cbg;
     var done = h("button", { "class": "big", style: "width:100%", text: "Cash received", onclick: function () {
       if (pin.value !== st.pin) { msg.textContent = "Staff PIN needed to confirm the cash."; pin.value = ""; return; }
       done.disabled = true; msg.className = "msg"; msg.textContent = "Recording the sale...";
-      api("POST", "pos-cash", { items: cart, email: email.value, taxPct: rate, key: key }).then(function (r) {
+      api("POST", "pos-cash", { items: cart, email: email.value, name: cname.value, taxPct: rate, key: key, location: st.location || "" }).then(function (r) {
         cbg.remove(); cart.length = 0; save(); drawBar();
         var t = h("div", { "class": "thanks" }, [h("div", null, [h("h1", { text: "Thank you!" }), h("p", { text: r.emailed ? "A receipt is on its way to your email." : "Enjoy your jars!" })])]);
         root.appendChild(t); setTimeout(function () { t.remove(); }, 5000); loadProducts();
@@ -603,6 +804,8 @@ function renderSale() {
       h("div", { style: "font-size:1.05rem;margin:8px 0" }, rows),
       h("div", { style: "display:flex;justify-content:space-between;font:700 1.6rem 'Playfair Display',serif;color:var(--forest);padding:8px 0 14px;border-top:1px solid var(--linen)" }, [h("span", { text: "Total" }), h("span", { text: money(sub + tax) })]),
       h("p", { style: "margin:0 0 6px;font-weight:600", text: "Please hand your cash to our team." }),
+      h("label", null, ["Name (optional)", cname]),
+      h("p"),
       h("label", null, ["Email for a receipt (optional)", email]),
       h("p", { "class": "muted", text: "Team member: enter the staff PIN once the cash is received." }),
       pin, msg, h("p"), done, h("p"),
@@ -670,10 +873,12 @@ function viewEvents(n) {
     clear(n);
     var events = d.events;
     var list = h("div"), msg = h("p", { "class": "msg", role: "status" });
+    var ECFG = { get: { date: function (e) { return e.date || null; }, name: function (e) { return (e.name || "").toLowerCase(); } }, dateOf: function (e) { return e.date; } };
+    var etools = listTools({ sorts: [["date", "Date"], ["name", "Name"]], dir: "asc", dateOf: true }, function () { draw(); });
     function draw() {
       clear(list);
-      events.sort(function (a, b) { return (a.date || "9999").localeCompare(b.date || "9999"); });
-      events.forEach(function (e, i) {
+      applyTools(events.slice(), etools.state, ECFG).forEach(function (e) {
+        var i = events.indexOf(e);
         var f = function (k, type, label) { var inp = h("input", { type: type, value: e[k] || "" }); inp.addEventListener("input", function () { e[k] = inp.value; }); return h("label", null, [label, inp]); };
         var show = h("input", { type: "checkbox", checked: e.show !== false }); show.addEventListener("change", function () { e.show = show.checked; });
         list.appendChild(h("div", { "class": "card" }, [h("div", { "class": "row" }, [f("name", "text", "Event name"), f("date", "date", "Event date"), f("location", "text", "Place"), f("orderBy", "date", "Order by (last day)")]),
@@ -683,6 +888,7 @@ function viewEvents(n) {
       if (!events.length) list.appendChild(h("p", { "class": "muted", text: "No events yet. Click Add event." }));
     }
     n.appendChild(h("p", { "class": "muted", text: "Events appear as a pickup choice in the cart until the order-by date passes (or the event date if no order-by date is set)." }));
+    n.appendChild(etools.el);
     n.appendChild(list);
     n.appendChild(h("div", { "class": "row" }, [
       h("button", { "class": "btn", text: "+ Add event", onclick: function () { events.push({ name: "", date: "", location: "", orderBy: "", show: true }); draw(); } }),

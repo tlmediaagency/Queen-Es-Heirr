@@ -218,10 +218,12 @@ async function payRedirect(env, id) {
 }
 
 // Cash sale at an event: same stock/price rules as card sales, recorded in KV, optional emailed receipt.
-async function posCash(env, items, email, taxPct, key) {
+async function posCash(env, items, email, taxPct, key, name, location) {
   if (!env.ADMIN_KV) throw new Error("Storage is not set up");
   if (!Array.isArray(items) || items.length === 0 || items.length > 20) throw new Error("The bag is empty");
   email = String(email || "").trim().slice(0, 200);
+  name = String(name || "").trim().slice(0, 100);
+  location = String(location || "").trim().slice(0, 120);
   if (email && !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) throw new Error("That email address does not look right");
   const rate = Math.min(Math.max(parseFloat(taxPct) || 0, 0), 15);
   key = /^[A-Za-z0-9_-]{8,64}$/.test(key || "") ? key : "";
@@ -242,7 +244,7 @@ async function posCash(env, items, email, taxPct, key) {
     const total = (wanted.get(k) || 0) + qty;
     wanted.set(k, total);
     if (typeof size.stock === "number" && total > size.stock) throw new Error(`Only ${size.stock} left of ${product.name} (${size.label})`);
-    lines.push({ name: product.name, size: size.label, qty, cents: size.cents, priceId: size.priceId });
+    lines.push({ name: product.name, size: size.label, qty, cents: size.cents, priceId: size.priceId, id: product.id });
     subtotal += size.cents * qty;
   }
   const tax = Math.round((subtotal * rate) / 100);
@@ -257,7 +259,7 @@ async function posCash(env, items, email, taxPct, key) {
   }
   const idb = new Uint8Array(6); crypto.getRandomValues(idb);
   const id = "cash_" + Array.from(idb).map((x) => x.toString(16).padStart(2, "0")).join("");
-  const rec = { id, key, ts: Date.now(), email, subtotal, tax, total, rate, items: lines.map((l) => ({ name: l.name, size: l.size, qty: l.qty, cents: l.cents })) };
+  const rec = { id, key, ts: Date.now(), name, location, email, subtotal, tax, total, rate, items: lines.map((l) => ({ name: l.name, size: l.size, qty: l.qty, cents: l.cents, priceId: l.priceId })) };
   sales.push(rec);
   await env.ADMIN_KV.put("cashsales", JSON.stringify(sales.slice(-1000)));
   let emailed = false;
@@ -271,7 +273,7 @@ async function posCash(env, items, email, taxPct, key) {
 }
 
 // In-person event sale: same Stripe-only pricing and stock rules as the website, no shipping, returns to /admin/thanks.
-async function posCheckout(env, origin, items) {
+async function posCheckout(env, origin, items, location) {
   if (!Array.isArray(items) || items.length === 0 || items.length > MAX_LINES) throw new Error("The bag is empty");
   const catalog = await loadCatalog(env);
   const params = new URLSearchParams();
@@ -298,7 +300,7 @@ async function posCheckout(env, origin, items) {
   // Card only (Apple Pay and Google Pay still appear): no "save my info" Link prompt, nothing is stored for the customer.
   params.set("payment_method_types[0]", "card");
   params.set("metadata[fulfillment]", "inperson");
-  params.set("metadata[event]", "In-person sale");
+  params.set("metadata[event]", String(location || "").trim().slice(0, 120) || "In-person sale");
   if (env.TAX_ENABLED === "true") {
     params.set("automatic_tax[enabled]", "true");
     params.set("billing_address_collection", "required");

@@ -1,7 +1,7 @@
 // Client admin API + app. Same-origin only (served by this Worker). Login: emailed 6-digit code.
 // Needs: KV binding ADMIN_KV; secrets SESSION_SECRET, MAIL_SECRET; var ADMIN_EMAILS; var MAIL_URL (Apps Script web app URL).
 import UI from "./admin-ui.js";
-import { adminClasses, cleanClasses, adminBookings } from "./classes.js";
+import { adminClasses, cleanClasses, adminBookings, readClasses, readBookings } from "./classes.js";
 import { ICON_192, ICON_512 } from "./admin-icons.js";
 
 const enc = new TextEncoder();
@@ -281,7 +281,7 @@ export async function handleAdmin(request, env, url, d) {
     }
     if (route === "pos-products" && request.method === "GET") return j({ products: await loadCatalog(env) });
     if (route === "pos-checkout" && request.method === "POST") {
-      try { return j(await posCheckout(env, url.origin, body.items)); } catch (e) { return j({ error: String(e.message || "Could not start the payment").slice(0, 160) }, 400); }
+      try { return j(await posCheckout(env, url.origin, body.items, body.location)); } catch (e) { return j({ error: String(e.message || "Could not start the payment").slice(0, 160) }, 400); }
     }
     if (route === "pos-cancel" && request.method === "POST") {
       if (!/^cs_[A-Za-z0-9_]+$/.test(body.id || "")) return j({ error: "Bad request" }, 400);
@@ -291,7 +291,7 @@ export async function handleAdmin(request, env, url, d) {
       return j({ ok: true });
     }
     if (route === "pos-cash" && request.method === "POST") {
-      try { return j(await posCash(env, body.items, body.email, body.taxPct, body.key)); } catch (e) { return j({ error: String(e.message || "Could not record the sale").slice(0, 160) }, 400); }
+      try { return j(await posCash(env, body.items, body.email, body.taxPct, body.key, body.name, body.location)); } catch (e) { return j({ error: String(e.message || "Could not record the sale").slice(0, 160) }, 400); }
     }
     if (route === "pos-session" && request.method === "GET") {
       const sid = url.searchParams.get("id") || "";
@@ -299,6 +299,65 @@ export async function handleAdmin(request, env, url, d) {
       const s = await stripeGet(env, `/checkout/sessions/${sid}`);
       if (!s.metadata || s.metadata.fulfillment !== "inperson") return j({ error: "Not found" }, 404);
       return j({ paid: s.payment_status === "paid", status: s.status });
+    }
+    if (route === "cash-ledger" && request.method === "GET") {
+      let cash = [];
+      try { cash = JSON.parse((await env.ADMIN_KV.get("cashsales")) || "[]"); } catch { cash = []; }
+      return j({ sales: cash.slice().reverse().map((c) => ({ id: c.id, ts: c.ts, name: c.name || "", location: c.location || "", email: c.email || "", subtotal: c.subtotal, tax: c.tax, total: c.total, rate: c.rate || 0, voided: !!c.voided,
+        items: c.items.map((x) => ({ name: x.name, size: x.size, qty: x.qty, cents: x.cents })) })) });
+    }
+    if (route === "cash-void" && request.method === "POST") {
+      if (!/^cash_[a-f0-9]+$/.test(body.id || "")) return j({ error: "Bad request" }, 400);
+      let cash = [];
+      try { cash = JSON.parse((await env.ADMIN_KV.get("cashsales")) || "[]"); } catch { cash = []; }
+      const c = cash.find((x) => x.id === body.id);
+      if (!c) return j({ error: "Not found" }, 404);
+      if (c.voided) return j({ error: "That sale is already voided" }, 409);
+      for (const it of c.items) {
+        if (!it.priceId) continue;
+        const pr = await stripeGet(env, `/prices/${it.priceId}`);
+        const stock = stockOf(pr);
+        if (stock === null) continue;
+        await stripePost(env, `/prices/${it.priceId}`, new URLSearchParams({ "metadata[stock]": String(stock + it.qty) }));
+      }
+      c.voided = true; c.voidedAt = Date.now();
+      await env.ADMIN_KV.put("cashsales", JSON.stringify(cash));
+      return j({ ok: true });
+    }
+    if (route === "report" && request.method === "GET") {
+      const from = url.searchParams.get("from") || "", to = url.searchParams.get("to") || "";
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(from) || !/^\d{4}-\d{2}-\d{2}$/.test(to) || from > to) return j({ error: "Choose a start and end date" }, 400);
+      const fromTs = Math.floor(Date.parse(from + "T00:00:00Z") / 1000) - 86400, toTs = Math.floor(Date.parse(to + "T00:00:00Z") / 1000) + 2 * 86400;
+      const chi = (ms) => new Intl.DateTimeFormat("en-CA", { timeZone: "America/Chicago" }).format(new Date(ms));
+      const rows = [];
+      const stRaw = await env.ADMIN_KV.get("orderstatus"); const st = stRaw ? JSON.parse(stRaw) : {};
+      let after = "", truncated = false;
+      for (let page = 0; page < 5; page++) {
+        const res = await stripeGet(env, `/checkout/sessions?limit=100&created[gte]=${fromTs}&created[lte]=${toTs}&expand[]=data.line_items${after ? "&starting_after=" + after : ""}`);
+        for (const s of res.data) {
+          if (s.payment_status !== "paid" || (s.metadata && s.metadata.kind === "class")) continue;
+          const ful = (s.metadata && s.metadata.fulfillment) || "ship";
+          const ms = s.created * 1000, cd = s.customer_details || {};
+          rows.push({ ts: ms, id: s.id, channel: ful === "inperson" ? "In person - Card" : ful === "event" ? "Online - Event pickup" : ful === "pickup" ? "Online - Pickup" : "Online - Ship",
+            customer: cd.name || "", email: cd.email || "", location: (s.metadata && s.metadata.event) || "", status: st[s.id] || (ful === "inperson" ? "fulfilled" : "new"),
+            items: ((s.line_items && s.line_items.data) || []).map((l) => `${l.quantity} x ${l.description}`).join("; "),
+            subtotal: s.amount_subtotal || 0, shipping: (s.total_details && s.total_details.amount_shipping) || 0, tax: (s.total_details && s.total_details.amount_tax) || 0, total: s.amount_total || 0 });
+        }
+        if (!res.has_more) break;
+        after = res.data[res.data.length - 1].id;
+        if (page === 4) truncated = true;
+      }
+      let cash = [];
+      try { cash = JSON.parse((await env.ADMIN_KV.get("cashsales")) || "[]"); } catch { cash = []; }
+      for (const c of cash) rows.push({ ts: c.ts, id: c.id, channel: "In person - Cash", customer: c.name || "", email: c.email || "", location: c.location || "", status: c.voided ? "voided" : "fulfilled",
+        items: c.items.map((x) => `${x.qty} x ${x.name} (${x.size})`).join("; "), subtotal: c.subtotal, shipping: 0, tax: c.tax, total: c.total });
+      const classes = await readClasses(env), bookings = await readBookings(env);
+      const byId = Object.fromEntries(classes.map((c) => [c.id, c]));
+      for (const b of bookings) { const c = byId[b.classId];
+        rows.push({ ts: b.ts, id: b.sid, channel: "Class booking", customer: b.name, email: b.email, location: c ? `${c.title} (${c.date})` : "", status: "paid",
+          items: `${b.seats} seat(s)`, subtotal: b.cents, shipping: 0, tax: 0, total: b.cents }); }
+      const out = rows.map((r) => ({ ...r, date: chi(r.ts) })).filter((r) => r.date >= from && r.date <= to).sort((x, y) => y.ts - x.ts);
+      return j({ rows: out, truncated });
     }
     if (route === "orders" && request.method === "GET") {
       const [res, raw] = await Promise.all([
@@ -320,7 +379,8 @@ export async function handleAdmin(request, env, url, d) {
       let cash = [];
       try { cash = JSON.parse((await env.ADMIN_KV.get("cashsales")) || "[]"); } catch { cash = []; }
       for (const c of cash.slice(-80)) {
-        orders.push({ id: c.id, created: c.ts, total: c.total, status: st[c.id] || "fulfilled", name: "Cash sale", email: c.email || "", phone: "", fulfillment: "inperson", cash: true, event: "", address: "",
+        if (c.voided) continue;
+        orders.push({ id: c.id, created: c.ts, total: c.total, status: st[c.id] || "fulfilled", name: c.name || "Cash sale", email: c.email || "", phone: "", fulfillment: "inperson", cash: true, event: c.location || "", address: "",
           items: c.items.map((x) => ({ name: `${x.name} (${x.size})`, qty: x.qty })) });
       }
       orders.sort((x, y) => y.created - x.created);

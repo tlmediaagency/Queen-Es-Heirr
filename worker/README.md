@@ -34,3 +34,10 @@ QR pay-on-phone: the sales screen shows a QR code for `/pay/<session id>` (publi
 Sessions are card-only (Apple Pay / Google Pay included) so Stripe Link's "save my info" prompt does not appear. `pos-cancel` expires an unpaid session.
 
 Cash sales: `pos-cash` records the sale in KV `cashsales`, lowers stock, and emails a receipt through the Apps Script action `cash_receipt` if an email is given. Cash tax rate is set when starting the sale screen (default 0). Shown in Orders as "In person - Cash".
+
+## Cash ledger, sorting and reports
+- **Event Sale start screen** offers the upcoming events from the Events tab (today's is preselected) or a typed place. The place is stored with every card and cash sale.
+- **Cash Ledger tab** lists cash sales (date, place, customer, items, tax, total) with sort, place and date filters, totals, CSV download, and a Void button that puts stock back.
+- **Sort/filter bars** on Orders, Products, Requests, Classes, Bookings and Events.
+- **Reports tab** summarizes sales by type and place for a date range and downloads CSVs (all sales, cash, class bookings, inventory). Refunds are not subtracted.
+- Cash is only available inside the Event Sale screen, never on the website.
