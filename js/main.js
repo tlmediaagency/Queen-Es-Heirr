@@ -170,6 +170,27 @@
 
   // Shop grid
   var shop = document.querySelector("[data-shop]");
+  if (shop) {
+    var viewKey = "qe-shop-view", view = "grid";
+    try { view = localStorage.getItem(viewKey) === "list" ? "list" : "grid"; } catch (e) {}
+    shop.setAttribute("data-view", view);
+    var tog = el("div", { "class": "view-toggle", role: "group", "aria-label": "Product layout" });
+    var ICONS = {
+      grid: "M3 3h8v8H3zm10 0h8v8h-8zM3 13h8v8H3zm10 0h8v8h-8z",
+      list: "M3 4h18v4H3zm0 6h18v4H3zm0 6h18v4H3z"
+    };
+    ["grid", "list"].forEach(function (v) {
+      var b = el("button", { type: "button", "data-view-btn": v, "aria-pressed": String(v === view) });
+      b.innerHTML = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="' + ICONS[v] + '"/></svg>' + (v === "grid" ? "Grid" : "List");
+      b.addEventListener("click", function () {
+        shop.setAttribute("data-view", v);
+        try { localStorage.setItem(viewKey, v); } catch (e) {}
+        tog.querySelectorAll("button").forEach(function (x) { x.setAttribute("aria-pressed", String(x === b)); });
+      });
+      tog.appendChild(b);
+    });
+    shop.parentNode.insertBefore(tog, shop);
+  }
   function renderShop() {
     if (!shop) return;
     shop.textContent = "";

@@ -27,7 +27,7 @@ a { color: inherit; }
 h1, h2, h3, h4 { font-family: var(--serif); color: var(--forest); text-wrap: balance; margin: 0 0 0.4em; }
 p { text-wrap: pretty; }
 button, [role="button"] { cursor: pointer; }
-.wrap { width: min(1120px, calc(100% - 2rem)); margin: 0 auto; }
+.wrap { width: min(1480px, calc(100% - 2.5rem)); margin: 0 auto; }
 .site-header {
   position: sticky; top: 0; z-index: 40;
   background: rgba(252, 250, 247, 0.95);
@@ -152,3 +152,25 @@ form.stack { display: grid; gap: 1rem; background: #fff; border: 1px solid var(-
 .fulfill label { display: flex; gap: .5rem; align-items: center; font-size: .92rem; }
 .fulfill input { width: auto; }
 .fulfill [hidden] { display: none; }
+
+/* Shop grid: 2 per row on phones up to 5 on wide screens, plus list view */
+.view-toggle { display: flex; justify-content: flex-end; gap: 0.4rem; margin-top: 1.5rem; }
+.view-toggle button { display: inline-flex; align-items: center; gap: 0.4rem; padding: 0.5rem 0.9rem; border: 1px solid var(--linen); background: #fff; color: var(--ink); border-radius: 99px; font: inherit; font-size: 0.8rem; font-weight: 600; }
+.view-toggle button[aria-pressed="true"] { background: var(--forest); color: #fff; border-color: var(--forest); }
+.view-toggle svg { width: 16px; height: 16px; fill: currentColor; }
+[data-shop] { display: grid; gap: 0.9rem; grid-template-columns: repeat(2, minmax(0, 1fr)); }
+@media (min-width: 700px)  { [data-shop] { gap: 1.25rem; grid-template-columns: repeat(3, minmax(0, 1fr)); } }
+@media (min-width: 1050px) { [data-shop] { grid-template-columns: repeat(4, minmax(0, 1fr)); } }
+@media (min-width: 1500px) { [data-shop] { grid-template-columns: repeat(5, minmax(0, 1fr)); } }
+[data-shop] .card-body { padding: 0.9rem; }
+@media (min-width: 700px) { [data-shop] .card-body { padding: 1.25rem; } }
+[data-shop] .card h3 { font-size: 1.05rem; }
+[data-shop] .card-body p:not(.kicker) { font-size: 0.88rem; display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
+[data-shop] .btn { width: 100%; justify-content: center; }
+[data-shop][data-view="list"] { grid-template-columns: 1fr; }
+[data-shop][data-view="list"] .card { display: grid; grid-template-columns: 110px 1fr; }
+[data-shop][data-view="list"] .card img { height: 100%; aspect-ratio: auto; min-height: 150px; }
+[data-shop][data-view="list"] .card-body p:not(.kicker) { -webkit-line-clamp: 2; }
+@media (min-width: 700px) {
+  [data-shop][data-view="list"] .card { grid-template-columns: 200px 1fr; }
+}
