@@ -29,3 +29,6 @@ Public `GET /events` lists upcoming pickup events for the cart.
 ## Event sale mode
 Admin app > Event Sale: customer-facing selling screen (PIN to exit). Admin API: `pos-products`, `pos-checkout`, `pos-session`. Payments are Stripe Checkout sessions with `metadata.fulfillment=inperson`;
 Stripe returns to the public page `/admin/thanks`. The existing webhook lowers stock. Orders from it show as "In person" and default to Fulfilled.
+
+QR pay-on-phone: the sales screen shows a QR code for `/pay/<session id>` (public short link that redirects to the Stripe payment page while the session is open).
+Sessions are card-only (Apple Pay / Google Pay included) so Stripe Link's "save my info" prompt does not appear. `pos-cancel` expires an unpaid session.

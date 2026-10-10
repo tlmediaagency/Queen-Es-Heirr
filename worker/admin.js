@@ -283,6 +283,13 @@ export async function handleAdmin(request, env, url, d) {
     if (route === "pos-checkout" && request.method === "POST") {
       try { return j(await posCheckout(env, url.origin, body.items)); } catch (e) { return j({ error: String(e.message || "Could not start the payment").slice(0, 160) }, 400); }
     }
+    if (route === "pos-cancel" && request.method === "POST") {
+      if (!/^cs_[A-Za-z0-9_]+$/.test(body.id || "")) return j({ error: "Bad request" }, 400);
+      const s = await stripeGet(env, `/checkout/sessions/${body.id}`);
+      if (!s.metadata || s.metadata.fulfillment !== "inperson") return j({ error: "Not found" }, 404);
+      if (s.status === "open") await stripePost(env, `/checkout/sessions/${body.id}/expire`, new URLSearchParams());
+      return j({ ok: true });
+    }
     if (route === "pos-session" && request.method === "GET") {
       const sid = url.searchParams.get("id") || "";
       if (!/^cs_[A-Za-z0-9_]+$/.test(sid)) return j({ error: "Bad request" }, 400);

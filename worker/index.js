@@ -206,6 +206,17 @@ async function handleCheckout(request, env, c) {
   return json({ url: data.url }, 200, c.headers);
 }
 
+// Short link for the QR code on the event sale screen: /pay/<session id> sends the customer's phone to that Stripe payment page.
+async function payRedirect(env, id) {
+  const page = (msg) => new Response(`<!doctype html><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Queen E's Heirr</title><body style="font:18px Georgia,serif;text-align:center;padding:48px 24px;background:#fcfaf7;color:#1b3b22"><h1>Queen E's Heirr</h1><p>${msg}</p>`, { status: 410, headers: { "Content-Type": "text/html; charset=utf-8", "Cache-Control": "no-store" } });
+  try {
+    const s = await stripeGet(env, `/checkout/sessions/${id}`);
+    if (!s.metadata || s.metadata.fulfillment !== "inperson") return page("This payment link is not valid.");
+    if (s.status !== "open" || !s.url) return page(s.payment_status === "paid" ? "This order is already paid. Thank you!" : "This payment link has expired. Please ask for a new one.");
+    return new Response(null, { status: 302, headers: { Location: s.url, "Cache-Control": "no-store", "Referrer-Policy": "no-referrer" } });
+  } catch { return page("This payment link is not valid."); }
+}
+
 // In-person event sale: same Stripe-only pricing and stock rules as the website, no shipping, returns to /admin/thanks.
 async function posCheckout(env, origin, items) {
   if (!Array.isArray(items) || items.length === 0 || items.length > MAX_LINES) throw new Error("The bag is empty");
@@ -231,6 +242,8 @@ async function posCheckout(env, origin, items) {
   params.set("success_url", `${origin}/admin/thanks`);
   params.set("cancel_url", `${origin}/admin/thanks?cancelled=1`);
   params.set("expires_at", String(Math.floor(Date.now() / 1000) + 31 * 60));
+  // Card only (Apple Pay and Google Pay still appear): no "save my info" Link prompt, nothing is stored for the customer.
+  params.set("payment_method_types[0]", "card");
   params.set("metadata[fulfillment]", "inperson");
   params.set("metadata[event]", "In-person sale");
   if (env.TAX_ENABLED === "true") {
@@ -238,7 +251,7 @@ async function posCheckout(env, origin, items) {
     params.set("billing_address_collection", "required");
   }
   const s = await stripePost(env, "/checkout/sessions", params);
-  return { url: s.url, id: s.id };
+  return { url: s.url, id: s.id, pay: `${origin}/pay/${s.id}` };
 }
 
 const CLASSES = {
@@ -417,6 +430,8 @@ export default {
     }
     const im = url.pathname.match(/^\/img\/([a-f0-9]+)\.jpg$/);
     if (im && request.method === "GET") return serveImage(env, im[1]);
+    const pm = url.pathname.match(/^\/pay\/(cs_[A-Za-z0-9_]+)$/);
+    if (pm && request.method === "GET") return payRedirect(env, pm[1]);
     if (url.pathname === "/events" && request.method === "GET") {
       return json(upcoming(await readEvents(env)), 200, { ...c.headers, "Cache-Control": "public, max-age=60" });
     }
