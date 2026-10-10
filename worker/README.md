@@ -22,5 +22,5 @@ Public `GET /events` lists upcoming pickup events for the cart.
 - Dates live in KV key `classes`; paid bookings in `bookings`. Public: `GET /classes`, `POST /class-checkout`. Webhook branch: sessions with `metadata.kind=class`.
 - Optional Worker variable `CLASS_TAX_ENABLED=true` turns on Stripe automatic tax for class checkouts only (confirm with an accountant first).
 - Apps Script action `booking_notice` (guarded by MAIL_SECRET) emails the customer and the shop and adds the customer as a guest on a Google Calendar event.
-  After pasting the new Code.gs: Run `authorizeCalendar_` once, then Deploy > Manage deployments > edit > New version.
+  After pasting the new Code.gs: Run `authorizeCalendar` once, then Deploy > Manage deployments > edit > New version.
 - `js/config.js` `BOOKING_URL`: paste the Google Calendar appointment page link (https://calendar.google.com/...) to show it on the Classes page (loads only after cookie consent).

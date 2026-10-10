@@ -9,8 +9,8 @@ window.SITE_CONFIG = {
   QUOTE_URL: "https://queenes-checkout.summer-paper-e090.workers.dev/class-request",
   // Google Apps Script web app URL (see apps-script/README.md). Empty = visitor's email app (mailto).
   FORM_ENDPOINT: "https://script.google.com/macros/s/AKfycbwZ9vHFB-Z0HXhdsD-r_uqfkpQOOPgZVday3-SOAh8ZoJTM9DDiLTrz-VBL5K6Q-0H6/exec",
-  // Google Calendar appointment page for private/custom class times (leave empty to hide). Must start with https://calendar.google.com/
-  BOOKING_URL: "",
+  // Google Calendar appointment page for private/custom class times (leave empty to hide). Shown as a button on the Classes page.
+  BOOKING_URL: "https://calendar.app.google/tShTfuxGfS7YacTL9",
   CONTACT_EMAIL: "info@queenesheirr.com",
   SHIPPING_CENTS: 1000
 };

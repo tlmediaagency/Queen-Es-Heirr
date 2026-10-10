@@ -170,7 +170,7 @@
 
 
   // Cookie notice. Only strictly necessary storage is used by default (shopping bag, layout choice).
-  // Optional third-party content (e.g. the Google booking calendar) loads only after "Accept all".
+  // Optional third-party content (e.g. analytics, if added later) must load only after "Accept all" (QE_hasConsent()).
   var CONSENT_KEY = "qe-consent";
   function getConsent() { try { return localStorage.getItem(CONSENT_KEY); } catch (e) { return null; } }
   function setConsent(v) {
@@ -184,7 +184,7 @@
     var bar = el("div", { "class": "cookie-bar", role: "dialog", "aria-label": "Cookie notice" });
     var t = el("p");
     t.appendChild(el("strong", null, "Jam goes great with cookies. \uD83C\uDF6A "));
-    t.appendChild(document.createTextNode("Ours are the necessary, perfectly safe kind that keep your bag and settings in place. Anything extra, like our booking calendar, stays off the table unless you say yes. "));
+    t.appendChild(document.createTextNode("Ours are the necessary, perfectly safe kind that keep your bag and settings in place. Anything extra from other sites stays off the table unless you say yes. "));
     var a = el("a", { href: "/privacy-policy/" }, "Privacy policy"); t.appendChild(a);
     var row = el("div", { "class": "cookie-actions" });
     var no = el("button", { type: "button", "class": "btn btn-ghost" }, "Just the basics");
@@ -307,24 +307,10 @@
       classList.appendChild(el("p", { "class": "muted" }, "Class dates could not be loaded. Please use the request form below."));
     });
   }
-  var bookBox = document.querySelector("[data-booking-embed]");
-  if (bookBox && CFG.BOOKING_URL && /^https:\/\/calendar\.google\.com\//.test(CFG.BOOKING_URL)) {
-    bookBox.hidden = false;
-    var holder = bookBox.querySelector("[data-booking-frame]");
-    var drawEmbed = function () {
-      holder.textContent = "";
-      if (window.QE_hasConsent()) {
-        var f = el("iframe", { src: CFG.BOOKING_URL, title: "Book a private class time", loading: "lazy", "class": "booking-frame" });
-        holder.appendChild(f);
-      } else {
-        holder.appendChild(el("p", { "class": "muted" }, "The booking calendar is provided by Google, which may set its own cookies. Choose Accept to load it."));
-        var go = el("button", { type: "button", "class": "btn" }, "Accept and show calendar");
-        go.addEventListener("click", function () { setConsent("all"); });
-        holder.appendChild(go);
-      }
-    };
-    document.addEventListener("qe-consent", drawEmbed);
-    drawEmbed();
+  var bookWrap = document.querySelector("[data-booking-link-wrap]");
+  if (bookWrap && /^https:\/\/calendar\.(app\.google|google\.com)\//.test(CFG.BOOKING_URL || "")) {
+    bookWrap.querySelector("a").setAttribute("href", CFG.BOOKING_URL);
+    bookWrap.hidden = false;
   }
 
   // Live catalog from Stripe (via the Worker). Falls back to js/products.js if unavailable.

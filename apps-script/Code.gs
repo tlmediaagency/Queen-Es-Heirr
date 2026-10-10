@@ -342,6 +342,6 @@ function bookingNotice_(b, cls) {
 }
 
 // Run this ONCE from the Apps Script editor (select it in the toolbar, click Run) to grant Calendar access.
-function authorizeCalendar_() {
+function authorizeCalendar() {
   CalendarApp.getDefaultCalendar().getName();
 }
