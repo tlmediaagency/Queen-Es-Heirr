@@ -204,3 +204,7 @@ form.stack { display: grid; gap: 1rem; background: #fff; border: 1px solid var(-
 h2[id], .section h2 { scroll-margin-top: 5rem; }
 html { scroll-behavior: smooth; }
 @media (prefers-reduced-motion: reduce) { html { scroll-behavior: auto; } }
+
+.class-hero { display: grid; gap: 1.5rem; align-items: center; }
+.class-hero img { border-radius: 24px; width: 100%; height: auto; max-height: 460px; object-fit: cover; }
+@media (min-width: 800px) { .class-hero { grid-template-columns: 1.1fr 0.9fr; gap: 3rem; } }
