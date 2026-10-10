@@ -168,6 +168,39 @@
     if (e.key === "Escape" && panel) panel.classList.remove("is-open");
   });
 
+
+  // Cookie notice. Only strictly necessary storage is used by default (shopping bag, layout choice).
+  // Optional third-party content (e.g. the Google booking calendar) loads only after "Accept all".
+  var CONSENT_KEY = "qe-consent";
+  function getConsent() { try { return localStorage.getItem(CONSENT_KEY); } catch (e) { return null; } }
+  function setConsent(v) {
+    try { localStorage.setItem(CONSENT_KEY, v); } catch (e) {}
+    var bar = document.querySelector(".cookie-bar"); if (bar) bar.remove();
+    document.dispatchEvent(new CustomEvent("qe-consent", { detail: v }));
+  }
+  window.QE_hasConsent = function () { return getConsent() === "all"; };
+  function showCookieBar() {
+    if (document.querySelector(".cookie-bar")) return;
+    var bar = el("div", { "class": "cookie-bar", role: "dialog", "aria-label": "Cookie notice" });
+    var t = el("p", null, "We use only the storage needed to keep your bag and settings. Optional content from other sites (like our booking calendar) is loaded only if you accept. ");
+    var a = el("a", { href: "/privacy-policy/" }, "Privacy policy"); t.appendChild(a);
+    var row = el("div", { "class": "cookie-actions" });
+    var no = el("button", { type: "button", "class": "btn btn-ghost" }, "Essential only");
+    var yes = el("button", { type: "button", "class": "btn" }, "Accept all");
+    no.addEventListener("click", function () { setConsent("essential"); });
+    yes.addEventListener("click", function () { setConsent("all"); });
+    row.appendChild(no); row.appendChild(yes); bar.appendChild(t); bar.appendChild(row);
+    document.body.appendChild(bar);
+  }
+  if (getConsent() === null) showCookieBar();
+  var footWrap = document.querySelector(".site-footer .foot > div:nth-child(2) p");
+  if (footWrap) {
+    footWrap.appendChild(document.createElement("br"));
+    var cs = el("a", { href: "#", "data-cookie-settings": "" }, "Cookie settings");
+    cs.addEventListener("click", function (e) { e.preventDefault(); showCookieBar(); });
+    footWrap.appendChild(cs);
+  }
+
   // Shop grid
   var shop = document.querySelector("[data-shop]");
   if (shop) {
