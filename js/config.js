@@ -16,7 +16,7 @@ window.SITE_CONFIG = {
   // Google Business Profile. REVIEW_URL: the "Ask for reviews" share link from the profile (g.page/r/... or search.google.com/local/writereview?placeid=...). Empty hides the floating review button.
   REVIEW_URL: "https://g.page/r/CdoZN7Mb6_BHEBI/review",
   // Public Google Business Profile or Maps link; added to the site's structured data so Google ties the site to the profile.
-  GOOGLE_PROFILE_URL: "",
+  GOOGLE_PROFILE_URL: "https://share.google/pulbd9C7Y2jWPRezy",
   CONTACT_EMAIL: "info@queenesheirr.com",
   SHIPPING_CENTS: 1000
 };
