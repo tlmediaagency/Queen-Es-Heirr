@@ -32,6 +32,20 @@ function doPost(e) {
       if (!want3 || data.secret !== want3) return out_({ ok: false });
       return out_(cashReceipt_(data.sale || {}));
     }
+    // Monthly or on-demand sales report with CSV attachments (called by the Cloudflare Worker).
+    if (data.action === "report_email") {
+      const want4 = PropertiesService.getScriptProperties().getProperty("MAIL_SECRET");
+      if (!want4 || data.secret !== want4) return out_({ ok: false });
+      const to = (Array.isArray(data.to) ? data.to : []).filter(function (x) { return /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(x || ""); }).slice(0, 5);
+      if (!to.length) return out_({ ok: false });
+      const files = (Array.isArray(data.files) ? data.files : []).slice(0, 5).map(function (f) {
+        return Utilities.newBlob(String(f.text || ""), "text/csv", clean_(f.name, 80).replace(/[^A-Za-z0-9._-]/g, "_"));
+      });
+      try {
+        MailApp.sendEmail({ to: to.join(","), subject: clean_(data.subject, 150), body: String(data.text || "").slice(0, 8000), name: "Queen E's Heirr", attachments: files });
+        return out_({ ok: true });
+      } catch (err) { console.log("report email failed: " + err); return out_({ ok: false }); }
+    }
     const fields = data.fields || {};
     if (fields.website) return out_({ ok: true }); // honeypot: bots fill this hidden field
 

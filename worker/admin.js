@@ -111,6 +111,83 @@ const stockVal = (v) => (v === null || v === "" || v === undefined ? null : Numb
 
 function isOurQuote(q) { return !!(q && q.metadata && /^queenesheirr\.com (class|wholesale) request/.test(String(q.metadata.source || ""))); }
 
+// Sales rows for a Central-time date range (Stripe sessions, cash sales, class bookings). Refunds are not subtracted.
+export async function buildReport(env, stripeGet, from, to) {
+  const fromTs = Math.floor(Date.parse(from + "T00:00:00Z") / 1000) - 86400, toTs = Math.floor(Date.parse(to + "T00:00:00Z") / 1000) + 2 * 86400;
+  const chi = (ms) => new Intl.DateTimeFormat("en-CA", { timeZone: "America/Chicago" }).format(new Date(ms));
+  const rows = [];
+  const stRaw = await env.ADMIN_KV.get("orderstatus"); const st = stRaw ? JSON.parse(stRaw) : {};
+  let after = "", truncated = false;
+  for (let page = 0; page < 5; page++) {
+    const res = await stripeGet(env, `/checkout/sessions?limit=100&created[gte]=${fromTs}&created[lte]=${toTs}&expand[]=data.line_items${after ? "&starting_after=" + after : ""}`);
+    for (const s of res.data) {
+      if (s.payment_status !== "paid" || (s.metadata && s.metadata.kind === "class")) continue;
+      const ful = (s.metadata && s.metadata.fulfillment) || "ship";
+      const ms = s.created * 1000, cd = s.customer_details || {};
+      rows.push({ ts: ms, id: s.id, channel: ful === "inperson" ? "In person - Card" : ful === "event" ? "Online - Event pickup" : ful === "pickup" ? "Online - Pickup" : "Online - Ship",
+        customer: cd.name || "", email: cd.email || "", location: (s.metadata && s.metadata.event) || "", status: st[s.id] || (ful === "inperson" ? "fulfilled" : "new"),
+        items: ((s.line_items && s.line_items.data) || []).map((l) => `${l.quantity} x ${l.description}`).join("; "),
+        subtotal: s.amount_subtotal || 0, shipping: (s.total_details && s.total_details.amount_shipping) || 0, tax: (s.total_details && s.total_details.amount_tax) || 0, total: s.amount_total || 0 });
+    }
+    if (!res.has_more) break;
+    after = res.data[res.data.length - 1].id;
+    if (page === 4) truncated = true;
+  }
+  let cash = [];
+  try { cash = JSON.parse((await env.ADMIN_KV.get("cashsales")) || "[]"); } catch { cash = []; }
+  for (const c of cash) rows.push({ ts: c.ts, id: c.id, channel: "In person - Cash", customer: c.name || "", email: c.email || "", location: c.location || "", status: c.voided ? "voided" : "fulfilled",
+    items: c.items.map((x) => `${x.qty} x ${x.name} (${x.size})`).join("; "), subtotal: c.subtotal, shipping: 0, tax: c.tax, total: c.total });
+  const classes = await readClasses(env), bookings = await readBookings(env);
+  const byId = Object.fromEntries(classes.map((c) => [c.id, c]));
+  for (const b of bookings) { const c = byId[b.classId];
+    rows.push({ ts: b.ts, id: b.sid, channel: "Class booking", customer: b.name, email: b.email, location: c ? `${c.title} (${c.date})` : "", status: "paid",
+      items: `${b.seats} seat(s)`, subtotal: b.cents, shipping: 0, tax: 0, total: b.cents }); }
+  const out = rows.map((r) => ({ ...r, date: chi(r.ts) })).filter((r) => r.date >= from && r.date <= to).sort((x, y) => y.ts - x.ts);
+  return { rows: out, truncated };
+}
+
+const csvCell = (v) => { v = v == null ? "" : String(v); if (/^[=+\-@\t\r]/.test(v)) v = "'" + v; return /[",\n\r]/.test(v) ? '"' + v.replace(/"/g, '""') + '"' : v; };
+const csvText = (header, rows) => "\ufeff" + [header, ...rows].map((r) => r.map(csvCell).join(",")).join("\r\n");
+const dol = (c) => ((c || 0) / 100).toFixed(2);
+const tm = (ms) => new Date(ms).toLocaleTimeString("en-US", { timeZone: "America/Chicago", hour: "numeric", minute: "2-digit" });
+
+// Email a report (summary + CSV attachments) to the shop owners through the Apps Script.
+export async function emailReport(env, stripeGet, from, to, label) {
+  if (!env.MAIL_URL || !env.MAIL_SECRET) throw new Error("Email is not set up");
+  const recipients = emails(env);
+  if (!recipients.length) throw new Error("No admin emails are set");
+  const { rows, truncated } = await buildReport(env, stripeGet, from, to);
+  const live = rows.filter((r) => r.status !== "voided");
+  const by = (key) => { const g = {}; for (const r of live) { const k = r[key] || "(none)"; const x = g[k] || (g[k] = { n: 0, total: 0 }); x.n++; x.total += r.total; } return Object.entries(g).sort((a, b) => b[1].total - a[1].total); };
+  const total = live.reduce((t, r) => t + r.total, 0);
+  const lines = [`Sales report for ${label} (${from} to ${to})`, "", `Transactions: ${live.length}`, `Total sales: $${dol(total)}`, "", "By type:", ...by("channel").map(([k, x]) => `  ${k}: ${x.n} sale(s), $${dol(x.total)}`), "", "By location / event:", ...by("location").map(([k, x]) => `  ${k}: ${x.n} sale(s), $${dol(x.total)}`), "", "Refunds are not subtracted. Check Stripe for refunds.", truncated ? "This range was very large, so older orders may be missing." : ""];
+  const sales = csvText(["Date", "Time", "Type", "Location", "Customer", "Email", "Items", "Subtotal", "Shipping", "Tax", "Total", "Status", "Reference"],
+    rows.map((r) => [r.date, tm(r.ts), r.channel, r.location, r.customer, r.email, r.items, dol(r.subtotal), dol(r.shipping), dol(r.tax), dol(r.total), r.status, r.id]));
+  const cash = csvText(["Date", "Time", "Location", "Customer", "Email", "Items", "Subtotal", "Tax", "Total", "Status"],
+    rows.filter((r) => r.channel === "In person - Cash").map((r) => [r.date, tm(r.ts), r.location, r.customer, r.email, r.items, dol(r.subtotal), dol(r.tax), dol(r.total), r.status]));
+  const classes = csvText(["Booked", "Class", "Customer", "Email", "Spots", "Paid"],
+    rows.filter((r) => r.channel === "Class booking").map((r) => [r.date, r.location, r.customer, r.email, r.items, dol(r.total)]));
+  const res = await fetch(env.MAIL_URL, { method: "POST", headers: { "Content-Type": "text/plain" }, body: JSON.stringify({ action: "report_email", secret: env.MAIL_SECRET, to: recipients,
+    subject: `Queen E's Heirr sales report: ${label}`, text: lines.join("\n"), files: [{ name: `sales-${from}_to_${to}.csv`, text: sales }, { name: `cash-sales-${from}_to_${to}.csv`, text: cash }, { name: `class-bookings-${from}_to_${to}.csv`, text: classes }] }) });
+  const out = await res.json().catch(() => null);
+  if (!res.ok || !out || out.ok !== true) throw new Error("The email did not send. Check that the Apps Script has the latest version deployed.");
+  return { sent: recipients.length, rows: live.length };
+}
+
+// Runs on the 1st of each month (Cron Trigger): emails last month's report once.
+export async function monthlyReport(env, stripeGet) {
+  const chi = new Intl.DateTimeFormat("en-CA", { timeZone: "America/Chicago" }).format(new Date());
+  const [y, m] = chi.split("-").map(Number);
+  const pm = m === 1 ? 12 : m - 1, py = m === 1 ? y - 1 : y;
+  const key = `${py}-${String(pm).padStart(2, "0")}`;
+  if (env.ADMIN_KV && (await env.ADMIN_KV.get("lastreport")) === key) return "already sent";
+  const from = `${key}-01`, to = new Date(Date.UTC(py, pm, 0)).toISOString().slice(0, 10);
+  const label = new Date(Date.UTC(py, pm - 1, 1)).toLocaleDateString("en-US", { timeZone: "UTC", month: "long", year: "numeric" });
+  await emailReport(env, stripeGet, from, to, label);
+  if (env.ADMIN_KV) await env.ADMIN_KV.put("lastreport", key);
+  return "sent " + key;
+}
+
 export async function handleAdmin(request, env, url, d) {
   const { stripeGet, stripePost, stockOf, loadCatalog, posCheckout, posCash, sendCashReceipt } = d;
   const path = url.pathname;
@@ -356,37 +433,12 @@ export async function handleAdmin(request, env, url, d) {
     if (route === "report" && request.method === "GET") {
       const from = url.searchParams.get("from") || "", to = url.searchParams.get("to") || "";
       if (!/^\d{4}-\d{2}-\d{2}$/.test(from) || !/^\d{4}-\d{2}-\d{2}$/.test(to) || from > to) return j({ error: "Choose a start and end date" }, 400);
-      const fromTs = Math.floor(Date.parse(from + "T00:00:00Z") / 1000) - 86400, toTs = Math.floor(Date.parse(to + "T00:00:00Z") / 1000) + 2 * 86400;
-      const chi = (ms) => new Intl.DateTimeFormat("en-CA", { timeZone: "America/Chicago" }).format(new Date(ms));
-      const rows = [];
-      const stRaw = await env.ADMIN_KV.get("orderstatus"); const st = stRaw ? JSON.parse(stRaw) : {};
-      let after = "", truncated = false;
-      for (let page = 0; page < 5; page++) {
-        const res = await stripeGet(env, `/checkout/sessions?limit=100&created[gte]=${fromTs}&created[lte]=${toTs}&expand[]=data.line_items${after ? "&starting_after=" + after : ""}`);
-        for (const s of res.data) {
-          if (s.payment_status !== "paid" || (s.metadata && s.metadata.kind === "class")) continue;
-          const ful = (s.metadata && s.metadata.fulfillment) || "ship";
-          const ms = s.created * 1000, cd = s.customer_details || {};
-          rows.push({ ts: ms, id: s.id, channel: ful === "inperson" ? "In person - Card" : ful === "event" ? "Online - Event pickup" : ful === "pickup" ? "Online - Pickup" : "Online - Ship",
-            customer: cd.name || "", email: cd.email || "", location: (s.metadata && s.metadata.event) || "", status: st[s.id] || (ful === "inperson" ? "fulfilled" : "new"),
-            items: ((s.line_items && s.line_items.data) || []).map((l) => `${l.quantity} x ${l.description}`).join("; "),
-            subtotal: s.amount_subtotal || 0, shipping: (s.total_details && s.total_details.amount_shipping) || 0, tax: (s.total_details && s.total_details.amount_tax) || 0, total: s.amount_total || 0 });
-        }
-        if (!res.has_more) break;
-        after = res.data[res.data.length - 1].id;
-        if (page === 4) truncated = true;
-      }
-      let cash = [];
-      try { cash = JSON.parse((await env.ADMIN_KV.get("cashsales")) || "[]"); } catch { cash = []; }
-      for (const c of cash) rows.push({ ts: c.ts, id: c.id, channel: "In person - Cash", customer: c.name || "", email: c.email || "", location: c.location || "", status: c.voided ? "voided" : "fulfilled",
-        items: c.items.map((x) => `${x.qty} x ${x.name} (${x.size})`).join("; "), subtotal: c.subtotal, shipping: 0, tax: c.tax, total: c.total });
-      const classes = await readClasses(env), bookings = await readBookings(env);
-      const byId = Object.fromEntries(classes.map((c) => [c.id, c]));
-      for (const b of bookings) { const c = byId[b.classId];
-        rows.push({ ts: b.ts, id: b.sid, channel: "Class booking", customer: b.name, email: b.email, location: c ? `${c.title} (${c.date})` : "", status: "paid",
-          items: `${b.seats} seat(s)`, subtotal: b.cents, shipping: 0, tax: 0, total: b.cents }); }
-      const out = rows.map((r) => ({ ...r, date: chi(r.ts) })).filter((r) => r.date >= from && r.date <= to).sort((x, y) => y.ts - x.ts);
-      return j({ rows: out, truncated });
+      return j(await buildReport(env, stripeGet, from, to));
+    }
+    if (route === "report-email" && request.method === "POST") {
+      const from = String(body.from || ""), to = String(body.to || "");
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(from) || !/^\d{4}-\d{2}-\d{2}$/.test(to) || from > to) return j({ error: "Choose a start and end date" }, 400);
+      try { return j({ ok: true, ...(await emailReport(env, stripeGet, from, to, `${from} to ${to}`)) }); } catch (e) { return j({ error: String(e.message || "Could not send").slice(0, 200) }, 502); }
     }
     if (route === "orders" && request.method === "GET") {
       const [res, raw] = await Promise.all([

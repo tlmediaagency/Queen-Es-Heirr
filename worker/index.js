@@ -10,7 +10,7 @@
 import { CATALOG } from "./catalog.js";
 import { stdSize } from "./sizes.js";
 import { SEED } from "./seed-data.js";
-import { handleAdmin, readEvents, upcoming, serveImage } from "./admin.js";
+import { handleAdmin, readEvents, upcoming, serveImage, monthlyReport } from "./admin.js";
 import { publicClasses, classCheckout, recordBooking } from "./classes.js";
 
 const API = "https://api.stripe.com/v1";
@@ -533,6 +533,9 @@ async function handleSetStock(request, env, c, url) {
 }
 
 export default {
+  async scheduled(event, env, ctx) {
+    ctx.waitUntil(monthlyReport(env, stripeGet).then((r) => console.log("monthly report", r)).catch((e) => console.log("monthly report failed", String(e))));
+  },
   async fetch(request, env0, ctx) {
     const env = { ALLOWED_ORIGINS: "https://queenesheirr.com,https://www.queenesheirr.com", SITE_URL: "https://queenesheirr.com", SHIPPING_CENTS: "1000", ...env0 };
     const url = new URL(request.url);

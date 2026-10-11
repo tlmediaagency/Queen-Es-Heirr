@@ -50,3 +50,8 @@ Cash sales: `pos-cash` records the sale in KV `cashsales`, lowers stock, and ema
 ## Receipts and refunds
 - Cash Ledger and cash orders have **Edit email / resend receipt**: fixes a mistyped address (saved on the sale) and sends the receipt again. The app reports whether the Apps Script confirmed the send.
 - Card orders in Orders have **Refund in Stripe**, which opens that payment in the Stripe Dashboard. Refunds there are not subtracted in Reports and do not restock; adjust stock by hand.
+
+## Monthly report email
+- `monthlyReport` (admin.js) runs from a Cloudflare **Cron Trigger** (`0 14 1 * *`, 9 AM Central on the 1st). It emails the previous month's summary plus three CSVs (all sales, cash sales, class bookings) to everyone in `ADMIN_EMAILS` through the Apps Script `report_email` action, and records `lastreport` in KV so it sends once.
+- Reports tab: **Email this report to me** sends any date range on demand.
+- Setup: Cloudflare > Worker > Settings > Triggers > Add Cron Trigger (`0 14 1 * *`); redeploy Apps Script as a new version.

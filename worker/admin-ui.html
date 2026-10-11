@@ -682,6 +682,14 @@ function viewReports(n) {
       out.appendChild(h("h3", { text: "Download" }));
       var dl = function (label, fn) { return h("button", { "class": "btn", text: label, onclick: fn }); };
       var span = from.value + "_to_" + to.value;
+      var mailMsg = h("p", { "class": "msg", role: "status" });
+      out.appendChild(h("div", { "class": "row", style: "flex-wrap:wrap" }, [h("button", { "class": "btn primary", text: "Email this report to me", onclick: function (e) {
+        var b = e.currentTarget; b.disabled = true; mailMsg.className = "msg"; mailMsg.textContent = "Sending...";
+        api("POST", "report-email", { from: from.value, to: to.value }).then(function (r) { b.disabled = false; mailMsg.className = "msg ok"; mailMsg.textContent = "Sent to " + r.sent + " address" + (r.sent === 1 ? "" : "es") + " with the CSV files attached."; })
+          .catch(function (er) { b.disabled = false; mailMsg.className = "msg err"; mailMsg.textContent = er.message; });
+      } })]));
+      out.appendChild(mailMsg);
+      out.appendChild(h("p", { "class": "muted", text: "The previous month's report is also emailed automatically on the 1st of every month." }));
       out.appendChild(h("div", { "class": "row", style: "flex-wrap:wrap" }, [
         dl("All sales (CSV)", function () { csvDownload("sales-" + span + ".csv", ["Date", "Time", "Type", "Location", "Customer", "Email", "Items", "Subtotal", "Shipping", "Tax", "Total", "Status", "Reference"],
           rows.map(function (r) { return [r.date, timeOf(r.ts), r.channel, r.location, r.customer, r.email, r.items, dollars(r.subtotal), dollars(r.shipping), dollars(r.tax), dollars(r.total), r.status, r.id]; })); }),
