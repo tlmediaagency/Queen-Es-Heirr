@@ -8,6 +8,7 @@
 // Sold out: set metadata sold_out=true on the product (all sizes) or on one price (that size).
 
 import { CATALOG } from "./catalog.js";
+import { stdSize } from "./sizes.js";
 import { SEED } from "./seed-data.js";
 import { handleAdmin, readEvents, upcoming, serveImage } from "./admin.js";
 import { publicClasses, classCheckout, recordBooking } from "./classes.js";
@@ -69,9 +70,10 @@ async function loadCatalog(env) {
     const list = byProduct.get(p.id);
     if (!list || !list.length) continue;
     const productSold = (p.metadata && p.metadata.sold_out) === "true";
+    const category = (p.metadata && p.metadata.category) || "Jams";
     const sizes = list
       .map((pr) => ({
-        label: pr.nickname || "Regular",
+        label: stdSize(category, pr.nickname),
         priceId: pr.id,
         cents: pr.unit_amount,
         stock: stockOf(pr),
@@ -81,9 +83,11 @@ async function loadCatalog(env) {
     out.push({
       id: p.id,
       name: p.name,
-      category: (p.metadata && p.metadata.category) || "Jams",
+      category,
       description: p.description || "",
       image: (p.images && p.images[0]) || "",
+      featured: (p.metadata && p.metadata.featured) === "true",
+      restocked: Number((p.metadata && p.metadata.restocked) || 0),
       sort: Number((p.metadata && p.metadata.sort) || 1000),
       sizes,
     });
@@ -142,7 +146,7 @@ async function handleCheckout(request, env, c) {
   let i = 0;
   for (const it of items) {
     const product = catalog.find((p) => p.id === (it && it.id));
-    const size = product && product.sizes.find((s) => s.label === it.size);
+    const size = product && product.sizes.find((s) => s.label === stdSize(product.category, it.size));
     const qty = it && it.qty;
     if (!size || !Number.isInteger(qty) || qty < 1 || qty > MAX_QTY) {
       return json({ error: "An item in your bag is no longer available" }, 400, c.headers);
@@ -236,7 +240,7 @@ async function posCash(env, items, email, taxPct, key, name, location) {
   let subtotal = 0;
   for (const it of items) {
     const product = catalog.find((p) => p.id === (it && it.id));
-    const size = product && product.sizes.find((s) => s.label === it.size);
+    const size = product && product.sizes.find((s) => s.label === stdSize(product.category, it.size));
     const qty = it && it.qty;
     if (!size || !Number.isInteger(qty) || qty < 1 || qty > MAX_QTY) throw new Error("An item in the bag is no longer available");
     if (size.soldOut) throw new Error(`${product.name} (${size.label}) is sold out`);
@@ -281,7 +285,7 @@ async function posCheckout(env, origin, items, location) {
   let n = 0;
   for (const it of items) {
     const product = catalog.find((p) => p.id === (it && it.id));
-    const size = product && product.sizes.find((s) => s.label === it.size);
+    const size = product && product.sizes.find((s) => s.label === stdSize(product.category, it.size));
     const qty = it && it.qty;
     if (!size || !size.priceId || !Number.isInteger(qty) || qty < 1 || qty > MAX_QTY) throw new Error("An item in the bag is no longer available");
     if (size.soldOut) throw new Error(`${product.name} (${size.label}) is sold out`);
@@ -367,6 +371,58 @@ async function handleClassRequest(request, env, c) {
     return json({ ok: true, quote: quote.id }, 200, c.headers);
   } catch (e) {
     console.log("quote error", String(e));
+    return json({ error: "Could not create quote" }, 502, c.headers);
+  }
+}
+
+// POST /wholesale-request  { business, contact, email, phone, tax_id, notes, items:[{id,size,qty}] }
+// Creates a DRAFT Stripe quote at wholesale pricing (retail minus $2.00 per jar) for the owner to review in the admin app.
+const WHOLESALE_OFF_CENTS = 200;
+async function handleWholesaleRequest(request, env, c) {
+  let b;
+  try { b = await request.json(); } catch { return json({ error: "Invalid request" }, 400, c.headers); }
+  const business = String((b && b.business) || "").trim().slice(0, 100);
+  const contact = String((b && b.contact) || "").trim().slice(0, 100);
+  const email = String((b && b.email) || "").trim().slice(0, 200);
+  if ((b && b.website) || !business || !contact || !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email) || !Array.isArray(b.items) || !b.items.length || b.items.length > 40) {
+    return json({ error: "Invalid request" }, 400, c.headers);
+  }
+  try {
+    const catalog = await loadCatalog(env);
+    const lines = [];
+    for (const it of b.items) {
+      const qty = parseInt(it && it.qty, 10);
+      const product = catalog.find((p) => p.id === (it && it.id));
+      const size = product && product.sizes.find((s) => s.label === stdSize(product.category, it.size));
+      if (!size || !(qty >= 1 && qty <= 500)) return json({ error: "Invalid request" }, 400, c.headers);
+      lines.push({ product, size, qty, cents: Math.max(100, size.cents - WHOLESALE_OFF_CENTS) });
+    }
+    const customers = await stripeGet(env, `/customers?email=${encodeURIComponent(email)}&limit=1`);
+    const customer = customers.data[0] || (await stripePost(env, "/customers", new URLSearchParams({ name: business, email })));
+    const summary = lines.map((l) => `${l.qty} x ${l.product.name} (${l.size.label})`).join("; ");
+    const jars = lines.reduce((t, l) => t + l.qty, 0);
+    const q = new URLSearchParams({
+      customer: customer.id,
+      description: `Wholesale order - ${business}, ${jars} jar(s) at retail less $2.00 each.`.slice(0, 500),
+      "metadata[source]": "queenesheirr.com wholesale request",
+      "metadata[class]": "Wholesale order",
+      "metadata[business]": business,
+      "metadata[contact]": contact,
+      "metadata[tax_id]": String((b && b.tax_id) || "").slice(0, 60),
+      "metadata[phone]": String((b && b.phone) || "").slice(0, 40),
+      "metadata[attendees]": String(jars),
+      "metadata[notes]": (String((b && b.notes) || "").slice(0, 200) + " | " + summary).slice(0, 490),
+    });
+    lines.forEach((l, i) => {
+      q.set(`line_items[${i}][price_data][currency]`, "usd");
+      q.set(`line_items[${i}][price_data][product]`, l.product.id);
+      q.set(`line_items[${i}][price_data][unit_amount]`, String(l.cents));
+      q.set(`line_items[${i}][quantity]`, String(l.qty));
+    });
+    const quote = await stripePost(env, "/quotes", q);
+    return json({ ok: true, quote: quote.id }, 200, c.headers);
+  } catch (e) {
+    console.log("wholesale quote error", String(e));
     return json({ error: "Could not create quote" }, 502, c.headers);
   }
 }
@@ -505,6 +561,10 @@ export default {
     if (url.pathname === "/class-request" && request.method === "POST") {
       if (!c.ok) return json({ error: "Origin not allowed" }, 403, c.headers);
       return handleClassRequest(request, env, c);
+    }
+    if (url.pathname === "/wholesale-request" && request.method === "POST") {
+      if (!c.ok) return json({ error: "Origin not allowed" }, 403, c.headers);
+      return handleWholesaleRequest(request, env, c);
     }
     if (url.pathname === "/stripe-webhook" && request.method === "POST") return handleStripeWebhook(request, env);
     if (url.pathname === "/admin/set-stock" && request.method === "POST") return handleSetStock(request, env, c, url);

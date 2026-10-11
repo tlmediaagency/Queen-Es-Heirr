@@ -64,14 +64,20 @@
 <main>
 
 <section class="section wrap">
-  <div class="center"><p class="kicker">For retailers</p><h1>Wholesale</h1><p class="lede">Stock Queen E's preserves. Tell us about your shop and the cases you have in mind.</p></div>
-  <form class="stack" data-form="Wholesale request">
-    <label class="field">Business name<input name="business" required></label>
-    <label class="field">Contact person<input name="contact" required></label>
-    <label class="field">Business email<input type="email" name="email" required></label>
-    <label class="field">Reseller or tax ID<input name="tax_id" required></label>
-    <label class="field">Estimated cases<textarea name="order_notes" required></textarea></label>
-    <button class="btn" type="submit">Submit wholesale request</button>
+  <div class="center"><p class="kicker">For retailers</p><h1>Wholesale</h1><p class="lede">Stock Queen E's preserves. Tell us about your shop, choose what you would like, and we will send a wholesale quote.</p></div>
+  <form class="stack" data-form="Wholesale request" data-wholesale>
+    <label class="field">Business name<input name="business" required maxlength="100"></label>
+    <label class="field">Contact person<input name="contact" required maxlength="100"></label>
+    <label class="field">Business email<input type="email" name="email" required maxlength="200"></label>
+    <label class="field">Phone (optional)<input type="tel" name="phone" maxlength="40"></label>
+    <label class="field">Reseller or tax ID<input name="tax_id" required maxlength="60"></label>
+    <fieldset class="ws-items"><legend>What Would You Like to Stock?</legend>
+      <p class="muted">Wholesale pricing is $2.00 off each jar. Enter how many jars of each. We review every request, then email you a quote to approve. Availability is confirmed on the quote.</p>
+      <div data-wholesale-items><p class="muted">Loading products...</p></div>
+      <p><strong>Estimated total <span data-wholesale-total>$0.00</span></strong> <span class="muted">before shipping and any tax</span></p>
+    </fieldset>
+    <label class="field">Notes (delivery, timing, questions)<textarea name="order_notes" maxlength="1000"></textarea></label>
+    <button class="btn" type="submit">Request a wholesale quote</button>
   </form>
 </section>
 
@@ -87,7 +93,7 @@
       <p><a href="/shop/">The Shop</a><br><a href="/classes/">Classes</a><br><a href="/training/">Etiquette &amp; Leadership</a><br><a href="/locations/">Locations</a><br><a href="/invite/">Invite Queen E&#39;s</a><br><a href="/support/">Support</a><br><a href="/privacy-policy/">Privacy</a><br><a href="/terms-of-use/">Terms</a></p>
     </div>
     <div>
-      <h3>Write us</h3>
+      <h3>Write Us</h3>
       <p><a href="mailto:info@queenesheirr.com">info@queenesheirr.com</a></p>
       <p><a href="https://www.instagram.com/queenesheirr" rel="noopener noreferrer" target="_blank">Instagram</a> · <a href="https://www.facebook.com/queenesheirr" rel="noopener noreferrer" target="_blank">Facebook</a></p>
     </div>
@@ -95,7 +101,7 @@
   <div class="wrap signup">
     <form class="signup-form" data-form="Mailing list signup" aria-label="Join the mailing list">
       <div>
-        <h3>Join the mailing list</h3>
+        <h3>Join the Mailing List</h3>
         <p>New flavors, class dates, and the occasional recipe. No spam.</p>
       </div>
       <label class="field">Name<input name="name" autocomplete="name" required maxlength="100"></label>
@@ -107,12 +113,12 @@
 </footer>
 <aside class="cart-panel" data-cart-panel>
   <div class="row" style="justify-content:space-between">
-    <h2>Your bag</h2>
+    <h2>Your Bag</h2>
     <button class="icon-btn" type="button" data-cart-close aria-label="Close cart">Close</button>
   </div>
   <div data-cart-lines></div>
   <p>Subtotal <strong data-cart-subtotal>$0.00</strong></p>
-  <fieldset class="fulfill"><legend>How would you like to get your order?</legend>
+  <fieldset class="fulfill"><legend>How Would You Like to Get Your Order?</legend>
     <label><input type="radio" name="fulfillment" value="ship" checked> Ship to me (flat rate $10)</label>
     <label><input type="radio" name="fulfillment" value="pickup"> Local pickup (free, we email you to arrange)</label>
     <label data-event-option hidden><input type="radio" name="fulfillment" value="event"> Pick up at an upcoming event (free)</label>

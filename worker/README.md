@@ -41,3 +41,8 @@ Cash sales: `pos-cash` records the sale in KV `cashsales`, lowers stock, and ema
 - **Sort/filter bars** on Orders, Products, Requests, Classes, Bookings and Events.
 - **Reports tab** summarizes sales by type and place for a date range and downloads CSVs (all sales, cash, class bookings, inventory). Refunds are not subtracted.
 - Cash is only available inside the Event Sale screen, never on the website.
+
+## Featured, sizes, wholesale
+- **Featured sort** on the shop: products starred in the app (Products tab, Feature button) come first, then products restocked in the last 14 days (stock raised or sold-out cleared in the app, flagged "Just Restocked"), then in-stock items.
+- **Standard sizes** (`sizes.js`): Regular = 8 oz jam / 12 oz pickled goods; Large = 12 oz jam / 16 oz pickled goods. Old Stripe nicknames ("8 oz", "Regular", "Large 12 oz") display under the standard names, and new sizes are saved under them. Other sizes (4 oz) keep their names.
+- **Wholesale** (`POST /wholesale-request`, `WHOLESALE_URL` in `js/config.js`): choose jars on the Wholesale page; creates a draft Stripe quote at retail minus $2.00 per jar, shown in the app's Requests tab to Approve or Decline.

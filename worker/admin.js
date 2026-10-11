@@ -2,6 +2,7 @@
 // Needs: KV binding ADMIN_KV; secrets SESSION_SECRET, MAIL_SECRET; var ADMIN_EMAILS; var MAIL_URL (Apps Script web app URL).
 import UI from "./admin-ui.js";
 import { adminClasses, cleanClasses, adminBookings, readClasses, readBookings } from "./classes.js";
+import { stdSize } from "./sizes.js";
 import { ICON_192, ICON_512 } from "./admin-icons.js";
 
 const enc = new TextEncoder();
@@ -108,7 +109,7 @@ const slug = (s) => s.toLowerCase().normalize("NFKD").replace(/[̀-ͯ]/g, "").re
 const cents = (d) => { const n = Math.round(parseFloat(d) * 100); return Number.isFinite(n) && n >= 50 && n <= 1000000 ? n : null; };
 const stockVal = (v) => (v === null || v === "" || v === undefined ? null : Number.isInteger(+v) && +v >= 0 && +v <= 100000 ? +v : NaN);
 
-function isOurQuote(q) { return !!(q && q.metadata && String(q.metadata.source || "").startsWith("queenesheirr.com class request")); }
+function isOurQuote(q) { return !!(q && q.metadata && /^queenesheirr\.com (class|wholesale) request/.test(String(q.metadata.source || ""))); }
 
 export async function handleAdmin(request, env, url, d) {
   const { stripeGet, stripePost, stockOf, loadCatalog, posCheckout, posCash } = d;
@@ -159,8 +160,9 @@ export async function handleAdmin(request, env, url, d) {
       for (const x of pr.data) (by[typeof x.product === "string" ? x.product : x.product.id] ||= []).push(x);
       const shape = (p, active) => ({
         id: p.id, name: p.name, image: (p.images && p.images[0]) || "", active, category: (p.metadata && p.metadata.category) || "Jams", description: p.description || "",
+        featured: (p.metadata && p.metadata.featured) === "true", restocked: Number((p.metadata && p.metadata.restocked) || 0),
         sizes: (by[p.id] || []).map((x) => ({
-          priceId: x.id, label: x.nickname || "Regular", cents: x.unit_amount, stock: stockOf(x),
+          priceId: x.id, label: stdSize((p.metadata && p.metadata.category) || "Jams", x.nickname), cents: x.unit_amount, stock: stockOf(x),
           soldOut: (x.metadata && x.metadata.sold_out) === "true",
         })).sort((a, b) => a.cents - b.cents),
       });
@@ -177,7 +179,17 @@ export async function handleAdmin(request, env, url, d) {
       if ("stock" in body) { const s = stockVal(body.stock); if (Number.isNaN(s)) return j({ error: "Stock must be a whole number" }, 400); q.set("metadata[stock]", s === null ? "" : String(s)); }
       if ("soldOut" in body) q.set("metadata[sold_out]", body.soldOut ? "true" : "false");
       if (![...q.keys()].length) return j({ error: "Nothing to change" }, 400);
+      // A raise in stock (or un-marking sold out) flags the product "Just restocked" for the shop's Featured sort.
+      let before = null;
+      try { before = await stripeGet(env, `/prices/${m[1]}`); } catch {}
       await stripePost(env, `/prices/${m[1]}`, q);
+      if (before) {
+        const was = stockOf(before), wasOut = (before.metadata && before.metadata.sold_out) === "true";
+        const now = "stock" in body ? stockVal(body.stock) : was;
+        const nowOut = "soldOut" in body ? !!body.soldOut : wasOut;
+        const up = (typeof now === "number" && now > 0 && typeof was === "number" && now > was) || (wasOut && !nowOut);
+        if (up) { try { await stripePost(env, `/products/${typeof before.product === "string" ? before.product : before.product.id}`, new URLSearchParams({ "metadata[restocked]": String(Date.now()) })); } catch {} }
+      }
       return j({ ok: true });
     }
     if ((m = route.match(/^price-change\/(price_[A-Za-z0-9]+)$/)) && request.method === "POST") {
@@ -192,8 +204,10 @@ export async function handleAdmin(request, env, url, d) {
       return j({ ok: true });
     }
     if ((m = route.match(/^size\/([a-z0-9-]+)$/)) && request.method === "POST") {
-      const c = cents(body.price), s = stockVal(body.stock), label = String(body.label || "").trim().slice(0, 40);
-      if (c === null || !label || Number.isNaN(s)) return j({ error: "Give the size a name and a price like 7.00" }, 400);
+      const c = cents(body.price), s = stockVal(body.stock);
+      let cat = "Jams"; try { const pp = await stripeGet(env, `/products/${m[1]}`); cat = (pp.metadata && pp.metadata.category) || "Jams"; } catch {}
+      const label = stdSize(cat, String(body.label || "").trim().slice(0, 40));
+      if (c === null || !String(body.label || "").trim() || Number.isNaN(s)) return j({ error: "Give the size a name and a price like 7.00" }, 400);
       const q = new URLSearchParams({ product: m[1], currency: "usd", unit_amount: String(c), nickname: label });
       if (s !== null) q.set("metadata[stock]", String(s));
       await stripePost(env, "/prices", q);
@@ -205,6 +219,7 @@ export async function handleAdmin(request, env, url, d) {
       if (typeof body.description === "string") q.set("description", body.description.slice(0, 1000));
       if (body.category === "Jams" || body.category === "Pickled goods") q.set("metadata[category]", body.category);
       if (typeof body.active === "boolean") q.set("active", String(body.active));
+      if (typeof body.featured === "boolean") q.set("metadata[featured]", String(body.featured));
       if (okImage(body.image, url.origin)) q.set("images[0]", body.image);
       if (![...q.keys()].length) return j({ error: "Nothing to change" }, 400);
       await stripePost(env, `/products/${m[1]}`, q);
@@ -214,7 +229,8 @@ export async function handleAdmin(request, env, url, d) {
       const name = String(body.name || "").trim().slice(0, 100), id = slug(name);
       const sizes = Array.isArray(body.sizes) ? body.sizes.slice(0, 6) : [];
       if (!id || !sizes.length) return j({ error: "A name and at least one size are needed" }, 400);
-      const parsed = sizes.map((s) => ({ label: String(s.label || "").trim().slice(0, 40), c: cents(s.price), s: stockVal(s.stock) }));
+      const catNew = body.category === "Pickled goods" ? "Pickled goods" : "Jams";
+      const parsed = sizes.map((s) => ({ label: String(s.label || "").trim() ? stdSize(catNew, String(s.label).trim().slice(0, 40)) : "", c: cents(s.price), s: stockVal(s.stock) }));
       if (parsed.some((s) => !s.label || s.c === null || Number.isNaN(s.s))) return j({ error: "Each size needs a name and a price like 7.00" }, 400);
       let exists = true;
       try { await stripeGet(env, `/products/${id}`); } catch { exists = false; }
@@ -266,7 +282,7 @@ export async function handleAdmin(request, env, url, d) {
         id: q.id, status: q.status, created: q.created * 1000, total: q.amount_total || 0,
         name: (q.customer && q.customer.name) || "", email: (q.customer && q.customer.email) || "",
         cls: (q.metadata && q.metadata.class) || q.description || "", date: (q.metadata && q.metadata.requested_date) || "",
-        attendees: (q.metadata && q.metadata.attendees) || "", notes: (q.metadata && q.metadata.notes) || "", phone: (q.metadata && q.metadata.phone) || "",
+        attendees: (q.metadata && q.metadata.attendees) || "", notes: (q.metadata && q.metadata.notes) || "", phone: (q.metadata && q.metadata.phone) || "", wholesale: /wholesale/.test(String((q.metadata && q.metadata.source) || "")), business: (q.metadata && q.metadata.business) || "", taxId: (q.metadata && q.metadata.tax_id) || "",
         url: `https://dashboard.stripe.com/${test ? "test/" : ""}quotes/${q.id}`,
       }));
       return j({ requests });

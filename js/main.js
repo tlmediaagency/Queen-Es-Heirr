@@ -260,7 +260,12 @@
     var minPrice = function (p) { var o = open(p); o = o.length ? o : p.sizes; return Math.min.apply(null, o.map(function (s) { return s.cents; })); };
     var stockOf = function (p) { return open(p).reduce(function (t, s) { return t + (typeof s.stock === "number" ? s.stock : 999); }, 0); };
     var byName = function (a, b) { return a.name.localeCompare(b.name); };
-    if (sortKey === "name") list.sort(byName);
+    var fresh = function (p) { return p.restocked && Date.now() - p.restocked < 14 * 864e5 && open(p).length > 0; };
+    if (sortKey === "featured") list.sort(function (a, b) {
+      return (!!b.featured - !!a.featured) || (fresh(b) - fresh(a)) || ((fresh(b) ? b.restocked : 0) - (fresh(a) ? a.restocked : 0)) ||
+        ((open(b).length > 0) - (open(a).length > 0)) || ((a.sort || 1000) - (b.sort || 1000)) || byName(a, b);
+    });
+    else if (sortKey === "name") list.sort(byName);
     else if (sortKey === "price-asc") list.sort(function (a, b) { return minPrice(a) - minPrice(b) || byName(a, b); });
     else if (sortKey === "price-desc") list.sort(function (a, b) { return minPrice(b) - minPrice(a) || byName(a, b); });
     else if (sortKey === "available") list.sort(function (a, b) { return (open(b).length > 0) - (open(a).length > 0) || byName(a, b); });
@@ -275,7 +280,9 @@
       var imgSrc = p.image || PLACEHOLDER;
       var img = el("img", { src: imgSrc, alt: imgSrc === PLACEHOLDER ? p.name + " (photo coming soon)" : p.name + " jar", loading: "lazy" });
       var body = el("div", { "class": "card-body" });
+      var fresh = p.restocked && Date.now() - p.restocked < 14 * 864e5 && p.sizes.some(function (s) { return !s.soldOut; });
       body.appendChild(el("p", { "class": "kicker" }, p.category));
+      if (p.featured || fresh) body.appendChild(el("span", { "class": "flag" }, p.featured ? "Featured" : "Just Restocked"));
       body.appendChild(el("h3", null, p.name));
       body.appendChild(el("p", null, p.description));
       var label = el("label", { "class": "field" }, "Size");
@@ -354,6 +361,45 @@
     bookWrap.hidden = false;
   }
 
+  // Wholesale request: one quantity box per jar size, priced $2.00 under retail.
+  var wsForm = document.querySelector("form[data-wholesale]"), wsWrap = document.querySelector("[data-wholesale-items]"), wsQty = {};
+  var WS_OFF = 200;
+  function wsLines() {
+    var out = [];
+    catalog.forEach(function (p) { p.sizes.forEach(function (s) { var q = parseInt(wsQty[p.id + "|" + s.label], 10); if (q > 0) out.push({ id: p.id, size: s.label, qty: Math.min(q, 500), name: p.name, cents: Math.max(100, s.cents - WS_OFF) }); }); });
+    return out;
+  }
+  function wsTotal() {
+    var t = document.querySelector("[data-wholesale-total]");
+    if (t) t.textContent = money(wsLines().reduce(function (a, l) { return a + l.cents * l.qty; }, 0));
+  }
+  function renderWholesale() {
+    if (!wsWrap) return;
+    wsWrap.textContent = "";
+    ["Jams", "Pickled goods"].forEach(function (cat) {
+      var items = catalog.filter(function (p) { return p.category === cat && p.sizes.some(function (s) { return !s.soldOut; }); });
+      if (!items.length) return;
+      wsWrap.appendChild(el("h3", null, cat));
+      var tbl = el("div", { "class": "ws-list" });
+      items.forEach(function (p) {
+        p.sizes.forEach(function (s) {
+          if (s.soldOut) return;
+          var key = p.id + "|" + s.label;
+          var inp = el("input", { type: "number", min: "0", max: "500", step: "1", inputmode: "numeric", value: wsQty[key] || "", "aria-label": p.name + " " + s.label + " quantity" });
+          inp.addEventListener("input", function () { wsQty[key] = inp.value; wsTotal(); });
+          var row = el("label", { "class": "ws-row" });
+          row.appendChild(el("span", { "class": "ws-name" }, p.name + " \u00b7 " + s.label));
+          row.appendChild(el("span", { "class": "ws-price" }, money(Math.max(100, s.cents - WS_OFF)) + " ea"));
+          row.appendChild(inp);
+          tbl.appendChild(row);
+        });
+      });
+      wsWrap.appendChild(tbl);
+    });
+    wsTotal();
+  }
+  renderWholesale();
+
   // Live catalog from Stripe (via the Worker). Falls back to js/products.js if unavailable.
   if (CFG.PRODUCTS_URL) {
     fetch(CFG.PRODUCTS_URL).then(function (r) {
@@ -368,7 +414,7 @@
           if (!p.image) p.image = l.image || PLACEHOLDER;
           if (!p.description) p.description = l.description || "";
         });
-        catalog = list; renderShop(); render();
+        catalog = list; renderShop(); render(); renderWholesale();
       }
     }).catch(function () {});
   }
@@ -458,6 +504,13 @@
       var fields = {};
       new FormData(form).forEach(function (v, k) { fields[k] = (k in fields) ? fields[k] + ", " + String(v) : String(v); });
       var subject = form.getAttribute("data-form");
+      var wsItems = null;
+      if (form.hasAttribute("data-wholesale")) {
+        wsItems = wsLines();
+        if (!wsItems.length) { status.textContent = "Please enter a quantity for at least one jar."; return; }
+        fields.order_items = wsItems.map(function (l) { return l.qty + " x " + l.name + " (" + l.size + ") @ " + money(l.cents); }).join("; ");
+        fields.estimated_total = money(wsItems.reduce(function (a, l) { return a + l.cents * l.qty; }, 0));
+      }
       if (CFG.FORM_ENDPOINT) {
         status.textContent = "Sending...";
         // Google Apps Script doesn't send CORS headers, so the reply is unreadable (opaque).
@@ -465,6 +518,11 @@
         fetch(CFG.FORM_ENDPOINT, { method: "POST", mode: "no-cors", body: JSON.stringify({ subject: subject, page: location.pathname, fields: fields }) })
           .then(function () {
             // Class registrations also create a draft quote in Stripe (best effort; the email above is the record).
+            if (wsItems && CFG.WHOLESALE_URL) {
+              var qf = Object.assign({}, fields, { items: wsItems.map(function (l) { return { id: l.id, size: l.size, qty: l.qty }; }), notes: fields.order_notes || "" });
+              fetch(CFG.WHOLESALE_URL, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(qf) }).catch(function () {});
+              wsQty = {}; renderWholesale();
+            }
             if (form.hasAttribute("data-quote") && CFG.QUOTE_URL) {
               fetch(CFG.QUOTE_URL, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(fields) }).catch(function () {});
             }

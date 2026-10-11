@@ -22,12 +22,12 @@ window.PRODUCTS = [
   "description": "Crisp seasonal apples cooked into a sweet-tart spread. Good on toast, in oatmeal, or baked into something.",
   "sizes": [
    {
-    "label": "8 oz",
+    "label": "Regular (8 oz)",
     "cents": 700,
     "soldOut": false
    },
    {
-    "label": "12 oz",
+    "label": "Large (12 oz)",
     "cents": 1000,
     "soldOut": false
    }
@@ -41,12 +41,12 @@ window.PRODUCTS = [
   "description": "Ripe blackberries, small batch.",
   "sizes": [
    {
-    "label": "8 oz",
+    "label": "Regular (8 oz)",
     "cents": 700,
     "soldOut": false
    },
    {
-    "label": "12 oz",
+    "label": "Large (12 oz)",
     "cents": 1000,
     "soldOut": false
    }
@@ -60,7 +60,7 @@ window.PRODUCTS = [
   "description": "Ripe blueberries with a little zesty ginger. Nice with breakfast or a snack.",
   "sizes": [
    {
-    "label": "Regular",
+    "label": "Regular (8 oz)",
     "cents": 700,
     "soldOut": false
    }
@@ -74,7 +74,7 @@ window.PRODUCTS = [
   "description": "Sweet blueberries with a touch of pepper. Try it on cheese and crackers or a charcuterie board.",
   "sizes": [
    {
-    "label": "8 oz",
+    "label": "Regular (8 oz)",
     "cents": 700,
     "soldOut": false
    }
@@ -88,12 +88,12 @@ window.PRODUCTS = [
   "description": "Fresh, ripe blueberries for toast, scones, or a spoonful on its own.",
   "sizes": [
    {
-    "label": "8 oz",
+    "label": "Regular (8 oz)",
     "cents": 700,
     "soldOut": false
    },
    {
-    "label": "12 oz",
+    "label": "Large (12 oz)",
     "cents": 1000,
     "soldOut": false
    }
@@ -107,7 +107,7 @@ window.PRODUCTS = [
   "description": "Pickled vegetables with a dill bite.",
   "sizes": [
    {
-    "label": "Regular",
+    "label": "Regular (12 oz)",
     "cents": 1000,
     "soldOut": false
    }
@@ -121,7 +121,7 @@ window.PRODUCTS = [
   "description": "Zesty and spicy. Use it as a dip or a marinade.",
   "sizes": [
    {
-    "label": "8 oz",
+    "label": "Regular (8 oz)",
     "cents": 700,
     "soldOut": false
    }
@@ -135,12 +135,12 @@ window.PRODUCTS = [
   "description": "A fan favorite: juicy peaches for toast, pancakes, or baking.",
   "sizes": [
    {
-    "label": "8 oz",
+    "label": "Regular (8 oz)",
     "cents": 700,
     "soldOut": false
    },
    {
-    "label": "12 oz",
+    "label": "Large (12 oz)",
     "cents": 1000,
     "soldOut": false
    }
@@ -154,12 +154,12 @@ window.PRODUCTS = [
   "description": "Our original: sweet peppers and jalapeños, mild heat. Great on sandwiches and charcuterie boards.",
   "sizes": [
    {
-    "label": "8 oz",
+    "label": "Regular (8 oz)",
     "cents": 700,
     "soldOut": false
    },
    {
-    "label": "12 oz",
+    "label": "Large (12 oz)",
     "cents": 1000,
     "soldOut": false
    }
@@ -173,7 +173,7 @@ window.PRODUCTS = [
   "description": "Classic dill pickles from fresh cucumbers, dill, and savory spices.",
   "sizes": [
    {
-    "label": "16 oz",
+    "label": "Large (16 oz)",
     "cents": 1500,
     "soldOut": false
    }
@@ -187,7 +187,7 @@ window.PRODUCTS = [
   "description": "A tropical jam with a ginger kick.",
   "sizes": [
    {
-    "label": "8 oz",
+    "label": "Regular (8 oz)",
     "cents": 700,
     "soldOut": false
    }
@@ -201,7 +201,7 @@ window.PRODUCTS = [
   "description": "Pineapple and mango with a little pepper heat. Try it glazed on chicken or on a cheese board.",
   "sizes": [
    {
-    "label": "8 oz",
+    "label": "Regular (8 oz)",
     "cents": 700,
     "soldOut": false
    }
@@ -215,7 +215,7 @@ window.PRODUCTS = [
   "description": "Candied jalapeños: sweet cane sugar, spicy peppers, and our own blend.",
   "sizes": [
    {
-    "label": "Regular",
+    "label": "Regular (12 oz)",
     "cents": 700,
     "soldOut": false
    }
@@ -229,12 +229,12 @@ window.PRODUCTS = [
   "description": "Juicy raspberries for toast, waffles, or ice cream.",
   "sizes": [
    {
-    "label": "8 oz",
+    "label": "Regular (8 oz)",
     "cents": 700,
     "soldOut": false
    },
    {
-    "label": "12 oz",
+    "label": "Large (12 oz)",
     "cents": 1000,
     "soldOut": true
    }
@@ -248,12 +248,12 @@ window.PRODUCTS = [
   "description": "Sun-ripened strawberries, cooked slowly. Good on toast, waffles, or straight from the jar.",
   "sizes": [
    {
-    "label": "Small 8 oz",
+    "label": "Regular (8 oz)",
     "cents": 700,
     "soldOut": false
    },
    {
-    "label": "Large 12 oz",
+    "label": "Large (12 oz)",
     "cents": 1000,
     "soldOut": false
    }
@@ -267,12 +267,12 @@ window.PRODUCTS = [
   "description": "Strawberries and mango for toast, yogurt, or a tropical charcuterie board.",
   "sizes": [
    {
-    "label": "8 oz",
+    "label": "Regular (8 oz)",
     "cents": 700,
     "soldOut": false
    },
    {
-    "label": "12 oz",
+    "label": "Large (12 oz)",
     "cents": 1000,
     "soldOut": false
    }
@@ -286,12 +286,12 @@ window.PRODUCTS = [
   "description": "Fresh cucumbers, dill, and a hint of sugar. Good on sandwiches, burgers, and boards.",
   "sizes": [
    {
-    "label": "12 oz",
+    "label": "Regular (12 oz)",
     "cents": 1000,
     "soldOut": false
    },
    {
-    "label": "16 oz",
+    "label": "Large (16 oz)",
     "cents": 1500,
     "soldOut": false
    }
@@ -305,12 +305,12 @@ window.PRODUCTS = [
   "description": "Bold spices and heat alongside classic dill.",
   "sizes": [
    {
-    "label": "12 oz",
+    "label": "Regular (12 oz)",
     "cents": 1000,
     "soldOut": true
    },
    {
-    "label": "16 oz",
+    "label": "Large (16 oz)",
     "cents": 1500,
     "soldOut": false
    }
@@ -324,7 +324,7 @@ window.PRODUCTS = [
   "description": "16 oz, 9 major ingredients, holistically packed and formulated.",
   "sizes": [
    {
-    "label": "16 oz",
+    "label": "Large (16 oz)",
     "cents": 1800,
     "soldOut": false
    }
