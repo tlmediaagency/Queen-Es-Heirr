@@ -715,27 +715,25 @@ function viewSale(n) {
   var pin = h("input", { type: "password", inputmode: "numeric", maxlength: "4", placeholder: "4-digit PIN", autocomplete: "off", "aria-label": "Staff PIN" });
   var tax = h("input", { type: "number", min: "0", max: "15", step: "0.01", value: "0", inputmode: "decimal" });
   var msg = h("p", { "class": "msg", role: "status" });
-  var loc = h("input", { type: "text", maxlength: "80", placeholder: "Type a place", "aria-label": "Where are you selling today" });
-  var pickEv = h("select", { "aria-label": "Choose from your events" }, [h("option", { value: "", text: "Loading your events..." })]);
-  pickEv.addEventListener("change", function () { loc.className = pickEv.value === "__other" ? "" : "hide"; if (pickEv.value !== "__other") loc.value = pickEv.value; else { loc.value = ""; loc.focus(); } });
+  var pickEv = h("select", { "aria-label": "Choose your event" }, [h("option", { value: "", text: "Loading your events..." })]);
+  var noEv = h("p", { "class": "hide" }, [h("span", { "class": "msg err", text: "No upcoming events are listed yet. " }), h("button", { "class": "btn small", type: "button", text: "Add an event first", onclick: function () { current = "events"; start(); } })]);
   api("GET", "events").then(function (d) {
     var t = chiDate(Date.now());
     var soon = d.events.filter(function (e) { return e.name && e.date && e.date >= t; }).sort(function (a, b) { return a.date.localeCompare(b.date); });
     clear(pickEv);
     pickEv.appendChild(h("option", { value: "", text: soon.length ? "Choose an event..." : "No upcoming events listed" }));
     soon.forEach(function (e) { pickEv.appendChild(h("option", { value: e.name, text: e.name + " - " + fmtDay(e.date) + (e.date === t ? " (today)" : "") })); });
-    pickEv.appendChild(h("option", { value: "__other", text: "Somewhere else (type it)" }));
     var today = soon.filter(function (e) { return e.date === t; })[0];
-    if (today) { pickEv.value = today.name; loc.value = today.name; loc.className = "hide"; }
-    else if (!soon.length) { pickEv.value = "__other"; }
-  }).catch(function () { clear(pickEv); pickEv.appendChild(h("option", { value: "__other", text: "Somewhere else (type it)" })); pickEv.value = "__other"; });
+    if (today) pickEv.value = today.name;
+    if (!soon.length) noEv.className = "";
+  }).catch(function () { clear(pickEv); pickEv.appendChild(h("option", { value: "", text: "Could not load events" })); });
   n.appendChild(h("div", { "class": "card" }, [
     h("h2", { text: "Sell at an Event" }),
     h("p", { "class": "muted", text: "This turns the screen into a customer-facing store. Customers tap jars, review their bag, and pay by scanning a QR code with their phone, entering a card on the screen, or paying cash (confirmed with your PIN). Stripe emails card receipts, cash receipts are emailed from the shop, stock goes down automatically, and each sale appears in Orders as In person." }),
     h("p", { "class": "muted", text: "Choose a 4-digit staff PIN. Only the PIN gets you back to the admin screens. On an iPad, also turn on Guided Access (Settings, Accessibility) so customers cannot leave the page." }),
     h("label", null, ["Where are you selling today?", pickEv]),
-    h("p", { "class": "muted", text: "Events listed on the Events tab show up here, and today's event is picked for you. The place is saved with each sale for the cash ledger and reports." }),
-    loc,
+    h("p", { "class": "muted", text: "Pick the event from your Events tab. Today's event is chosen for you. Selling somewhere new? Add it on the Events tab first, so every sale is tied to an event in the ledger and reports." }),
+    noEv,
     h("p"),
     h("label", null, ["Staff PIN", pin]),
     h("p"),
@@ -744,7 +742,8 @@ function viewSale(n) {
     h("p"),
     h("button", { "class": "btn primary", text: "Start selling", onclick: function () {
       if (!/^\d{4}$/.test(pin.value)) { msg.className = "msg err"; msg.textContent = "Enter exactly 4 digits."; return; }
-      ssSet(SALE_KEY, { pin: pin.value, location: loc.value.trim().slice(0, 80), taxPct: Math.min(15, Math.max(0, parseFloat(tax.value) || 0)) }); ssSet(CART_KEY, []); ssSet(PAY_KEY, null); renderSale();
+      if (!pickEv.value) { msg.className = "msg err"; msg.textContent = "Choose the event you are selling at. If it is not listed, add it on the Events tab first."; return; }
+      ssSet(SALE_KEY, { pin: pin.value, location: pickEv.value.slice(0, 80), taxPct: Math.min(15, Math.max(0, parseFloat(tax.value) || 0)) }); ssSet(CART_KEY, []); ssSet(PAY_KEY, null); renderSale();
     } }), msg]));
 }
 
