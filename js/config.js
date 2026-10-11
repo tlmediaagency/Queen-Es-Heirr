@@ -13,6 +13,10 @@ window.SITE_CONFIG = {
   FORM_ENDPOINT: "https://script.google.com/macros/s/AKfycbwZ9vHFB-Z0HXhdsD-r_uqfkpQOOPgZVday3-SOAh8ZoJTM9DDiLTrz-VBL5K6Q-0H6/exec",
   // Google Calendar appointment page for private/custom class times (leave empty to hide). Shown as a button on the Classes page.
   BOOKING_URL: "https://calendar.app.google/tShTfuxGfS7YacTL9",
+  // Google Business Profile. REVIEW_URL: the "Ask for reviews" share link from the profile (g.page/r/... or search.google.com/local/writereview?placeid=...). Empty hides the floating review button.
+  REVIEW_URL: "https://g.page/r/CdoZN7Mb6_BHEBI/review",
+  // Public Google Business Profile or Maps link; added to the site's structured data so Google ties the site to the profile.
+  GOOGLE_PROFILE_URL: "",
   CONTACT_EMAIL: "info@queenesheirr.com",
   SHIPPING_CENTS: 1000
 };

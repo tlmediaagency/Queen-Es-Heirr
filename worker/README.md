@@ -52,6 +52,12 @@ Cash sales: `pos-cash` records the sale in KV `cashsales`, lowers stock, and ema
 - Card orders in Orders have **Refund in Stripe**, which opens that payment in the Stripe Dashboard. Refunds there are not subtracted in Reports and do not restock; adjust stock by hand.
 
 ## Monthly report email
-- `monthlyReport` (admin.js) runs from a Cloudflare **Cron Trigger** (`0 14 1 * *`, 9 AM Central on the 1st). It emails the previous month's summary plus three CSVs (all sales, cash sales, class bookings) to everyone in `ADMIN_EMAILS` through the Apps Script `report_email` action, and records `lastreport` in KV so it sends once.
+- `monthlyReport` (admin.js) runs from the Cloudflare **Cron Triggers** below, at 7 AM Central on the 1st. It emails the previous month's summary plus three CSVs (all sales, cash sales, class bookings) to everyone in `ADMIN_EMAILS` through the Apps Script `report_email` action, and records `lastreport` in KV so it sends once.
 - Reports tab: **Email this report to me** sends any date range on demand.
-- Setup: Cloudflare > Worker > Settings > Triggers > Add Cron Trigger (`0 14 1 * *`); redeploy Apps Script as a new version.
+- Setup: Cloudflare > Worker > Settings > Triggers > add two Cron Triggers, `0 12 * * *` and `0 13 * * *` (UTC; together they hit 7 AM Central through daylight saving). Redeploy Apps Script as a new version.
+
+## Event wrap-up email
+- At 7 AM Central the day after an event on the Events tab, `eventReports` emails that event's pre-orders, card and cash sales (matched by event name), units sold, and CSVs to `ADMIN_EMAILS`. Sent once per event (`eventreports` in KV). Use the same event name on the Event Sale start screen.
+
+## Google reviews
+- `REVIEW_URL` in `js/config.js` shows a floating "Leave a review" button (dismissible, remembered per browser). `GOOGLE_PROFILE_URL` is reserved for the profile link in structured data.

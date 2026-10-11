@@ -10,7 +10,7 @@
 import { CATALOG } from "./catalog.js";
 import { stdSize } from "./sizes.js";
 import { SEED } from "./seed-data.js";
-import { handleAdmin, readEvents, upcoming, serveImage, monthlyReport } from "./admin.js";
+import { handleAdmin, readEvents, upcoming, serveImage, monthlyReport, eventReports } from "./admin.js";
 import { publicClasses, classCheckout, recordBooking } from "./classes.js";
 
 const API = "https://api.stripe.com/v1";
@@ -534,7 +534,13 @@ async function handleSetStock(request, env, c, url) {
 
 export default {
   async scheduled(event, env, ctx) {
-    ctx.waitUntil(monthlyReport(env, stripeGet).then((r) => console.log("monthly report", r)).catch((e) => console.log("monthly report failed", String(e))));
+    // Two daily triggers (12:00 and 13:00 UTC) cover daylight saving; eventReports only acts at 7 AM Central.
+    const chiDay = Number(new Intl.DateTimeFormat("en-US", { timeZone: "America/Chicago", day: "numeric" }).format(new Date()));
+    const hour = Number(new Intl.DateTimeFormat("en-US", { timeZone: "America/Chicago", hour: "numeric", hour12: false }).format(new Date())) % 24;
+    ctx.waitUntil((async () => {
+      try { console.log("event reports", await eventReports(env, stripeGet)); } catch (e) { console.log("event reports failed", String(e)); }
+      if (chiDay === 1 && hour === 7) { try { console.log("monthly report", await monthlyReport(env, stripeGet)); } catch (e) { console.log("monthly report failed", String(e)); } }
+    })());
   },
   async fetch(request, env0, ctx) {
     const env = { ALLOWED_ORIGINS: "https://queenesheirr.com,https://www.queenesheirr.com", SITE_URL: "https://queenesheirr.com", SHIPPING_CENTS: "1000", ...env0 };

@@ -400,6 +400,20 @@
   }
   renderWholesale();
 
+  // Floating "Leave a review" button (Google). Hidden until REVIEW_URL is set in config.js. Dismissal is remembered per browser.
+  if (/^https:\/\/(g\.page|g\.co|search\.google\.com|www\.google\.com|maps\.app\.goo\.gl|goo\.gl)\//.test(CFG.REVIEW_URL || "")) {
+    var revGone = false;
+    try { revGone = localStorage.getItem("qe-review-dismissed") === "1"; } catch (e) {}
+    if (!revGone) {
+      var rev = el("div", { "class": "review-fab" });
+      var revLink = el("a", { href: CFG.REVIEW_URL, target: "_blank", rel: "noopener noreferrer" }, "\u2605 Leave a review");
+      var revX = el("button", { type: "button", "aria-label": "Hide the review button" }, "\u00d7");
+      revX.addEventListener("click", function () { rev.remove(); try { localStorage.setItem("qe-review-dismissed", "1"); } catch (e) {} });
+      rev.appendChild(revLink); rev.appendChild(revX);
+      document.body.appendChild(rev);
+    }
+  }
+
   // Live catalog from Stripe (via the Worker). Falls back to js/products.js if unavailable.
   if (CFG.PRODUCTS_URL) {
     fetch(CFG.PRODUCTS_URL).then(function (r) {

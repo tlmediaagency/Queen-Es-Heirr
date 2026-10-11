@@ -232,3 +232,9 @@ html { scroll-behavior: smooth; }
 .ws-row{display:grid;grid-template-columns:1fr auto 92px;gap:10px;align-items:center;padding:6px 0;border-bottom:1px solid var(--linen)}
 .ws-row input{min-height:40px;text-align:center}
 .ws-price{color:var(--sage);font-size:.9rem}
+
+.review-fab{position:fixed;left:14px;bottom:14px;z-index:60;display:flex;align-items:center;background:var(--forest);border:1px solid var(--gold);border-radius:999px;box-shadow:0 6px 18px rgba(14,32,18,.28)}
+.review-fab a{color:#fff;text-decoration:none;font:600 .74rem Inter,sans-serif;letter-spacing:.08em;text-transform:uppercase;padding:11px 8px 11px 16px}
+.review-fab a:hover{color:var(--gold)}
+.review-fab button{background:none;border:0;color:var(--gold);font-size:1.2rem;line-height:1;padding:8px 13px 8px 6px;cursor:pointer;min-height:40px}
+@media print{.review-fab{display:none}}

@@ -152,15 +152,16 @@ const dol = (c) => ((c || 0) / 100).toFixed(2);
 const tm = (ms) => new Date(ms).toLocaleTimeString("en-US", { timeZone: "America/Chicago", hour: "numeric", minute: "2-digit" });
 
 // Email a report (summary + CSV attachments) to the shop owners through the Apps Script.
-export async function emailReport(env, stripeGet, from, to, label) {
+export async function emailReport(env, stripeGet, from, to, label, opts = {}) {
   if (!env.MAIL_URL || !env.MAIL_SECRET) throw new Error("Email is not set up");
   const recipients = emails(env);
   if (!recipients.length) throw new Error("No admin emails are set");
-  const { rows, truncated } = await buildReport(env, stripeGet, from, to);
+  const built = await buildReport(env, stripeGet, from, to);
+  const rows = opts.filter ? built.rows.filter(opts.filter) : built.rows, truncated = built.truncated;
   const live = rows.filter((r) => r.status !== "voided");
   const by = (key) => { const g = {}; for (const r of live) { const k = r[key] || "(none)"; const x = g[k] || (g[k] = { n: 0, total: 0 }); x.n++; x.total += r.total; } return Object.entries(g).sort((a, b) => b[1].total - a[1].total); };
   const total = live.reduce((t, r) => t + r.total, 0);
-  const lines = [`Sales report for ${label} (${from} to ${to})`, "", `Transactions: ${live.length}`, `Total sales: $${dol(total)}`, "", "By type:", ...by("channel").map(([k, x]) => `  ${k}: ${x.n} sale(s), $${dol(x.total)}`), "", "By location / event:", ...by("location").map(([k, x]) => `  ${k}: ${x.n} sale(s), $${dol(x.total)}`), "", "Refunds are not subtracted. Check Stripe for refunds.", truncated ? "This range was very large, so older orders may be missing." : ""];
+  const lines = [opts.heading || `Sales report for ${label} (${from} to ${to})`, "", `Transactions: ${live.length}`, `Total sales: $${dol(total)}`, "", "By type:", ...by("channel").map(([k, x]) => `  ${k}: ${x.n} sale(s), $${dol(x.total)}`), "", "By location / event:", ...by("location").map(([k, x]) => `  ${k}: ${x.n} sale(s), $${dol(x.total)}`), "", ...(opts.extra || (() => []))(live), "Refunds are not subtracted. Check Stripe for refunds.", truncated ? "This range was very large, so older orders may be missing." : ""];
   const sales = csvText(["Date", "Time", "Type", "Location", "Customer", "Email", "Items", "Subtotal", "Shipping", "Tax", "Total", "Status", "Reference"],
     rows.map((r) => [r.date, tm(r.ts), r.channel, r.location, r.customer, r.email, r.items, dol(r.subtotal), dol(r.shipping), dol(r.tax), dol(r.total), r.status, r.id]));
   const cash = csvText(["Date", "Time", "Location", "Customer", "Email", "Items", "Subtotal", "Tax", "Total", "Status"],
@@ -168,10 +169,42 @@ export async function emailReport(env, stripeGet, from, to, label) {
   const classes = csvText(["Booked", "Class", "Customer", "Email", "Spots", "Paid"],
     rows.filter((r) => r.channel === "Class booking").map((r) => [r.date, r.location, r.customer, r.email, r.items, dol(r.total)]));
   const res = await fetch(env.MAIL_URL, { method: "POST", headers: { "Content-Type": "text/plain" }, body: JSON.stringify({ action: "report_email", secret: env.MAIL_SECRET, to: recipients,
-    subject: `Queen E's Heirr sales report: ${label}`, text: lines.join("\n"), files: [{ name: `sales-${from}_to_${to}.csv`, text: sales }, { name: `cash-sales-${from}_to_${to}.csv`, text: cash }, { name: `class-bookings-${from}_to_${to}.csv`, text: classes }] }) });
+    subject: opts.subject || `Queen E's Heirr sales report: ${label}`, text: lines.join("\n"), files: [{ name: `sales-${from}_to_${to}.csv`, text: sales }, { name: `cash-sales-${from}_to_${to}.csv`, text: cash }, { name: `class-bookings-${from}_to_${to}.csv`, text: classes }] }) });
   const out = await res.json().catch(() => null);
   if (!res.ok || !out || out.ok !== true) throw new Error("The email did not send. Check that the Apps Script has the latest version deployed.");
   return { sent: recipients.length, rows: live.length };
+}
+
+// After an event ends: at 7 AM Central the next day, email that event's sales (pre-orders, card, cash) and units sold.
+export async function eventReports(env, stripeGet) {
+  if (!env.ADMIN_KV) return "no storage";
+  const now = new Date();
+  const hour = Number(new Intl.DateTimeFormat("en-US", { timeZone: "America/Chicago", hour: "numeric", hour12: false }).format(now)) % 24;
+  if (hour !== 7) return "not 7 AM";
+  const chi = (d) => new Intl.DateTimeFormat("en-CA", { timeZone: "America/Chicago" }).format(d);
+  const yesterday = chi(new Date(now.getTime() - 86400000));
+  let sent = []; try { sent = JSON.parse((await env.ADMIN_KV.get("eventreports")) || "[]"); } catch { sent = []; }
+  const done = [];
+  for (const e of (await readEvents(env)).filter((x) => x.name && x.date === yesterday).slice(0, 3)) {
+    const key = `${e.name}|${e.date}`;
+    if (sent.includes(key)) continue;
+    const d = new Date(e.date + "T00:00:00Z");
+    const from = new Date(d.getTime() - 60 * 86400000).toISOString().slice(0, 10);
+    await emailReport(env, stripeGet, from, e.date, `${e.name} (${e.date})`, {
+      filter: (r) => r.location === e.name,
+      subject: `Event wrap-up: ${e.name}`,
+      heading: `Event wrap-up for ${e.name}${e.location ? " at " + e.location : ""} on ${e.date}. Includes online pickup orders, card and cash sales that used this event name.`,
+      extra: (live) => {
+        const tally = {};
+        for (const r of live) for (const part of String(r.items || "").split("; ")) { const m = part.match(/^(\d+) x (.+)$/); if (m) tally[m[2]] = (tally[m[2]] || 0) + Number(m[1]); }
+        const units = Object.entries(tally).sort((a, b) => b[1] - a[1]);
+        return ["Units sold:", ...(units.length ? units.map(([n, q]) => `  ${q} x ${n}`) : ["  none recorded"]), ""];
+      },
+    });
+    sent.push(key); done.push(key);
+  }
+  await env.ADMIN_KV.put("eventreports", JSON.stringify(sent.slice(-200)));
+  return done.length ? "sent " + done.join(", ") : "none due";
 }
 
 // Runs on the 1st of each month (Cron Trigger): emails last month's report once.
