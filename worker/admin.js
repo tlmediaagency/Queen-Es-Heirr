@@ -112,7 +112,7 @@ const stockVal = (v) => (v === null || v === "" || v === undefined ? null : Numb
 function isOurQuote(q) { return !!(q && q.metadata && /^queenesheirr\.com (class|wholesale) request/.test(String(q.metadata.source || ""))); }
 
 export async function handleAdmin(request, env, url, d) {
-  const { stripeGet, stripePost, stockOf, loadCatalog, posCheckout, posCash } = d;
+  const { stripeGet, stripePost, stockOf, loadCatalog, posCheckout, posCash, sendCashReceipt } = d;
   const path = url.pathname;
   if (path === "/admin" || path === "/admin/") {
     return new Response(UI, { headers: {
@@ -322,6 +322,19 @@ export async function handleAdmin(request, env, url, d) {
       return j({ sales: cash.slice().reverse().map((c) => ({ id: c.id, ts: c.ts, name: c.name || "", location: c.location || "", email: c.email || "", subtotal: c.subtotal, tax: c.tax, total: c.total, rate: c.rate || 0, voided: !!c.voided,
         items: c.items.map((x) => ({ name: x.name, size: x.size, qty: x.qty, cents: x.cents })) })) });
     }
+    if (route === "cash-receipt" && request.method === "POST") {
+      const email = String(body.email || "").trim().slice(0, 200);
+      if (!/^cash_[a-f0-9]+$/.test(body.id || "") || !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) return j({ error: "Enter a valid email address" }, 400);
+      let cash = [];
+      try { cash = JSON.parse((await env.ADMIN_KV.get("cashsales")) || "[]"); } catch { cash = []; }
+      const c = cash.find((x) => x.id === body.id);
+      if (!c) return j({ error: "Not found" }, 404);
+      if (c.voided) return j({ error: "That sale was voided" }, 409);
+      c.email = email;
+      await env.ADMIN_KV.put("cashsales", JSON.stringify(cash));
+      const emailed = await sendCashReceipt(env, c);
+      return j({ ok: true, emailed, email });
+    }
     if (route === "cash-void" && request.method === "POST") {
       if (!/^cash_[a-f0-9]+$/.test(body.id || "")) return j({ error: "Bad request" }, 400);
       let cash = [];
@@ -387,6 +400,7 @@ export async function handleAdmin(request, env, url, d) {
           id: s.id, created: s.created * 1000, total: s.amount_total, status: st[s.id] || ((s.metadata && s.metadata.fulfillment) === "inperson" ? "fulfilled" : "new"),
           name: (s.customer_details && s.customer_details.name) || "", email: (s.customer_details && s.customer_details.email) || "",
           phone: (s.customer_details && s.customer_details.phone) || "",
+          refundUrl: typeof s.payment_intent === "string" && s.payment_intent ? `https://dashboard.stripe.com/${/^(sk|rk)_test_/.test(env.STRIPE_SECRET_KEY || "") ? "test/" : ""}payments/${s.payment_intent}` : "",
           fulfillment: (s.metadata && s.metadata.fulfillment) || "ship", event: (s.metadata && s.metadata.event) || "",
           address: ship && ship.address ? [ship.address.line1, ship.address.line2, ship.address.city, ship.address.state, ship.address.postal_code].filter(Boolean).join(", ") : "",
           items: ((s.line_items && s.line_items.data) || []).map((l) => ({ name: l.description, qty: l.quantity })),

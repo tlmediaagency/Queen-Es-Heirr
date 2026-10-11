@@ -266,14 +266,19 @@ async function posCash(env, items, email, taxPct, key, name, location) {
   const rec = { id, key, ts: Date.now(), name, location, email, subtotal, tax, total, rate, items: lines.map((l) => ({ name: l.name, size: l.size, qty: l.qty, cents: l.cents, priceId: l.priceId })) };
   sales.push(rec);
   await env.ADMIN_KV.put("cashsales", JSON.stringify(sales.slice(-1000)));
-  let emailed = false;
-  if (email && env.MAIL_URL && env.MAIL_SECRET) {
-    try {
-      const r = await fetch(env.MAIL_URL, { method: "POST", headers: { "Content-Type": "text/plain" }, body: JSON.stringify({ action: "cash_receipt", secret: env.MAIL_SECRET, sale: rec }) });
-      emailed = r.ok;
-    } catch (e) { console.log("cash receipt failed", String(e)); }
-  }
+  const emailed = email ? await sendCashReceipt(env, rec) : false;
   return { ok: true, id, total, emailed };
+}
+
+// Asks the Apps Script to email the cash receipt. True only when the script reports it actually sent.
+async function sendCashReceipt(env, rec) {
+  if (!rec.email || !env.MAIL_URL || !env.MAIL_SECRET) return false;
+  try {
+    const r = await fetch(env.MAIL_URL, { method: "POST", headers: { "Content-Type": "text/plain" }, body: JSON.stringify({ action: "cash_receipt", secret: env.MAIL_SECRET, sale: rec }) });
+    if (!r.ok) return false;
+    const out = await r.json().catch(() => null);
+    return !!(out && out.ok === true);
+  } catch (e) { console.log("cash receipt failed", String(e)); return false; }
 }
 
 // In-person event sale: same Stripe-only pricing and stock rules as the website, no shipping, returns to /admin/thanks.
@@ -536,7 +541,7 @@ export default {
     if (env.ADMIN_HOST && url.hostname === env.ADMIN_HOST && url.pathname === "/") return Response.redirect(`https://${env.ADMIN_HOST}/admin`, 302);
     if (!env.STRIPE_SECRET_KEY) return json({ error: "Not configured" }, 500, c.headers);
     if (url.pathname === "/admin" || url.pathname.startsWith("/admin/")) {
-      const r = await handleAdmin(request, env, url, { stripeGet, stripePost, stockOf, loadCatalog, posCheckout, posCash });
+      const r = await handleAdmin(request, env, url, { stripeGet, stripePost, stockOf, loadCatalog, posCheckout, posCash, sendCashReceipt });
       if (r) return r;
     }
     const im = url.pathname.match(/^\/img\/([a-f0-9]+)\.jpg$/);

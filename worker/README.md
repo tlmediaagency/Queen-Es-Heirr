@@ -46,3 +46,7 @@ Cash sales: `pos-cash` records the sale in KV `cashsales`, lowers stock, and ema
 - **Featured sort** on the shop: products starred in the app (Products tab, Feature button) come first, then products restocked in the last 14 days (stock raised or sold-out cleared in the app, flagged "Just Restocked"), then in-stock items.
 - **Standard sizes** (`sizes.js`): Regular = 8 oz jam / 12 oz pickled goods; Large = 12 oz jam / 16 oz pickled goods. Old Stripe nicknames ("8 oz", "Regular", "Large 12 oz") display under the standard names, and new sizes are saved under them. Other sizes (4 oz) keep their names.
 - **Wholesale** (`POST /wholesale-request`, `WHOLESALE_URL` in `js/config.js`): choose jars on the Wholesale page; creates a draft Stripe quote at retail minus $2.00 per jar, shown in the app's Requests tab to Approve or Decline.
+
+## Receipts and refunds
+- Cash Ledger and cash orders have **Edit email / resend receipt**: fixes a mistyped address (saved on the sale) and sends the receipt again. The app reports whether the Apps Script confirmed the send.
+- Card orders in Orders have **Refund in Stripe**, which opens that payment in the Stripe Dashboard. Refunds there are not subtracted in Reports and do not restock; adjust stock by hand.
