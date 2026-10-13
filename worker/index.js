@@ -312,8 +312,8 @@ async function posCheckout(env, origin, items, location) {
   params.set("success_url", `${origin}/admin/thanks`);
   params.set("cancel_url", `${origin}/admin/thanks?cancelled=1`);
   params.set("expires_at", String(Math.floor(Date.now() / 1000) + 31 * 60));
-  // Card only (Apple Pay and Google Pay still appear): no "save my info" Link prompt, nothing is stored for the customer.
-  params.set("payment_method_types[0]", "card");
+  // Payment methods (card, Apple Pay, Google Pay, Link) are chosen in the Stripe Dashboard under Settings > Payment methods.
+  // Stripe no longer accepts payment_method_types on Checkout Sessions, so it is not sent.
   params.set("metadata[fulfillment]", "inperson");
   params.set("metadata[event]", String(location || "").trim().slice(0, 120) || "In-person sale");
   if (env.TAX_ENABLED === "true") {
