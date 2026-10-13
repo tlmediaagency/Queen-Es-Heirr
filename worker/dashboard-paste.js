@@ -316,7 +316,7 @@ function viewProducts(n) {
     var PCFG = { get: { name: function (p) { return p.name.toLowerCase(); }, price: function (p) { return p.sizes.length ? Math.min.apply(null, p.sizes.map(function (s) { return s.cents; })) : null; },
       stock: function (p) { return p.sizes.length ? p.sizes.reduce(function (t, s) { return t + (s.stock == null ? 100000 : s.stock); }, 0) : null; }, category: function (p) { return (p.category || "").toLowerCase(); }, order: function (p) { return p.sort; } },
       typeOf: function (p) { return p.category; } };
-    var ptools = listTools({ sorts: [["order", "Shop order"], ["name", "Name"], ["price", "Price"], ["stock", "Stock"], ["category", "Category"]], dir: "asc", types: uniq(d.products.concat(d.hidden).map(function (p) { return p.category; })), typeLabel: "Category" }, function () { draw(); });
+    var ptools = listTools({ sorts: [["order", "Shop order"], ["name", "Name"], ["price", "Price"], ["stock", "Stock"], ["category", "Category"]], dir: "asc", types: CATEGORIES, typeLabel: "Category" }, function () { draw(); });
     var plist = h("div");
     function draw() {
       clear(plist);
