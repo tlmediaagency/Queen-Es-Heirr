@@ -288,6 +288,13 @@ export async function handleAdmin(request, env, url, d) {
       const q = new URLSearchParams();
       if ("stock" in body) { const s = stockVal(body.stock); if (Number.isNaN(s)) return j({ error: "Stock must be a whole number" }, 400); q.set("metadata[stock]", s === null ? "" : String(s)); }
       if ("soldOut" in body) q.set("metadata[sold_out]", body.soldOut ? "true" : "false");
+      if (typeof body.label === "string") {
+        const raw = body.label.trim().slice(0, 40);
+        if (!raw) return j({ error: "Give the option a name, like Paperback" }, 400);
+        let cat = "Jams";
+        try { const pr0 = await stripeGet(env, `/prices/${m[1]}`); const pp = await stripeGet(env, `/products/${typeof pr0.product === "string" ? pr0.product : pr0.product.id}`); cat = (pp.metadata && pp.metadata.category) || "Jams"; } catch {}
+        q.set("nickname", stdSize(cat, raw));
+      }
       if (![...q.keys()].length) return j({ error: "Nothing to change" }, 400);
       // A raise in stock (or un-marking sold out) flags the product "Just restocked" for the shop's Featured sort.
       let before = null;

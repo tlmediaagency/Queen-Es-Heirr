@@ -317,20 +317,24 @@ function viewProducts(n) {
     n.appendChild(ptools.el); n.appendChild(plist); draw();
   }).catch(function (er) { failed(n, er); });
 }
+var OPTION_HINT = { "Curriculum & Resources": "Workbook, Teacher's guide, Set", "Books": "Paperback, Hardcover" };
 function sizeRow(p, s, reload) {
+  var nm = h("input", { value: s.label, "aria-label": "Size or option name", placeholder: OPTION_HINT[p.category] || "Regular or Large" });
   var price = h("input", { inputmode: "decimal", value: (s.cents / 100).toFixed(2), "aria-label": "Price" });
   var stock = h("input", { inputmode: "numeric", value: s.stock == null ? "" : String(s.stock), placeholder: "unlimited", "aria-label": "Stock" });
   var sold = h("input", { type: "checkbox", checked: s.soldOut });
   var b = h("button", { "class": "btn small primary", text: "Save", onclick: function () {
     b.disabled = true;
-    var steps = api("POST", "price/" + s.priceId, { stock: stock.value.trim() === "" ? null : stock.value.trim(), soldOut: sold.checked });
+    var body = { stock: stock.value.trim() === "" ? null : stock.value.trim(), soldOut: sold.checked };
+    if (nm.value.trim() !== s.label) body.label = nm.value;
+    var steps = api("POST", "price/" + s.priceId, body);
     if (parseFloat(price.value) !== s.cents / 100) {
       steps = steps.then(function () { return api("POST", "price-change/" + s.priceId, { price: price.value }); });
     }
     steps.then(function () { toast("Saved"); reload(); }).catch(function (er) { toast(er.message); b.disabled = false; });
   } });
   return h("div", { "class": "row" }, [
-    h("strong", { text: s.label }), h("label", null, ["Price $", price]), h("label", null, ["Stock", stock]),
+    h("label", null, [p.category === "Jams" || p.category === "Pickled goods" ? "Size" : "Option", nm]), h("label", null, ["Price $", price]), h("label", null, ["Stock", stock]),
     h("label", { "class": "chk" }, [sold, "Sold out"]), b]);
 }
 function productCard(p, reload, move, idx, total) {
@@ -359,8 +363,8 @@ function productCard(p, reload, move, idx, total) {
   card.appendChild(details);
   var sizes = h("div", { "class": "sizes" }, p.sizes.map(function (s) { return sizeRow(p, s, reload); }));
   card.appendChild(sizes);
-  var l = h("input", { placeholder: "Regular or Large" }), pr = h("input", { inputmode: "decimal", placeholder: "10.00" }), st = h("input", { inputmode: "numeric", placeholder: "unlimited" });
-  card.appendChild(h("div", { "class": "row", style: "margin-top:8px" }, [h("label", null, ["New size", l]), h("label", null, ["Price $", pr]), h("label", null, ["Stock", st]),
+  var l = h("input", { placeholder: OPTION_HINT[p.category] || "Regular or Large" }), pr = h("input", { inputmode: "decimal", placeholder: "10.00" }), st = h("input", { inputmode: "numeric", placeholder: "unlimited" });
+  card.appendChild(h("div", { "class": "row", style: "margin-top:8px" }, [h("label", null, [p.category === "Jams" || p.category === "Pickled goods" ? "New size" : "New option", l]), h("label", null, ["Price $", pr]), h("label", null, ["Stock", st]),
     h("button", { "class": "btn small", text: "Add size", onclick: function () {
       api("POST", "size/" + p.id, { label: l.value, price: pr.value, stock: st.value.trim() === "" ? null : st.value.trim() }).then(function () { toast("Added"); reload(); }).catch(function (er) { toast(er.message); });
     } })]));
