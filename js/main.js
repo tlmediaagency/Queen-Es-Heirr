@@ -134,6 +134,11 @@
     });
     subEl.textContent = money(sub);
     if (checkoutBtn) checkoutBtn.disabled = !lines.length;
+    var allDigital = lines.length > 0 && lines.every(function (l) { return findProduct(l.id).digital; });
+    var fset = document.querySelector(".fulfill"), fnote = document.querySelector("[data-fulfill-note]");
+    if (fset) fset.hidden = allDigital;
+    if (fnote && allDigital) fnote.textContent = "Digital items: no shipping. Any sales tax is added at secure checkout, and we email your access details.";
+    else if (fnote && fnote.textContent.indexOf("Digital items") === 0) fnote.textContent = "Shipping and any sales tax are added at secure checkout.";
   }
 
   function change(id, size, delta) {
@@ -223,7 +228,14 @@
 
   // Shop grid
   var shop = document.querySelector("[data-shop]");
-  var sortKey = "featured";
+  var sortKey = "order";
+  var CATS = [["Jams", "jams"], ["Pickled goods", "pickled-goods"], ["Curriculum & Resources", "curriculum"], ["Books", "books"]];
+  var soloCat = shop ? shop.getAttribute("data-category") : null;   // e.g. the Judah page shows only Books
+  var catFilter = "";
+  (function () {
+    var m = /[?&]cat=([a-z-]+)/.exec(location.search) || /^#([a-z-]+)$/.exec(location.hash);
+    if (m) CATS.forEach(function (c) { if (c[1] === m[1]) catFilter = c[0]; });
+  })();
   if (shop) {
     var viewKey = "qe-shop-view", view = "grid";
     try { view = localStorage.getItem(viewKey) === "list" ? "list" : "grid"; } catch (e) {}
@@ -244,7 +256,7 @@
       tog.appendChild(b);
     });
     var sortSel = el("select", { "aria-label": "Sort products" });
-    [["featured", "Featured"], ["name", "Name (A to Z)"], ["price-asc", "Price (low to high)"], ["price-desc", "Price (high to low)"], ["available", "Availability (in stock first)"], ["stock", "Most in stock"]].forEach(function (o) {
+    [["order", "Our Order"], ["featured", "Featured First"], ["name", "Name (A to Z)"], ["price-asc", "Price (low to high)"], ["price-desc", "Price (high to low)"], ["available", "Availability (in stock first)"], ["stock", "Most in stock"]].forEach(function (o) {
       sortSel.appendChild(el("option", { value: o[0] }, o[1]));
     });
     sortSel.addEventListener("change", function () { sortKey = sortSel.value; renderShop(); });
@@ -252,7 +264,14 @@
     sortLab.appendChild(sortSel);
     var tools = el("div", { "class": "shop-tools" });
     tools.appendChild(sortLab); tools.appendChild(tog);
-    shop.parentNode.insertBefore(tools, shop);
+    if (!soloCat) {
+      var chips = el("div", { "class": "cat-chips", role: "group", "aria-label": "Shop by category" });
+      chips.setAttribute("data-cat-chips", "");
+      shop.parentNode.insertBefore(chips, shop);
+      shop.parentNode.insertBefore(tools, shop);
+    } else {
+      sortLab.hidden = true; tog.hidden = true;
+    }
   }
   function sortedCatalog() {
     var list = catalog.slice();
@@ -261,7 +280,8 @@
     var stockOf = function (p) { return open(p).reduce(function (t, s) { return t + (typeof s.stock === "number" ? s.stock : 999); }, 0); };
     var byName = function (a, b) { return a.name.localeCompare(b.name); };
     var fresh = function (p) { return p.restocked && Date.now() - p.restocked < 14 * 864e5 && open(p).length > 0; };
-    if (sortKey === "featured") list.sort(function (a, b) {
+    if (sortKey === "order") list.sort(function (a, b) { return (a.sort || 1000) - (b.sort || 1000) || byName(a, b); });
+    else if (sortKey === "featured") list.sort(function (a, b) {
       return (!!b.featured - !!a.featured) || (fresh(b) - fresh(a)) || ((fresh(b) ? b.restocked : 0) - (fresh(a) ? a.restocked : 0)) ||
         ((open(b).length > 0) - (open(a).length > 0)) || ((a.sort || 1000) - (b.sort || 1000)) || byName(a, b);
     });
@@ -272,20 +292,38 @@
     else if (sortKey === "stock") list.sort(function (a, b) { return stockOf(b) - stockOf(a) || byName(a, b); });
     return list;
   }
+  function renderChips() {
+    var box = document.querySelector("[data-cat-chips]");
+    if (!box) return;
+    box.textContent = "";
+    var present = CATS.filter(function (c) { return catalog.some(function (p) { return p.category === c[0]; }); });
+    if (present.length < 2) { box.hidden = true; return; }
+    box.hidden = false;
+    [["", "All"]].concat(present).forEach(function (c) {
+      var b = el("button", { type: "button", "aria-pressed": String(catFilter === c[0]) }, c[0] === "" ? "All" : c[0]);
+      b.addEventListener("click", function () { catFilter = c[0]; renderChips(); renderShop(); });
+      box.appendChild(b);
+    });
+  }
+  function isFood(p) { return p.category === "Jams" || p.category === "Pickled goods"; }
   function renderShop() {
     if (!shop) return;
     shop.textContent = "";
-    sortedCatalog().forEach(function (p) {
+    renderChips();
+    var shown = sortedCatalog().filter(function (p) { return soloCat ? soloCat.split("|").indexOf(p.category) > -1 : (!catFilter || p.category === catFilter); });
+    if (!shown.length) shop.appendChild(el("p", { "class": "muted" }, soloCat ? "This is coming soon. Join the mailing list to hear first." : "Nothing here yet."));
+    shown.forEach(function (p) {
       var card = el("article", { "class": "card" });
       var imgSrc = p.image || PLACEHOLDER;
-      var img = el("img", { src: imgSrc, alt: imgSrc === PLACEHOLDER ? p.name + " (photo coming soon)" : p.name + " jar", loading: "lazy" });
+      var img = el("img", { src: imgSrc, alt: imgSrc === PLACEHOLDER ? p.name + " (photo coming soon)" : p.name + (isFood(p) ? " jar" : ""), loading: "lazy" });
       var body = el("div", { "class": "card-body" });
       var fresh = p.restocked && Date.now() - p.restocked < 14 * 864e5 && p.sizes.some(function (s) { return !s.soldOut; });
       body.appendChild(el("p", { "class": "kicker" }, p.category));
       if (p.featured || fresh) body.appendChild(el("span", { "class": "flag" }, p.featured ? "Featured" : "Just Restocked"));
       body.appendChild(el("h3", null, p.name));
       body.appendChild(el("p", null, p.description));
-      var label = el("label", { "class": "field" }, "Size");
+      if (p.digital) body.appendChild(el("p", { "class": "cart-note" }, "Digital item: nothing ships. We email your access details."));
+      var label = el("label", { "class": "field" }, isFood(p) ? "Size" : "Option");
       var select = el("select");
       var firstOpen = null;
       p.sizes.forEach(function (s) {

@@ -2,7 +2,7 @@
 // Needs: KV binding ADMIN_KV; secrets SESSION_SECRET, MAIL_SECRET; var ADMIN_EMAILS; var MAIL_URL (Apps Script web app URL).
 import UI from "./admin-ui.js";
 import { adminClasses, cleanClasses, adminBookings, readClasses, readBookings } from "./classes.js";
-import { stdSize } from "./sizes.js";
+import { stdSize, CATEGORIES } from "./sizes.js";
 import { ICON_192, ICON_512 } from "./admin-icons.js";
 
 const enc = new TextEncoder();
@@ -124,7 +124,7 @@ export async function buildReport(env, stripeGet, from, to) {
       if (s.payment_status !== "paid" || (s.metadata && s.metadata.kind === "class")) continue;
       const ful = (s.metadata && s.metadata.fulfillment) || "ship";
       const ms = s.created * 1000, cd = s.customer_details || {};
-      rows.push({ ts: ms, id: s.id, channel: ful === "inperson" ? "In person - Card" : ful === "event" ? "Online - Event pickup" : ful === "pickup" ? "Online - Pickup" : "Online - Ship",
+      rows.push({ ts: ms, id: s.id, channel: ful === "inperson" ? "In person - Card" : ful === "event" ? "Online - Event pickup" : ful === "pickup" ? "Online - Pickup" : ful === "digital" ? "Online - Digital" : "Online - Ship",
         customer: cd.name || "", email: cd.email || "", location: (s.metadata && s.metadata.event) || "", status: st[s.id] || (ful === "inperson" ? "fulfilled" : "new"),
         items: ((s.line_items && s.line_items.data) || []).map((l) => `${l.quantity} x ${l.description}`).join("; "),
         subtotal: s.amount_subtotal || 0, shipping: (s.total_details && s.total_details.amount_shipping) || 0, tax: (s.total_details && s.total_details.amount_tax) || 0, total: s.amount_total || 0 });
@@ -269,7 +269,7 @@ export async function handleAdmin(request, env, url, d) {
       const by = {};
       for (const x of pr.data) (by[typeof x.product === "string" ? x.product : x.product.id] ||= []).push(x);
       const shape = (p, active) => ({
-        id: p.id, name: p.name, image: (p.images && p.images[0]) || "", active, category: (p.metadata && p.metadata.category) || "Jams", description: p.description || "",
+        id: p.id, name: p.name, image: (p.images && p.images[0]) || "", active, category: CATEGORIES.includes(p.metadata && p.metadata.category) ? p.metadata.category : "Jams", description: p.description || "", digital: (p.metadata && p.metadata.digital) === "true", sort: Number((p.metadata && p.metadata.sort) || 1000),
         featured: (p.metadata && p.metadata.featured) === "true", restocked: Number((p.metadata && p.metadata.restocked) || 0),
         sizes: (by[p.id] || []).map((x) => ({
           priceId: x.id, label: stdSize((p.metadata && p.metadata.category) || "Jams", x.nickname), cents: x.unit_amount, stock: stockOf(x),
@@ -278,7 +278,7 @@ export async function handleAdmin(request, env, url, d) {
       });
       const keep = (p) => !(p.metadata && p.metadata.kind === "class");
       return j({
-        products: pa.data.filter(keep).map((p) => shape(p, true)).sort((a, b) => a.name.localeCompare(b.name)),
+        products: pa.data.filter(keep).map((p) => shape(p, true)).sort((a, b) => a.sort - b.sort || a.name.localeCompare(b.name)),
         hidden: ph.data.filter(keep).map((p) => shape(p, false)),
       });
     }
@@ -327,7 +327,8 @@ export async function handleAdmin(request, env, url, d) {
       const q = new URLSearchParams();
       if (typeof body.name === "string" && body.name.trim()) q.set("name", body.name.trim().slice(0, 100));
       if (typeof body.description === "string") q.set("description", body.description.slice(0, 1000));
-      if (body.category === "Jams" || body.category === "Pickled goods") q.set("metadata[category]", body.category);
+      if (CATEGORIES.includes(body.category)) q.set("metadata[category]", body.category);
+      if (typeof body.digital === "boolean") q.set("metadata[digital]", String(body.digital));
       if (typeof body.active === "boolean") q.set("active", String(body.active));
       if (typeof body.featured === "boolean") q.set("metadata[featured]", String(body.featured));
       if (okImage(body.image, url.origin)) q.set("images[0]", body.image);
@@ -335,17 +336,27 @@ export async function handleAdmin(request, env, url, d) {
       await stripePost(env, `/products/${m[1]}`, q);
       return j({ ok: true });
     }
+    if (route === "products/order" && request.method === "POST") {
+      const ids = Array.isArray(body.ids) ? body.ids.filter((x) => typeof x === "string" && /^[a-z0-9-]+$/.test(x)).slice(0, 100) : [];
+      if (!ids.length) return j({ error: "Nothing to reorder" }, 400);
+      // Spread the order out (10, 20, 30...) so new products added later still land at the end.
+      for (let i = 0; i < ids.length; i += 5) {
+        await Promise.all(ids.slice(i, i + 5).map((id, k) => stripePost(env, `/products/${id}`, new URLSearchParams({ "metadata[sort]": String((i + k + 1) * 10) }))));
+      }
+      return j({ ok: true });
+    }
     if (route === "product" && request.method === "POST") {
       const name = String(body.name || "").trim().slice(0, 100), id = slug(name);
       const sizes = Array.isArray(body.sizes) ? body.sizes.slice(0, 6) : [];
       if (!id || !sizes.length) return j({ error: "A name and at least one size are needed" }, 400);
-      const catNew = body.category === "Pickled goods" ? "Pickled goods" : "Jams";
+      const catNew = CATEGORIES.includes(body.category) ? body.category : "Jams";
       const parsed = sizes.map((s) => ({ label: String(s.label || "").trim() ? stdSize(catNew, String(s.label).trim().slice(0, 40)) : "", c: cents(s.price), s: stockVal(s.stock) }));
       if (parsed.some((s) => !s.label || s.c === null || Number.isNaN(s.s))) return j({ error: "Each size needs a name and a price like 7.00" }, 400);
       let exists = true;
       try { await stripeGet(env, `/products/${id}`); } catch { exists = false; }
       if (exists) return j({ error: "A product with that name already exists" }, 409);
-      const q = new URLSearchParams({ id, name, description: String(body.description || "").slice(0, 1000), "metadata[category]": body.category === "Pickled goods" ? "Pickled goods" : "Jams", "metadata[sort]": "900" });
+      const q = new URLSearchParams({ id, name, description: String(body.description || "").slice(0, 1000), "metadata[category]": catNew, "metadata[sort]": "900" });
+      if (body.digital === true) q.set("metadata[digital]", "true");
       if (okImage(body.image, url.origin)) q.set("images[0]", body.image);
       await stripePost(env, "/products", q);
       for (const s of parsed) {

@@ -8,7 +8,7 @@
 // Sold out: set metadata sold_out=true on the product (all sizes) or on one price (that size).
 
 import { CATALOG } from "./catalog.js";
-import { stdSize } from "./sizes.js";
+import { stdSize, CATEGORIES } from "./sizes.js";
 import { SEED } from "./seed-data.js";
 import { handleAdmin, readEvents, upcoming, serveImage, monthlyReport, eventReports } from "./admin.js";
 import { publicClasses, classCheckout, recordBooking } from "./classes.js";
@@ -70,7 +70,7 @@ async function loadCatalog(env) {
     const list = byProduct.get(p.id);
     if (!list || !list.length) continue;
     const productSold = (p.metadata && p.metadata.sold_out) === "true";
-    const category = (p.metadata && p.metadata.category) || "Jams";
+    const category = CATEGORIES.includes(p.metadata && p.metadata.category) ? p.metadata.category : "Jams";
     const sizes = list
       .map((pr) => ({
         label: stdSize(category, pr.nickname),
@@ -87,6 +87,7 @@ async function loadCatalog(env) {
       description: p.description || "",
       image: (p.images && p.images[0]) || "",
       featured: (p.metadata && p.metadata.featured) === "true",
+      digital: (p.metadata && p.metadata.digital) === "true",
       restocked: Number((p.metadata && p.metadata.restocked) || 0),
       sort: Number((p.metadata && p.metadata.sort) || 1000),
       sizes,
@@ -169,9 +170,11 @@ async function handleCheckout(request, env, c) {
     params.set(`line_items[${i}][quantity]`, String(qty));
     i++;
   }
-  const pickup = payload.fulfillment === "pickup" || payload.fulfillment === "event";
+  // An order made only of digital items needs no shipping address or fee.
+  const allDigital = items.length > 0 && items.every((it) => { const pr = catalog.find((p) => p.id === (it && it.id)); return pr && pr.digital; });
+  const pickup = !allDigital && (payload.fulfillment === "pickup" || payload.fulfillment === "event");
   let ev = null;
-  if (payload.fulfillment === "event") {
+  if (!allDigital && payload.fulfillment === "event") {
     ev = upcoming(await readEvents(env)).find((e) => e.id === payload.eventId);
     if (!ev) return json({ error: "That event is no longer taking orders" }, 400, c.headers);
   }
@@ -180,9 +183,12 @@ async function handleCheckout(request, env, c) {
   params.set("success_url", `${site}/order-confirmed/?session_id={CHECKOUT_SESSION_ID}`);
   params.set("cancel_url", `${site}/shop/`);
   params.set("phone_number_collection[enabled]", "true");
-  params.set("metadata[fulfillment]", ev ? "event" : pickup ? "pickup" : "ship");
+  params.set("metadata[fulfillment]", allDigital ? "digital" : ev ? "event" : pickup ? "pickup" : "ship");
   if (ev) params.set("metadata[event]", `${ev.name} (${ev.date})`.slice(0, 200));
-  if (pickup) {
+  if (allDigital) {
+    params.set("billing_address_collection", "required");
+    params.set("custom_text[submit][message]", "Digital item: nothing ships. We will email your download or access details to the address you enter here.");
+  } else if (pickup) {
     // No shipping address or fee. Customers are contacted by email to arrange pickup.
     params.set("billing_address_collection", "required");
     params.set("custom_text[submit][message]", ev ? `Pickup at ${ev.name} on ${ev.date}${ev.location ? " (" + ev.location + ")" : ""}. We will email you the details.` : "Local pickup: we will email you to arrange a pickup time and place.");

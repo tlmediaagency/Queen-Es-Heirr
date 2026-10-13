@@ -248,10 +248,10 @@ function viewOrders(n) {
     clear(n);
     var filter = "open";
     var list = h("div");
-    var orderType = function (o) { return o.fulfillment === "inperson" ? (o.cash ? "In person - Cash" : "In person - Card") : o.fulfillment === "event" ? "Event pickup" : o.fulfillment === "pickup" ? "Pickup" : "Ship"; };
+    var orderType = function (o) { return o.fulfillment === "inperson" ? (o.cash ? "In person - Cash" : "In person - Card") : o.fulfillment === "event" ? "Event pickup" : o.fulfillment === "pickup" ? "Pickup" : o.fulfillment === "digital" ? "Digital" : "Ship"; };
     var OCFG = { get: { date: function (o) { return o.created; }, amount: function (o) { return o.total; }, name: function (o) { return (o.name || o.email || "").toLowerCase(); } },
       dateOf: function (o) { return chiDate(o.created); }, typeOf: orderType };
-    var tools = listTools({ sorts: [["date", "Date"], ["amount", "Amount"], ["name", "Name"]], types: ["Ship", "Pickup", "Event pickup", "In person - Card", "In person - Cash"], dateOf: true }, function () { draw(); });
+    var tools = listTools({ sorts: [["date", "Date"], ["amount", "Amount"], ["name", "Name"]], types: ["Ship", "Digital", "Pickup", "Event pickup", "In person - Card", "In person - Cash"], dateOf: true }, function () { draw(); });
     function draw() {
       clear(list);
       var rows = d.orders.filter(function (o) { return filter === "all" || (filter === "open" ? o.status !== "fulfilled" : o.status === filter); });
@@ -261,7 +261,7 @@ function viewOrders(n) {
         var sel = h("select", { "aria-label": "Order status", onchange: function () {
           api("POST", "order-status", { id: o.id, status: sel.value }).then(function () { o.status = sel.value; toast("Saved"); }).catch(function (er) { toast(er.message); });
         } }, STATUS.map(function (s) { return h("option", { value: s[0], selected: s[0] === o.status, text: s[1] }); }));
-        var how = o.fulfillment === "inperson" ? h("span", { "class": "pill event", text: (o.cash ? "In person \u00b7 Cash" : "In person") + (o.event ? " \u00b7 " + o.event : "") }) : o.fulfillment === "event" ? h("span", { "class": "pill event", text: "Event: " + o.event }) : o.fulfillment === "pickup" ? h("span", { "class": "pill pickup", text: "Pickup" }) : h("span", { "class": "pill", text: "Ship" });
+        var how = o.fulfillment === "inperson" ? h("span", { "class": "pill event", text: (o.cash ? "In person \u00b7 Cash" : "In person") + (o.event ? " \u00b7 " + o.event : "") }) : o.fulfillment === "event" ? h("span", { "class": "pill event", text: "Event: " + o.event }) : o.fulfillment === "pickup" ? h("span", { "class": "pill pickup", text: "Pickup" }) : o.fulfillment === "digital" ? h("span", { "class": "pill pickup", text: "Digital (nothing to ship)" }) : h("span", { "class": "pill", text: "Ship" });
         list.appendChild(h("div", { "class": "card" }, [
           h("div", { style: "display:flex;justify-content:space-between;gap:8px;flex-wrap:wrap" }, [
             h("strong", { text: o.name || o.email }), h("span", { "class": "muted", text: new Date(o.created).toLocaleString() + " · " + money(o.total) })]),
@@ -284,6 +284,7 @@ function viewOrders(n) {
 }
 
 /* PRODUCTS */
+var CATEGORIES = ["Jams", "Pickled goods", "Curriculum & Resources", "Books"];
 function viewProducts(n) {
   loading(n);
   api("GET", "products").then(function (d) {
@@ -291,13 +292,23 @@ function viewProducts(n) {
     n.appendChild(h("p", { "class": "muted", text: "Leave Stock blank for unlimited. Changes show on the website within about a minute." }));
     n.appendChild(addProductCard(function () { viewProducts(n); }));
     var PCFG = { get: { name: function (p) { return p.name.toLowerCase(); }, price: function (p) { return p.sizes.length ? Math.min.apply(null, p.sizes.map(function (s) { return s.cents; })) : null; },
-      stock: function (p) { return p.sizes.length ? p.sizes.reduce(function (t, s) { return t + (s.stock == null ? 100000 : s.stock); }, 0) : null; }, category: function (p) { return (p.category || "").toLowerCase(); } },
+      stock: function (p) { return p.sizes.length ? p.sizes.reduce(function (t, s) { return t + (s.stock == null ? 100000 : s.stock); }, 0) : null; }, category: function (p) { return (p.category || "").toLowerCase(); }, order: function (p) { return p.sort; } },
       typeOf: function (p) { return p.category; } };
-    var ptools = listTools({ sorts: [["name", "Name"], ["price", "Price"], ["stock", "Stock"], ["category", "Category"]], dir: "asc", types: uniq(d.products.concat(d.hidden).map(function (p) { return p.category; })), typeLabel: "Category" }, function () { draw(); });
+    var ptools = listTools({ sorts: [["order", "Shop order"], ["name", "Name"], ["price", "Price"], ["stock", "Stock"], ["category", "Category"]], dir: "asc", types: uniq(d.products.concat(d.hidden).map(function (p) { return p.category; })), typeLabel: "Category" }, function () { draw(); });
     var plist = h("div");
     function draw() {
       clear(plist);
-      applyTools(d.products, ptools.state, PCFG).forEach(function (p) { plist.appendChild(productCard(p, function () { viewProducts(n); })); });
+      var shown = applyTools(d.products, ptools.state, PCFG), byOrder = ptools.state.sort === "order";
+      if (byOrder) plist.appendChild(h("p", { "class": "muted", text: "Shop order: use \u25b2 \u25bc on a product to move it. The shop shows products in this order when visitors pick \u201cOur Order\u201d, and inside each category tab." }));
+      shown.forEach(function (p, i) {
+        var move = byOrder ? function (dir) {
+          var j = i + dir; if (j < 0 || j >= shown.length) return;
+          var master = d.products.slice(), a = master.indexOf(shown[i]), b = master.indexOf(shown[j]);
+          master[a] = shown[j]; master[b] = shown[i];
+          api("POST", "products/order", { ids: master.map(function (x) { return x.id; }) }).then(function () { toast("Order saved"); viewProducts(n); }).catch(function (er) { toast(er.message); });
+        } : null;
+        plist.appendChild(productCard(p, function () { viewProducts(n); }, move, i, shown.length));
+      });
       if (d.hidden.length && !ptools.state.type) {
         plist.appendChild(h("h2", { text: "Hidden Products" }));
         d.hidden.forEach(function (p) { plist.appendChild(productCard(p, function () { viewProducts(n); })); });
@@ -322,24 +333,27 @@ function sizeRow(p, s, reload) {
     h("strong", { text: s.label }), h("label", null, ["Price $", price]), h("label", null, ["Stock", stock]),
     h("label", { "class": "chk" }, [sold, "Sold out"]), b]);
 }
-function productCard(p, reload) {
+function productCard(p, reload, move, idx, total) {
   var card = h("div", { "class": "card" });
   card.appendChild(h("div", { style: "display:flex;justify-content:space-between;gap:8px;flex-wrap:wrap;align-items:center" }, [
     h("h3", { text: p.name + (p.active ? "" : " (hidden)") + (p.featured ? " \u2605" : "") }),
-    h("div", null, [
+    h("div", null, (move ? [
+      h("button", { "class": "btn small", type: "button", "aria-label": "Move " + p.name + " up", text: "\u25b2", disabled: idx === 0, onclick: function () { move(-1); } }), " ",
+      h("button", { "class": "btn small", type: "button", "aria-label": "Move " + p.name + " down", text: "\u25bc", disabled: idx === total - 1, onclick: function () { move(1); } }), " "] : []).concat([
       h("button", { "class": "btn small", "aria-pressed": String(!!p.featured), text: p.featured ? "\u2605 Featured" : "\u2606 Feature", title: "Featured products show first in the shop", onclick: function () {
         api("POST", "product/" + p.id, { featured: !p.featured }).then(function () { toast(p.featured ? "No longer featured" : "Featured"); reload(); }).catch(function (er) { toast(er.message); });
       } }), " ",
       h("button", { "class": "btn small", onclick: function () { details.classList.toggle("hide"); }, text: "Edit details" }), " ",
       h("button", { "class": "btn small" + (p.active ? " danger" : ""), text: p.active ? "Hide from shop" : "Show in shop", onclick: function () {
         api("POST", "product/" + p.id, { active: !p.active }).then(function () { toast("Saved"); reload(); }).catch(function (er) { toast(er.message); });
-      } })])]));
+      } })]))]));
   var name = h("input", { value: p.name }), desc = h("textarea", { rows: "3", text: p.description }), pick = photoPicker(p.image);
-  var cat = h("select", null, ["Jams", "Pickled goods"].map(function (c) { return h("option", { value: c, selected: c === p.category, text: c }); }));
+  var cat = h("select", null, CATEGORIES.map(function (c) { return h("option", { value: c, selected: c === p.category, text: c }); }));
+  var dig = h("input", { type: "checkbox", checked: !!p.digital });
   var details = h("div", { "class": "hide" }, [
-    h("label", null, ["Name", name]), h("label", null, ["Category", cat]), h("label", null, ["Description", desc]), pick.node,
+    h("label", null, ["Name", name]), h("label", null, ["Category", cat]), h("label", { "class": "chk" }, [dig, "Digital item (nothing ships, no shipping fee)"]), h("label", null, ["Description", desc]), pick.node,
     h("p"), h("button", { "class": "btn small primary", text: "Save details", onclick: function () {
-      var body = { name: name.value, description: desc.value, category: cat.value }; if (pick.holder.url && pick.holder.url !== p.image) body.image = pick.holder.url;
+      var body = { name: name.value, description: desc.value, category: cat.value, digital: dig.checked }; if (pick.holder.url && pick.holder.url !== p.image) body.image = pick.holder.url;
       api("POST", "product/" + p.id, body).then(function () { toast("Saved"); reload(); }).catch(function (er) { toast(er.message); });
     } })]);
   card.appendChild(details);
@@ -354,15 +368,16 @@ function productCard(p, reload) {
 }
 function addProductCard(reload) {
   var name = h("input"), desc = h("textarea", { rows: "2" }), pick = photoPicker("");
-  var cat = h("select", null, ["Jams", "Pickled goods"].map(function (c) { return h("option", { value: c, text: c }); }));
-  var rows = [0, 1, 2].map(function (i) { return { l: h("input", { placeholder: i ? (i === 1 ? "Large" : "") : "Regular" }), p: h("input", { inputmode: "decimal", placeholder: i ? "" : "7.00" }), s: h("input", { inputmode: "numeric", placeholder: "unlimited" }) }; });
+  var cat = h("select", null, CATEGORIES.map(function (c) { return h("option", { value: c, text: c }); }));
+  var rows = [0, 1, 2].map(function (i) { return { l: h("input", { placeholder: i ? (i === 1 ? "Large" : "") : "Regular, or Download / Book" }), p: h("input", { inputmode: "decimal", placeholder: i ? "" : "7.00" }), s: h("input", { inputmode: "numeric", placeholder: "unlimited" }) }; });
+  var dig = h("input", { type: "checkbox" });
   var box = h("div", { "class": "hide" }, [
-    h("label", null, ["Product name", name]), h("label", null, ["Category", cat]), h("label", null, ["Description", desc]), pick.node,
-    h("p", { "class": "muted", text: "Sizes (fill one, two or three rows)" })].concat(rows.map(function (r) {
+    h("label", null, ["Product name", name]), h("label", null, ["Category", cat]), h("label", { "class": "chk" }, [dig, "Digital item (nothing ships, no shipping fee)"]), h("label", null, ["Description", desc]), pick.node,
+    h("p", { "class": "muted", text: "Sizes or options (fill one, two or three rows)" })].concat(rows.map(function (r) {
       return h("div", { "class": "row" }, [h("label", null, ["Size", r.l]), h("label", null, ["Price $", r.p]), h("label", null, ["Stock", r.s])]);
     })).concat([h("p"), h("button", { "class": "btn primary", text: "Add product", onclick: function () {
       var sizes = rows.filter(function (r) { return r.l.value.trim() || r.p.value.trim(); }).map(function (r) { return { label: r.l.value, price: r.p.value, stock: r.s.value.trim() === "" ? null : r.s.value.trim() }; });
-      api("POST", "product", { name: name.value, category: cat.value, description: desc.value, image: pick.holder.url, sizes: sizes }).then(function () { toast("Product added"); reload(); }).catch(function (er) { toast(er.message); });
+      api("POST", "product", { name: name.value, category: cat.value, digital: dig.checked, description: desc.value, image: pick.holder.url, sizes: sizes }).then(function () { toast("Product added"); reload(); }).catch(function (er) { toast(er.message); });
     } })]));
   return h("div", { "class": "card" }, [h("button", { "class": "btn primary", text: "+ Add a new product", onclick: function () { box.classList.toggle("hide"); } }), box]);
 }

@@ -238,3 +238,13 @@ html { scroll-behavior: smooth; }
 .review-fab a:hover{color:var(--gold)}
 .review-fab button{background:none;border:0;color:var(--gold);font-size:1.2rem;line-height:1;padding:8px 13px 8px 6px;cursor:pointer;min-height:40px}
 @media print{.review-fab{display:none}}
+
+/* Shop categories + Judah page */
+.fulfill[hidden] { display: none; }
+.cat-chips { display: flex; flex-wrap: wrap; gap: .5rem; justify-content: center; margin-top: 1.25rem; }
+.cat-chips button { min-height: 44px; padding: 0 1.1rem; border-radius: 999px; border: 1px solid var(--linen); background: #fff; color: var(--forest-deep, #1b3b22); font: 600 .8rem Inter, sans-serif; letter-spacing: .06em; cursor: pointer; }
+.cat-chips button[aria-pressed="true"] { background: var(--forest, #2f4a3a); color: #fff; border-color: var(--forest, #2f4a3a); }
+.cat-chips button:focus-visible { outline: 3px solid var(--focus, #b08d3c); outline-offset: 2px; }
+[data-shop][data-category] .card-body p:not(.kicker) { display: block; -webkit-line-clamp: unset; overflow: visible; }
+.judah-intro { max-width: 46rem; margin: 1.25rem auto 0; text-align: center; }
+.judah-links { display: flex; flex-wrap: wrap; gap: .75rem; justify-content: center; margin-top: 1.25rem; }
