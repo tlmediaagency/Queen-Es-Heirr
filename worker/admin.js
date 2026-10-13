@@ -7,7 +7,7 @@ import { ICON_192, ICON_512 } from "./admin-icons.js";
 
 const enc = new TextEncoder();
 const STATUSES = ["new", "in_production", "ready", "fulfilled"];
-const SESSION_MS = 12 * 3600 * 1000;
+const SESSION_MS = 30 * 24 * 3600 * 1000;   // renewed automatically while the app is open, so it only ends after 30 quiet days
 
 const j = (body, status = 200, extra = {}) =>
   new Response(JSON.stringify(body), { status, headers: { "Content-Type": "application/json", "Cache-Control": "no-store", ...extra } });
@@ -351,6 +351,10 @@ export async function handleAdmin(request, env, url, d) {
       if (![...q.keys()].length) return j({ error: "Nothing to change" }, 400);
       await stripePost(env, `/products/${m[1]}`, q);
       return j({ ok: true });
+    }
+    if (route === "renew" && request.method === "GET") {
+      const p = b64uStr(JSON.stringify({ e: me.e, exp: Date.now() + SESSION_MS }));
+      return j({ token: `${p}.${await hmac(env.SESSION_SECRET, p)}` });
     }
     if (route === "products/order" && request.method === "POST") {
       const ids = Array.isArray(body.ids) ? body.ids.filter((x) => typeof x === "string" && /^[A-Za-z0-9_-]+$/.test(x)).slice(0, 100) : [];

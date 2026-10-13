@@ -77,7 +77,10 @@ table.rep{width:100%;border-collapse:collapse;font-size:.92rem;margin:8px 0 16px
 <script>
 "use strict";
 var TOKEN = null, EMAIL = "";
-try { TOKEN = sessionStorage.getItem("qe_t"); EMAIL = sessionStorage.getItem("qe_e") || ""; } catch (e) {}
+// The sign-in is kept on this device (and renewed while the app is in use) so a quiet stretch at an event never logs her out.
+function keep(k, v) { try { if (v == null) { localStorage.removeItem(k); sessionStorage.removeItem(k); } else localStorage.setItem(k, v); } catch (e) { try { if (v != null) sessionStorage.setItem(k, v); } catch (e2) {} } }
+function recall(k) { try { return localStorage.getItem(k) || sessionStorage.getItem(k); } catch (e) { return null; } }
+TOKEN = recall("qe_t"); EMAIL = recall("qe_e") || "";
 var app = document.getElementById("app");
 function h(tag, attrs, kids) {
   var n = document.createElement(tag);
@@ -153,7 +156,7 @@ function api(method, path, body) {
     });
   });
 }
-function signOut() { TOKEN = null; try { sessionStorage.removeItem("qe_t"); } catch (e) {} renderLogin(); }
+function signOut() { TOKEN = null; keep("qe_t", null); renderLogin(); }
 
 function shell(content) {
   clear(app);
@@ -177,7 +180,7 @@ function renderLogin(step) {
     } else {
       msg.className = "msg"; msg.textContent = "Checking...";
       api("POST", "verify", { email: EMAIL, code: code.value }).then(function (d) {
-        TOKEN = d.token; try { sessionStorage.setItem("qe_t", TOKEN); sessionStorage.setItem("qe_e", EMAIL); } catch (e) {}
+        TOKEN = d.token; keep("qe_t", TOKEN); keep("qe_e", EMAIL);
         start();
       }).catch(function (er) { msg.className = "msg err"; msg.textContent = er.message; });
     }
@@ -193,7 +196,24 @@ function renderLogin(step) {
 
 var tabs = [["orders", "Orders"], ["requests", "Requests"], ["bookings", "Bookings"], ["products", "Products"], ["classes", "Classes"], ["events", "Events"], ["ledger", "Cash Ledger"], ["reports", "Reports"], ["sale", "Event Sale"]];
 var current = "orders";
+var wakeLock = null, renewTimer = null;
+function keepAwake(on) {   // keeps the screen from dimming or locking while the sale screen is open
+  try {
+    if (!on) { if (wakeLock) { wakeLock.release(); wakeLock = null; } return; }
+    if (!navigator.wakeLock || wakeLock) return;
+    navigator.wakeLock.request("screen").then(function (l) { wakeLock = l; l.addEventListener("release", function () { wakeLock = null; }); }).catch(function () {});
+  } catch (e) {}
+}
+function renewSession() {
+  if (!TOKEN) return;
+  api("GET", "renew").then(function (d) { if (d && d.token) { TOKEN = d.token; keep("qe_t", TOKEN); } }).catch(function () {});
+}
+document.addEventListener("visibilitychange", function () {
+  if (document.visibilityState !== "visible" || !TOKEN) return;
+  renewSession(); if (current === "sale") keepAwake(true);
+});
 function start() {
+  if (!renewTimer) { renewSession(); renewTimer = setInterval(renewSession, 20 * 60 * 1000); }
   var body = h("div");
     var kids = [];
   tabs.forEach(function (t, i) {
@@ -204,6 +224,7 @@ function start() {
   var nav = h("nav", { role: "tablist" }, kids);
   shell([nav, body]);
   ({ orders: viewOrders, products: viewProducts, requests: viewRequests, classes: viewClasses, bookings: viewBookings, events: viewEvents, ledger: viewLedger, reports: viewReports, sale: viewSale })[current](body);
+  keepAwake(current === "sale");
 }
 function loading(n) { clear(n); n.appendChild(h("p", { "class": "muted", text: "Loading..." })); }
 function failed(n, er) { clear(n); n.appendChild(h("p", { "class": "msg err", text: er.message })); }
