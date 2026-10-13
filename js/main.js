@@ -229,12 +229,14 @@
   // Shop grid
   var shop = document.querySelector("[data-shop]");
   var sortKey = "order";
-  var CATS = [["Jams", "jams"], ["Pickled goods", "pickled-goods"], ["Curriculum & Resources", "curriculum"], ["Books", "books"]];
+  // Shop filter buttons: label, URL key, and the product categories each one covers.
+  var CATS = [["Jams", "jams", ["Jams"]], ["Pickled Goods", "pickled-goods", ["Pickled goods"]], ["Books and Resources", "books", ["Books", "Curriculum & Resources"]]];
+  var catGroup = function (name) { for (var i = 0; i < CATS.length; i++) if (CATS[i][0] === name) return CATS[i][2]; return null; };
   var soloCat = shop ? shop.getAttribute("data-category") : null;   // e.g. the Judah page shows only Books
   var catFilter = "";
   (function () {
     var m = /[?&]cat=([a-z-]+)/.exec(location.search) || /^#([a-z-]+)$/.exec(location.hash);
-    if (m) CATS.forEach(function (c) { if (c[1] === m[1]) catFilter = c[0]; });
+    if (m) CATS.forEach(function (c) { if (c[1] === m[1] || (c[1] === "books" && m[1] === "curriculum")) catFilter = c[0]; });
   })();
   if (shop) {
     var viewKey = "qe-shop-view", view = "grid";
@@ -296,7 +298,7 @@
     var box = document.querySelector("[data-cat-chips]");
     if (!box) return;
     box.textContent = "";
-    var present = CATS.filter(function (c) { return catalog.some(function (p) { return p.category === c[0]; }); });
+    var present = CATS.filter(function (c) { return catalog.some(function (p) { return c[2].indexOf(p.category) > -1; }); });
     if (present.length < 2) { box.hidden = true; return; }
     box.hidden = false;
     [["", "All"]].concat(present).forEach(function (c) {
@@ -310,7 +312,7 @@
     if (!shop) return;
     shop.textContent = "";
     renderChips();
-    var shown = sortedCatalog().filter(function (p) { return soloCat ? soloCat.split("|").indexOf(p.category) > -1 : (!catFilter || p.category === catFilter); });
+    var shown = sortedCatalog().filter(function (p) { return soloCat ? soloCat.split("|").indexOf(p.category) > -1 : (!catFilter || (catGroup(catFilter) || []).indexOf(p.category) > -1); });
     if (!shown.length) shop.appendChild(el("p", { "class": "muted" }, soloCat ? "This is coming soon. Join the mailing list to hear first." : "Nothing here yet."));
     shown.forEach(function (p) {
       var card = el("article", { "class": "card" });

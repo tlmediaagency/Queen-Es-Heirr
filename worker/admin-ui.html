@@ -335,7 +335,11 @@ function sizeRow(p, s, reload) {
   } });
   return h("div", { "class": "row" }, [
     h("label", null, [p.category === "Jams" || p.category === "Pickled goods" ? "Size" : "Option", nm]), h("label", null, ["Price $", price]), h("label", null, ["Stock", stock]),
-    h("label", { "class": "chk" }, [sold, "Sold out"]), b]);
+    h("label", { "class": "chk" }, [sold, "Sold out"]), b,
+    h("button", { "class": "btn small danger", type: "button", text: "Remove", "aria-label": "Remove " + s.label, onclick: function () {
+      if (!window.confirm("Remove \u201c" + s.label + "\u201d from " + p.name + "? It disappears from the shop. Past orders are not affected.")) return;
+      api("POST", "price-remove/" + s.priceId, {}).then(function () { toast("Removed"); reload(); }).catch(function (er) { toast(er.message); });
+    } })]);
 }
 function productCard(p, reload, move, idx, total) {
   var card = h("div", { "class": "card" });

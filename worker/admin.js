@@ -309,6 +309,15 @@ export async function handleAdmin(request, env, url, d) {
       }
       return j({ ok: true });
     }
+    if ((m = route.match(/^price-remove\/(price_[A-Za-z0-9]+)$/)) && request.method === "POST") {
+      const old = await stripeGet(env, `/prices/${m[1]}`);
+      const pid = typeof old.product === "string" ? old.product : old.product.id;
+      const all = await stripeGet(env, `/prices?active=true&limit=100&type=one_time&product=${pid}`);
+      if (all.data.length <= 1) return j({ error: "A product needs at least one size. Use \u201cHide from shop\u201d to take the whole product off the site." }, 400);
+      // Stripe prices can't be deleted, only archived; archived sizes disappear from the shop and this app.
+      await stripePost(env, `/prices/${old.id}`, new URLSearchParams({ active: "false" }));
+      return j({ ok: true });
+    }
     if ((m = route.match(/^price-change\/(price_[A-Za-z0-9]+)$/)) && request.method === "POST") {
       const c = cents(body.price);
       if (c === null) return j({ error: "Enter a price like 7.00" }, 400);
@@ -320,7 +329,7 @@ export async function handleAdmin(request, env, url, d) {
       await stripePost(env, `/prices/${old.id}`, new URLSearchParams({ active: "false" }));
       return j({ ok: true });
     }
-    if ((m = route.match(/^size\/([a-z0-9-]+)$/)) && request.method === "POST") {
+    if ((m = route.match(/^size\/([A-Za-z0-9_-]+)$/)) && request.method === "POST") {
       const c = cents(body.price), s = stockVal(body.stock);
       let cat = "Jams"; try { const pp = await stripeGet(env, `/products/${m[1]}`); cat = (pp.metadata && pp.metadata.category) || "Jams"; } catch {}
       const label = stdSize(cat, String(body.label || "").trim().slice(0, 40));
@@ -330,7 +339,7 @@ export async function handleAdmin(request, env, url, d) {
       await stripePost(env, "/prices", q);
       return j({ ok: true });
     }
-    if ((m = route.match(/^product\/([a-z0-9-]+)$/)) && request.method === "POST") {
+    if ((m = route.match(/^product\/([A-Za-z0-9_-]+)$/)) && request.method === "POST") {
       const q = new URLSearchParams();
       if (typeof body.name === "string" && body.name.trim()) q.set("name", body.name.trim().slice(0, 100));
       if (typeof body.description === "string") q.set("description", body.description.slice(0, 1000));
@@ -344,7 +353,7 @@ export async function handleAdmin(request, env, url, d) {
       return j({ ok: true });
     }
     if (route === "products/order" && request.method === "POST") {
-      const ids = Array.isArray(body.ids) ? body.ids.filter((x) => typeof x === "string" && /^[a-z0-9-]+$/.test(x)).slice(0, 100) : [];
+      const ids = Array.isArray(body.ids) ? body.ids.filter((x) => typeof x === "string" && /^[A-Za-z0-9_-]+$/.test(x)).slice(0, 100) : [];
       if (!ids.length) return j({ error: "Nothing to reorder" }, 400);
       // Spread the order out (10, 20, 30...) so new products added later still land at the end.
       for (let i = 0; i < ids.length; i += 5) {
