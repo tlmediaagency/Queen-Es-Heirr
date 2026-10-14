@@ -50,6 +50,7 @@ table.rep{width:100%;border-collapse:collapse;font-size:.92rem;margin:8px 0 16px
 .sale .brand{display:flex;align-items:center;gap:14px;color:var(--gold)}.sale .brand b{font-family:'Playfair Display',serif;font-size:1.5rem;display:block;line-height:1.1}.sale .brand span{color:var(--cream-deep);font-size:.8rem;letter-spacing:.14em;text-transform:uppercase}
 .sale .staff{background:none;border:0;color:rgba(255,255,255,.35);font:600 .7rem Inter;letter-spacing:.1em;text-transform:uppercase;padding:14px}
 .sale .scroll{flex:1;overflow-y:auto;-webkit-overflow-scrolling:touch;padding:20px 20px 120px}
+.sale .sbox{max-width:1400px;margin:0 auto 16px}.sale .sbox input{width:100%;font-size:1.1rem;padding:14px 18px;border-radius:999px;border:1.5px solid var(--linen);background:#fff}
 .sale .grid{display:grid;gap:16px;grid-template-columns:repeat(auto-fill,minmax(210px,1fr));max-width:1400px;margin:0 auto}
 .sale .tile{background:#fff;border:1.5px solid var(--linen);border-radius:22px;overflow:hidden;text-align:left;padding:0;font:inherit;color:inherit;display:flex;flex-direction:column;position:relative;min-height:56px}
 .sale .tile:active{transform:scale(.98)}
@@ -100,8 +101,13 @@ function money(c) { return (c / 100).toLocaleString("en-US", { style: "currency"
 function chiDate(ms) { return new Intl.DateTimeFormat("en-CA", { timeZone: "America/Chicago" }).format(new Date(ms)); }
 function addDays(d, k) { var p = d.split("-"); return new Date(Date.UTC(+p[0], +p[1] - 1, +p[2] + k)).toISOString().slice(0, 10); }
 function listTools(cfg, onChange) {
-  var st = { sort: cfg.sorts[0][0], dir: cfg.dir || "desc", type: "", from: "", to: "" };
+  var st = { sort: cfg.sorts[0][0], dir: cfg.dir || "desc", type: "", from: "", to: "", q: "" };
   var kids = [];
+  if (cfg.search) {
+    var qIn = h("input", { type: "search", placeholder: cfg.search, "aria-label": cfg.search, autocomplete: "off", style: "min-width:220px" });
+    qIn.addEventListener("input", function () { st.q = qIn.value.trim().toLowerCase(); onChange(st); });
+    kids.push(h("label", null, ["Search", qIn]));
+  }
   var sortSel = h("select", { "aria-label": "Sort by" }, cfg.sorts.map(function (s) { return h("option", { value: s[0], text: s[1] }); }));
   var dirBtn = h("button", { "class": "btn small", type: "button", title: "Reverse the order", "aria-label": "Reverse the order", text: st.dir === "desc" ? "\u2193" : "\u2191" });
   sortSel.addEventListener("change", function () { st.sort = sortSel.value; onChange(st); });
@@ -123,6 +129,7 @@ function listTools(cfg, onChange) {
 function applyTools(rows, st, cfg) {
   var out = rows.filter(function (r) {
     if (st.type && cfg.typeOf && cfg.typeOf(r) !== st.type) return false;
+    if (st.q && cfg.textOf && cfg.textOf(r).toLowerCase().indexOf(st.q) < 0) return false;
     if (cfg.dateOf && (st.from || st.to)) { var d = cfg.dateOf(r) || ""; if (st.from && d < st.from) return false; if (st.to && d > st.to) return false; }
     return true;
   });
@@ -316,12 +323,12 @@ function viewProducts(n) {
     n.appendChild(addProductCard(function () { viewProducts(n); }));
     var PCFG = { get: { name: function (p) { return p.name.toLowerCase(); }, price: function (p) { return p.sizes.length ? Math.min.apply(null, p.sizes.map(function (s) { return s.cents; })) : null; },
       stock: function (p) { return p.sizes.length ? p.sizes.reduce(function (t, s) { return t + (s.stock == null ? 100000 : s.stock); }, 0) : null; }, category: function (p) { return (p.category || "").toLowerCase(); }, order: function (p) { return p.sort; } },
-      typeOf: function (p) { return p.category; } };
-    var ptools = listTools({ sorts: [["order", "Shop order"], ["name", "Name"], ["price", "Price"], ["stock", "Stock"], ["category", "Category"]], dir: "asc", types: CATEGORIES, typeLabel: "Category" }, function () { draw(); });
+      typeOf: function (p) { return p.category; }, textOf: function (p) { return p.name + " " + (p.category || "") + " " + p.sizes.map(function (s) { return s.label; }).join(" "); } };
+    var ptools = listTools({ sorts: [["order", "Shop order"], ["name", "Name"], ["price", "Price"], ["stock", "Stock"], ["category", "Category"]], dir: "asc", types: CATEGORIES, typeLabel: "Category", search: "Search products by name" }, function () { draw(); });
     var plist = h("div");
     function draw() {
       clear(plist);
-      var shown = applyTools(d.products, ptools.state, PCFG), byOrder = ptools.state.sort === "order";
+      var shown = applyTools(d.products, ptools.state, PCFG), byOrder = ptools.state.sort === "order" && !ptools.state.q;
       if (byOrder) plist.appendChild(h("p", { "class": "muted", text: "Shop order: use \u25b2 \u25bc on a product to move it. The shop shows products in this order when visitors pick \u201cOur Order\u201d, and inside each category tab." }));
       shown.forEach(function (p, i) {
         var move = byOrder ? function (dir) {
@@ -853,7 +860,9 @@ function renderSale() {
   var products = [], cart = ssGet(CART_KEY) || [];
   clear(app);
   var root = h("div", { "class": "sale" }); app.appendChild(root);
-  var grid = h("div", { "class": "grid" }), scroll = h("div", { "class": "scroll" }, [grid]);
+  var grid = h("div", { "class": "grid" }), q = "";
+  var searchIn = h("input", { type: "search", placeholder: "Search items", "aria-label": "Search items", autocomplete: "off", oninput: function () { q = searchIn.value.trim().toLowerCase(); drawGrid(); } });
+  var scroll = h("div", { "class": "scroll" }, [h("div", { "class": "sbox" }, [searchIn]), grid]);
   var barTot = h("div", { "class": "tot" }), barCnt = h("div", { "class": "muted" });
   var viewBtn = h("button", { "class": "big", text: "View bag", onclick: function () { openBag(); } });
   var bar = h("div", { "class": "bar" }, [h("div", null, [barTot, barCnt]), viewBtn]);
@@ -880,7 +889,8 @@ function renderSale() {
   }
   function drawGrid() {
     clear(grid);
-    products.forEach(function (p) {
+    var hits = products.filter(function (p) { return !q || (p.name + " " + (p.category || "")).toLowerCase().indexOf(q) >= 0; });
+    hits.forEach(function (p) {
       var o = open(p), out = !o.length, from = o.length ? Math.min.apply(null, o.map(function (s) { return s.cents; })) : 0;
       var low = o.length && o.every(function (s) { return typeof s.stock === "number" && s.stock <= 3; });
       var t = h("button", { "class": "tile" + (out ? " out" : ""), disabled: out, "aria-label": p.name, onclick: function () { pick(p); } }, [
@@ -890,6 +900,7 @@ function renderSale() {
       grid.appendChild(t);
     });
     if (!products.length) grid.appendChild(h("p", { "class": "muted", text: "Loading the shelf..." }));
+    else if (!hits.length) grid.appendChild(h("p", { "class": "muted", text: "Nothing matches \u201c" + q + "\u201d." }));
   }
   function pick(p) {
     var o = open(p); if (!o.length) return;
