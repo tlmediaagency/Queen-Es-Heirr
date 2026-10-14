@@ -313,7 +313,7 @@
     shop.textContent = "";
     renderChips();
     var shown = sortedCatalog().filter(function (p) { return soloCat ? soloCat.split("|").indexOf(p.category) > -1 : (!catFilter || (catGroup(catFilter) || []).indexOf(p.category) > -1); });
-    if (!shown.length) shop.appendChild(el("p", { "class": "muted" }, soloCat ? "This is coming soon. Join the mailing list to hear first." : "Nothing here yet."));
+    if (!shown.length) shop.appendChild(el("p", { "class": "muted" }, soloCat ? "More to come. Join the mailing list to hear about the new releases as they are available." : "Nothing here yet."));
     shown.forEach(function (p) {
       var card = el("article", { "class": "card" });
       var imgSrc = p.image || PLACEHOLDER;
