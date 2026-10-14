@@ -270,7 +270,7 @@ export async function handleAdmin(request, env, url, d) {
       const by = {};
       for (const x of pr.data) (by[typeof x.product === "string" ? x.product : x.product.id] ||= []).push(x);
       const shape = (p, active) => ({
-        id: p.id, name: p.name, image: (p.images && p.images[0]) || "", active, category: CATEGORIES.includes(p.metadata && p.metadata.category) ? p.metadata.category : "Jams", description: p.description || "", digital: (p.metadata && p.metadata.digital) === "true", sort: Number((p.metadata && p.metadata.sort) || 1000),
+        id: p.id, name: p.name, image: (p.images && p.images[0]) || "", active, category: CATEGORIES.includes(p.metadata && p.metadata.category) ? p.metadata.category : "Jams", description: p.description || "", digital: (p.metadata && p.metadata.digital) === "true", buyUrl: (p.metadata && p.metadata.buy_url) || "", sort: Number((p.metadata && p.metadata.sort) || 1000),
         featured: (p.metadata && p.metadata.featured) === "true", restocked: Number((p.metadata && p.metadata.restocked) || 0),
         sizes: (by[p.id] || []).map((x) => ({
           priceId: x.id, label: stdSize((p.metadata && p.metadata.category) || "Jams", x.nickname), cents: x.unit_amount, stock: stockOf(x),
@@ -346,6 +346,11 @@ export async function handleAdmin(request, env, url, d) {
       if (typeof body.description === "string") q.set("description", body.description.slice(0, 1000));
       if (CATEGORIES.includes(body.category)) q.set("metadata[category]", body.category);
       if (typeof body.digital === "boolean") q.set("metadata[digital]", String(body.digital));
+      if (typeof body.buyUrl === "string") {
+        const bu = body.buyUrl.trim();
+        if (bu && !/^https:\/\/[^\s]{4,480}$/.test(bu)) return j({ error: "The buy link must start with https://" }, 400);
+        q.set("metadata[buy_url]", bu);
+      }
       if (typeof body.active === "boolean") q.set("active", String(body.active));
       if (typeof body.featured === "boolean") q.set("metadata[featured]", String(body.featured));
       if (okImage(body.image, url.origin)) q.set("images[0]", body.image);
@@ -378,6 +383,7 @@ export async function handleAdmin(request, env, url, d) {
       if (exists) return j({ error: "A product with that name already exists" }, 409);
       const q = new URLSearchParams({ id, name, description: String(body.description || "").slice(0, 1000), "metadata[category]": catNew, "metadata[sort]": "900" });
       if (body.digital === true) q.set("metadata[digital]", "true");
+      if (typeof body.buyUrl === "string" && /^https:\/\/[^\s]{4,480}$/.test(body.buyUrl.trim())) q.set("metadata[buy_url]", body.buyUrl.trim());
       if (okImage(body.image, url.origin)) q.set("images[0]", body.image);
       await stripePost(env, "/products", q);
       for (const s of parsed) {

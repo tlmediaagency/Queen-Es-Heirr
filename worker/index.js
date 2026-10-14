@@ -88,6 +88,7 @@ async function loadCatalog(env) {
       image: (p.images && p.images[0]) || "",
       featured: (p.metadata && p.metadata.featured) === "true",
       digital: (p.metadata && p.metadata.digital) === "true",
+      buyUrl: /^https:\/\/[^\s]+$/.test((p.metadata && p.metadata.buy_url) || "") ? p.metadata.buy_url : "",
       restocked: Number((p.metadata && p.metadata.restocked) || 0),
       sort: Number((p.metadata && p.metadata.sort) || 1000),
       sizes,
@@ -152,6 +153,7 @@ async function handleCheckout(request, env, c) {
     if (!size || !Number.isInteger(qty) || qty < 1 || qty > MAX_QTY) {
       return json({ error: "An item in your bag is no longer available" }, 400, c.headers);
     }
+    if (product.buyUrl) return json({ error: `${product.name} is sold on Amazon. Please use the Buy on Amazon button.` }, 400, c.headers);
     if (size.soldOut) return json({ error: `${product.name} (${size.label}) is sold out` }, 400, c.headers);
     const key = `${product.id}|${size.label}`;
     const total = (wanted.get(key) || 0) + qty;

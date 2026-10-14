@@ -324,25 +324,63 @@
       if (p.featured || fresh) body.appendChild(el("span", { "class": "flag" }, p.featured ? "Featured" : "Just Restocked"));
       body.appendChild(el("h3", null, p.name));
       body.appendChild(el("p", null, p.description));
-      if (p.digital) body.appendChild(el("p", { "class": "cart-note" }, "Digital item: nothing ships. We email your access details."));
-      var label = el("label", { "class": "field" }, isFood(p) ? "Size" : "Option");
-      var select = el("select");
-      var firstOpen = null;
-      p.sizes.forEach(function (s) {
-        var o = el("option", { value: s.label }, s.label + " \u00b7 " + money(s.cents) + (s.soldOut ? " (sold out)" : (typeof s.stock === "number" && s.stock <= 5 ? " (only " + s.stock + " left)" : "")));
-        if (s.soldOut) o.disabled = true; else if (!firstOpen) firstOpen = s.label;
-        select.appendChild(o);
-      });
-      if (firstOpen) select.value = firstOpen;
-      label.appendChild(select);
-      body.appendChild(label);
-      var btn = el("button", { type: "button", "class": "btn" }, firstOpen ? "Add to Cart" : "Sold out");
-      if (!firstOpen) btn.disabled = true;
-      btn.addEventListener("click", function () { addToCart(p.id, select.value); });
-      body.appendChild(btn);
+      var more = el("button", { type: "button", "class": "quick-link" }, "Quick view");
+      more.setAttribute("aria-haspopup", "dialog");
+      more.addEventListener("click", function () { quickView(p, imgSrc); });
+      body.appendChild(more);
+      purchaseControls(p).forEach(function (n) { body.appendChild(n); });
       card.appendChild(img); card.appendChild(body);
+      img.style.cursor = "zoom-in"; img.addEventListener("click", function () { quickView(p, imgSrc); });
       shop.appendChild(card);
     });
+  }
+  // Size picker + Add to Cart, or a Buy on Amazon link when the product is sold elsewhere online.
+  function purchaseControls(p, after) {
+    var out = [];
+    if (p.digital) out.push(el("p", { "class": "cart-note" }, "Digital item: nothing ships. We email your access details."));
+    if (p.buyUrl) {
+      var a = el("a", { "class": "btn", href: p.buyUrl, target: "_blank", rel: "noopener noreferrer" }, "Buy on Amazon");
+      out.push(a);
+      out.push(el("p", { "class": "cart-note" }, "Opens Amazon in a new tab. Want a copy in person? Find us at an event."));
+      return out;
+    }
+    var label = el("label", { "class": "field" }, isFood(p) ? "Size" : "Option");
+    var select = el("select");
+    var firstOpen = null;
+    p.sizes.forEach(function (s) {
+      var o = el("option", { value: s.label }, s.label + " \u00b7 " + money(s.cents) + (s.soldOut ? " (sold out)" : (typeof s.stock === "number" && s.stock <= 5 ? " (only " + s.stock + " left)" : "")));
+      if (s.soldOut) o.disabled = true; else if (!firstOpen) firstOpen = s.label;
+      select.appendChild(o);
+    });
+    if (firstOpen) select.value = firstOpen;
+    label.appendChild(select);
+    var btn = el("button", { type: "button", "class": "btn" }, firstOpen ? "Add to Cart" : "Sold out");
+    if (!firstOpen) btn.disabled = true;
+    btn.addEventListener("click", function () { addToCart(p.id, select.value); if (after) after(); });
+    out.push(label, btn);
+    return out;
+  }
+  var qvLast = null;
+  function quickView(p, imgSrc) {
+    var old = document.querySelector(".qv-bg"); if (old) old.remove();
+    qvLast = document.activeElement;
+    function close() { bg.remove(); document.removeEventListener("keydown", onKey); if (qvLast && qvLast.focus) qvLast.focus(); }
+    function onKey(e) { if (e.key === "Escape") close(); }
+    var x = el("button", { type: "button", "class": "qv-x", "aria-label": "Close" }, "\u00d7");
+    x.addEventListener("click", close);
+    var info = el("div", { "class": "qv-info" });
+    info.appendChild(el("p", { "class": "kicker" }, p.category));
+    info.appendChild(el("h3", { id: "qv-title" }, p.name));
+    String(p.description || "").split(/\n+/).forEach(function (para) { if (para.trim()) info.appendChild(el("p", { "class": "qv-desc" }, para)); });
+    purchaseControls(p, close).forEach(function (n) { info.appendChild(n); });
+    var box = el("div", { "class": "qv", role: "dialog", "aria-modal": "true", "aria-labelledby": "qv-title" });
+    box.appendChild(x); box.appendChild(el("img", { src: imgSrc, alt: p.name })); box.appendChild(info);
+    var bg = el("div", { "class": "qv-bg" });
+    bg.appendChild(box);
+    bg.addEventListener("click", function (e) { if (e.target === bg) close(); });
+    document.addEventListener("keydown", onKey);
+    document.body.appendChild(bg);
+    x.focus();
   }
   renderShop();
 

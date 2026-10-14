@@ -429,10 +429,11 @@ function productCard(p, reload, move, idx, total) {
   var name = h("input", { value: p.name }), desc = h("textarea", { rows: "3", text: p.description }), pick = photoPicker(p.image);
   var cat = h("select", null, CATEGORIES.map(function (c) { return h("option", { value: c, selected: c === p.category, text: c }); }));
   var dig = h("input", { type: "checkbox", checked: !!p.digital });
+  var buy = h("input", { value: p.buyUrl || "", placeholder: "https://www.amazon.com/dp/...", inputmode: "url", autocapitalize: "off" });
   var details = h("div", { "class": "hide" }, [
-    h("label", null, ["Name", name]), h("label", null, ["Category", cat]), h("label", { "class": "chk" }, [dig, "Digital item (nothing ships, no shipping fee)"]), h("label", null, ["Description", desc]), pick.node,
+    h("label", null, ["Name", name]), h("label", null, ["Category", cat]), h("label", { "class": "chk" }, [dig, "Digital item (nothing ships, no shipping fee)"]), h("label", null, ["Description", desc]), h("label", null, ["Outside buy link (optional)", buy]), h("p", { "class": "muted", text: "Add an Amazon link and the website shows a Buy on Amazon button instead of Add to Cart. The item stays here, so you can still sell it at events." }), pick.node,
     h("p"), h("button", { "class": "btn small primary", text: "Save details", onclick: function () {
-      var body = { name: name.value, description: desc.value, category: cat.value, digital: dig.checked }; if (pick.holder.url && pick.holder.url !== p.image) body.image = pick.holder.url;
+      var body = { name: name.value, description: desc.value, category: cat.value, digital: dig.checked, buyUrl: buy.value }; if (pick.holder.url && pick.holder.url !== p.image) body.image = pick.holder.url;
       api("POST", "product/" + p.id, body).then(function () { toast("Saved"); reload(); }).catch(function (er) { toast(er.message); });
     } })]);
   card.appendChild(details);
