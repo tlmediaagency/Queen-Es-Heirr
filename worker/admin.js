@@ -7,6 +7,7 @@ import { ICON_192, ICON_512 } from "./admin-icons.js";
 
 const enc = new TextEncoder();
 const STATUSES = ["new", "in_production", "ready", "fulfilled"];
+const METHOD_LABEL = { cash: "Cash", cashapp: "Cash App", venmo: "Venmo", tap: "Tap to Pay" };
 const SESSION_MS = 30 * 24 * 3600 * 1000;   // renewed automatically while the app is open, so it only ends after 30 quiet days
 
 const j = (body, status = 200, extra = {}) =>
@@ -135,7 +136,7 @@ export async function buildReport(env, stripeGet, from, to) {
   }
   let cash = [];
   try { cash = JSON.parse((await env.ADMIN_KV.get("cashsales")) || "[]"); } catch { cash = []; }
-  for (const c of cash) rows.push({ ts: c.ts, id: c.id, channel: "In person - Cash", customer: c.name || "", email: c.email || "", location: c.location || "", status: c.voided ? "voided" : "fulfilled",
+  for (const c of cash) rows.push({ ts: c.ts, id: c.id, channel: `In person - ${METHOD_LABEL[c.method] || "Cash"}`, customer: c.name || "", email: c.email || "", location: c.location || "", status: c.voided ? "voided" : "fulfilled",
     items: c.items.map((x) => `${x.qty} x ${x.name} (${x.size})`).join("; "), subtotal: c.subtotal, shipping: 0, tax: c.tax, total: c.total });
   const classes = await readClasses(env), bookings = await readBookings(env);
   const byId = Object.fromEntries(classes.map((c) => [c.id, c]));
@@ -448,7 +449,7 @@ export async function handleAdmin(request, env, url, d) {
       return j({ ok: true });
     }
     if (route === "pos-cash" && request.method === "POST") {
-      try { return j(await posCash(env, body.items, body.email, body.taxPct, body.key, body.name, body.location)); } catch (e) { return j({ error: String(e.message || "Could not record the sale").slice(0, 160) }, 400); }
+      try { return j(await posCash(env, body.items, body.email, body.taxPct, body.key, body.name, body.location, body.method, body.paymentId)); } catch (e) { return j({ error: String(e.message || "Could not record the sale").slice(0, 160) }, 400); }
     }
     if (route === "pos-session" && request.method === "GET") {
       const sid = url.searchParams.get("id") || "";
@@ -457,10 +458,22 @@ export async function handleAdmin(request, env, url, d) {
       if (!s.metadata || s.metadata.fulfillment !== "inperson") return j({ error: "Not found" }, 404);
       return j({ paid: s.payment_status === "paid", status: s.status });
     }
+    if (route === "pay-links" && request.method === "GET") {
+      let l = {}; try { l = JSON.parse((await env.ADMIN_KV.get("paylinks")) || "{}"); } catch { l = {}; }
+      return j({ cashapp: l.cashapp || "", venmo: l.venmo || "" });
+    }
+    if (route === "pay-links" && request.method === "POST") {
+      const ca = String(body.cashapp || "").trim().replace(/^https?:\/\/cash\.app\//i, "").replace(/^\$/, "").replace(/\/+$/, "");
+      const vm = String(body.venmo || "").trim().replace(/^https?:\/\/(account\.)?venmo\.com\/(u\/)?/i, "").replace(/^@/, "").replace(/[/?].*$/, "");
+      if (ca && !/^[A-Za-z0-9_]{1,24}$/.test(ca)) return j({ error: "That Cash App name does not look right. It looks like $QueenEsHeirr." }, 400);
+      if (vm && !/^[A-Za-z0-9_-]{1,40}$/.test(vm)) return j({ error: "That Venmo username does not look right. It looks like @QueenEs-Heirr." }, 400);
+      await env.ADMIN_KV.put("paylinks", JSON.stringify({ cashapp: ca, venmo: vm }));
+      return j({ ok: true, cashapp: ca, venmo: vm });
+    }
     if (route === "cash-ledger" && request.method === "GET") {
       let cash = [];
       try { cash = JSON.parse((await env.ADMIN_KV.get("cashsales")) || "[]"); } catch { cash = []; }
-      return j({ sales: cash.slice().reverse().map((c) => ({ id: c.id, ts: c.ts, name: c.name || "", location: c.location || "", email: c.email || "", subtotal: c.subtotal, tax: c.tax, total: c.total, rate: c.rate || 0, voided: !!c.voided,
+      return j({ sales: cash.slice().reverse().map((c) => ({ id: c.id, ts: c.ts, name: c.name || "", location: c.location || "", email: c.email || "", subtotal: c.subtotal, tax: c.tax, total: c.total, rate: c.rate || 0, method: c.method || "cash", paymentId: c.paymentId || "", voided: !!c.voided,
         items: c.items.map((x) => ({ name: x.name, size: x.size, qty: x.qty, cents: x.cents })) })) });
     }
     if (route === "cash-receipt" && request.method === "POST") {
@@ -526,7 +539,7 @@ export async function handleAdmin(request, env, url, d) {
       try { cash = JSON.parse((await env.ADMIN_KV.get("cashsales")) || "[]"); } catch { cash = []; }
       for (const c of cash.slice(-80)) {
         if (c.voided) continue;
-        orders.push({ id: c.id, created: c.ts, total: c.total, status: st[c.id] || "fulfilled", name: c.name || "Cash sale", email: c.email || "", phone: "", fulfillment: "inperson", cash: true, event: c.location || "", address: "",
+        orders.push({ id: c.id, created: c.ts, total: c.total, status: st[c.id] || "fulfilled", name: c.name || "Cash sale", email: c.email || "", phone: "", fulfillment: "inperson", cash: true, method: c.method || "cash", event: c.location || "", address: "",
           items: c.items.map((x) => ({ name: `${x.name} (${x.size})`, qty: x.qty })) });
       }
       orders.sort((x, y) => y.created - x.created);

@@ -195,7 +195,8 @@ function renderLogin(step) {
   (step ? code : email).focus();
 }
 
-var tabs = [["orders", "Orders"], ["requests", "Requests"], ["bookings", "Bookings"], ["products", "Products"], ["classes", "Classes"], ["events", "Events"], ["ledger", "Cash Ledger"], ["reports", "Reports"], ["sale", "Event Sale"]];
+var PAYLABEL = { cash: "Cash", cashapp: "Cash App", venmo: "Venmo", tap: "Tap to Pay" };
+var tabs = [["orders", "Orders"], ["requests", "Requests"], ["bookings", "Bookings"], ["products", "Products"], ["classes", "Classes"], ["events", "Events"], ["ledger", "Ledger"], ["reports", "Reports"], ["sale", "Event Sale"]];
 var current = "orders";
 var wakeLock = null, renewTimer = null;
 function keepAwake(on) {   // keeps the screen from dimming or locking while the sale screen is open
@@ -270,10 +271,10 @@ function viewOrders(n) {
     clear(n);
     var filter = "open";
     var list = h("div");
-    var orderType = function (o) { return o.fulfillment === "inperson" ? (o.cash ? "In person - Cash" : "In person - Card") : o.fulfillment === "event" ? "Event pickup" : o.fulfillment === "pickup" ? "Pickup" : o.fulfillment === "digital" ? "Digital" : "Ship"; };
+    var orderType = function (o) { return o.fulfillment === "inperson" ? (o.cash ? "In person - " + (PAYLABEL[o.method] || "Cash") : "In person - Card") : o.fulfillment === "event" ? "Event pickup" : o.fulfillment === "pickup" ? "Pickup" : o.fulfillment === "digital" ? "Digital" : "Ship"; };
     var OCFG = { get: { date: function (o) { return o.created; }, amount: function (o) { return o.total; }, name: function (o) { return (o.name || o.email || "").toLowerCase(); } },
       dateOf: function (o) { return chiDate(o.created); }, typeOf: orderType };
-    var tools = listTools({ sorts: [["date", "Date"], ["amount", "Amount"], ["name", "Name"]], types: ["Ship", "Digital", "Pickup", "Event pickup", "In person - Card", "In person - Cash"], dateOf: true }, function () { draw(); });
+    var tools = listTools({ sorts: [["date", "Date"], ["amount", "Amount"], ["name", "Name"]], types: ["Ship", "Digital", "Pickup", "Event pickup", "In person - Card", "In person - Cash", "In person - Cash App", "In person - Venmo", "In person - Tap to Pay"], dateOf: true }, function () { draw(); });
     function draw() {
       clear(list);
       var rows = d.orders.filter(function (o) { return filter === "all" || (filter === "open" ? o.status !== "fulfilled" : o.status === filter); });
@@ -283,7 +284,7 @@ function viewOrders(n) {
         var sel = h("select", { "aria-label": "Order status", onchange: function () {
           api("POST", "order-status", { id: o.id, status: sel.value }).then(function () { o.status = sel.value; toast("Saved"); }).catch(function (er) { toast(er.message); });
         } }, STATUS.map(function (s) { return h("option", { value: s[0], selected: s[0] === o.status, text: s[1] }); }));
-        var how = o.fulfillment === "inperson" ? h("span", { "class": "pill event", text: (o.cash ? "In person \u00b7 Cash" : "In person") + (o.event ? " \u00b7 " + o.event : "") }) : o.fulfillment === "event" ? h("span", { "class": "pill event", text: "Event: " + o.event }) : o.fulfillment === "pickup" ? h("span", { "class": "pill pickup", text: "Pickup" }) : o.fulfillment === "digital" ? h("span", { "class": "pill pickup", text: "Digital (nothing to ship)" }) : h("span", { "class": "pill", text: "Ship" });
+        var how = o.fulfillment === "inperson" ? h("span", { "class": "pill event", text: (o.cash ? "In person \u00b7 " + (PAYLABEL[o.method] || "Cash") : "In person") + (o.event ? " \u00b7 " + o.event : "") }) : o.fulfillment === "event" ? h("span", { "class": "pill event", text: "Event: " + o.event }) : o.fulfillment === "pickup" ? h("span", { "class": "pill pickup", text: "Pickup" }) : o.fulfillment === "digital" ? h("span", { "class": "pill pickup", text: "Digital (nothing to ship)" }) : h("span", { "class": "pill", text: "Ship" });
         list.appendChild(h("div", { "class": "card" }, [
           h("div", { style: "display:flex;justify-content:space-between;gap:8px;flex-wrap:wrap" }, [
             h("strong", { text: o.name || o.email }), h("span", { "class": "muted", text: new Date(o.created).toLocaleString() + " · " + money(o.total) })]),
@@ -695,12 +696,12 @@ function viewLedger(n) {
       shown = applyTools(all, tools.state, CFG);
       var live = shown.filter(function (s) { return !s.voided; });
       var sum = function (k) { return live.reduce(function (t, s) { return t + (s[k] || 0); }, 0); };
-      [["Cash sales", String(live.length)], ["Subtotal", money(sum("subtotal"))], ["Tax", money(sum("tax"))], ["Total collected", money(sum("total"))]].forEach(function (x) {
+      [["Sales", String(live.length)], ["Subtotal", money(sum("subtotal"))], ["Tax", money(sum("tax"))], ["Total collected", money(sum("total"))]].forEach(function (x) {
         totals.appendChild(h("div", { "class": "card" }, [h("span", { "class": "muted", text: x[0] }), h("b", { text: x[1] })]));
       });
-      if (!shown.length) list.appendChild(h("p", { "class": "muted", text: "No cash sales match." }));
+      if (!shown.length) list.appendChild(h("p", { "class": "muted", text: "No sales match." }));
       shown.forEach(function (s) {
-        var head = [h("b", { text: money(s.total) }), " ", h("span", { "class": "pill", text: s.location || "No location" })];
+        var head = [h("b", { text: money(s.total) }), " ", h("span", { "class": "pill", text: s.location || "No location" }), " ", h("span", { "class": "pill pickup", text: PAYLABEL[s.method] || "Cash" })];
         if (s.voided) head.push(" ", h("span", { "class": "pill void", text: "Voided" }));
         var kids = [h("div", null, head),
           h("div", { "class": "muted", text: new Date(s.ts).toLocaleDateString("en-US", { timeZone: "America/Chicago", month: "short", day: "numeric", year: "numeric" }) + " " + timeOf(s.ts) + (s.name ? " \u00b7 " + s.name : "") + (s.email ? " \u00b7 " + s.email : "") }),
@@ -708,18 +709,18 @@ function viewLedger(n) {
           h("div", { "class": "muted", text: "Subtotal " + money(s.subtotal) + (s.tax ? " \u00b7 Tax " + money(s.tax) : "") })];
         if (!s.voided) kids.push(receiptControl(s));
         if (!s.voided) kids.push(h("button", { "class": "btn small", text: "Void this sale", onclick: function () {
-          if (!confirm("Void this cash sale? Stock goes back up. Use this for a mistake or a return.")) return;
+          if (!confirm("Void this sale? Stock goes back up." + (s.method && s.method !== "cash" ? " The money is NOT sent back: refund the customer in " + (PAYLABEL[s.method] || "the payment app") + " too." : " Use this for a mistake or a return."))) return;
           api("POST", "cash-void", { id: s.id }).then(function () { s.voided = true; draw(); }).catch(function (e) { msg.className = "msg err"; msg.textContent = e.message; });
         } }));
         list.appendChild(h("div", { "class": "card" }, kids));
       });
     }
-    n.appendChild(h("h2", { text: "Cash Ledger" }));
-    n.appendChild(h("p", { "class": "muted", text: "Every cash sale taken in the Event Sale screen. Void a sale to correct a mistake." }));
+    n.appendChild(h("h2", { text: "In-Person Ledger" }));
+    n.appendChild(h("p", { "class": "muted", text: "Every cash, Cash App, Venmo and Tap to Pay sale recorded in the Event Sale screen. Voiding a sale puts stock back; it does not refund anyone." }));
     n.appendChild(tools.el); n.appendChild(totals);
     n.appendChild(h("button", { "class": "btn", text: "Download CSV", onclick: function () {
-      csvDownload("cash-ledger.csv", ["Date", "Time", "Location", "Customer", "Email", "Items", "Subtotal", "Tax", "Total", "Voided"], shown.map(function (s) {
-        return [chiDate(s.ts), timeOf(s.ts), s.location, s.name, s.email, s.items.map(function (x) { return x.qty + " x " + x.name + (x.size ? " (" + x.size + ")" : ""); }).join("; "), dollars(s.subtotal), dollars(s.tax), dollars(s.total), s.voided ? "yes" : ""];
+      csvDownload("ledger.csv", ["Date", "Time", "Paid with", "Location", "Customer", "Email", "Items", "Subtotal", "Tax", "Total", "Voided"], shown.map(function (s) {
+        return [chiDate(s.ts), timeOf(s.ts), PAYLABEL[s.method] || "Cash", s.location, s.name, s.email, s.items.map(function (x) { return x.qty + " x " + x.name + (x.size ? " (" + x.size + ")" : ""); }).join("; "), dollars(s.subtotal), dollars(s.tax), dollars(s.total), s.voided ? "yes" : ""];
       }));
     } }));
     n.appendChild(list); n.appendChild(msg); draw();
@@ -813,6 +814,17 @@ function viewSale(n) {
     if (today) pickEv.value = today.name;
     if (!soon.length) noEv.className = "";
   }).catch(function () { clear(pickEv); pickEv.appendChild(h("option", { value: "", text: "Could not load events" })); });
+  var caIn = h("input", { placeholder: "$QueenEsHeirr", autocomplete: "off", "aria-label": "Cash App name" }), vmIn = h("input", { placeholder: "@QueenEs-Heirr", autocomplete: "off", "aria-label": "Venmo username" });
+  var linkMsg = h("p", { "class": "msg", role: "status" });
+  api("GET", "pay-links").then(function (l) { caIn.value = l.cashapp ? "$" + l.cashapp : ""; vmIn.value = l.venmo ? "@" + l.venmo : ""; }).catch(function () {});
+  n.appendChild(h("div", { "class": "card" }, [
+    h("h2", { text: "Cash App and Venmo" }),
+    h("p", { "class": "muted", text: "Add your business names and the bag screen shows a QR code with the exact total filled in. Customers scan it, confirm in their app, and staff confirms with the PIN. Leave a box empty to hide that option. Test each with a $1 sale first." }),
+    h("label", null, ["Cash App name", caIn]), h("label", null, ["Venmo username", vmIn]), h("p"),
+    h("button", { "class": "btn small primary", text: "Save payment names", onclick: function () {
+      api("POST", "pay-links", { cashapp: caIn.value, venmo: vmIn.value }).then(function (r) { caIn.value = r.cashapp ? "$" + r.cashapp : ""; vmIn.value = r.venmo ? "@" + r.venmo : ""; linkMsg.className = "msg ok"; linkMsg.textContent = "Saved."; })
+        .catch(function (er) { linkMsg.className = "msg err"; linkMsg.textContent = er.message; });
+    } }), linkMsg]));
   n.appendChild(h("div", { "class": "card" }, [
     h("h2", { text: "Sell at an Event" }),
     h("p", { "class": "muted", text: "This turns the screen into a customer-facing store. Customers tap jars, review their bag, and pay by scanning a QR code with their phone, entering a card on the screen, or paying cash (confirmed with your PIN). Stripe emails card receipts, cash receipts are emailed from the shop, stock goes down automatically, and each sale appears in Orders as In person." }),
@@ -829,7 +841,10 @@ function viewSale(n) {
     h("button", { "class": "btn primary", text: "Start selling", onclick: function () {
       if (!/^\d{4}$/.test(pin.value)) { msg.className = "msg err"; msg.textContent = "Enter exactly 4 digits."; return; }
       if (!pickEv.value) { msg.className = "msg err"; msg.textContent = "Choose the event you are selling at. If it is not listed, add it on the Events tab first."; return; }
-      ssSet(SALE_KEY, { pin: pin.value, location: pickEv.value.slice(0, 80), taxPct: Math.min(15, Math.max(0, parseFloat(tax.value) || 0)) }); ssSet(CART_KEY, []); ssSet(PAY_KEY, null); renderSale();
+      var base = { pin: pin.value, location: pickEv.value.slice(0, 80), taxPct: Math.min(15, Math.max(0, parseFloat(tax.value) || 0)) };
+      api("GET", "pay-links").then(function (l) { base.links = l; }).catch(function () { base.links = {}; }).then(function () {
+        ssSet(SALE_KEY, base); ssSet(CART_KEY, []); ssSet(PAY_KEY, null); renderSale();
+      });
     } }), msg]));
 }
 
@@ -891,7 +906,11 @@ function renderSale() {
   function openBag() {
     var bg, box = h("div"), msg = h("p", { "class": "msg", role: "status" });
     var payBtn = h("button", { "class": "big", style: "width:100%", text: "Pay by card", onclick: pay });
-    var cashBtn = h("button", { "class": "big alt", style: "width:100%;margin-top:10px", text: "Pay with cash", onclick: function () { bg.remove(); showCash(); } });
+    var cashBtn = h("button", { "class": "big alt", style: "width:100%;margin-top:10px", text: "Pay with cash", onclick: function () { bg.remove(); showCash("cash"); } });
+    var lk = st.links || {};
+    var appBtns = [lk.cashapp ? ["cashapp", "Pay with Cash App"] : null, lk.venmo ? ["venmo", "Pay with Venmo"] : null].filter(Boolean).map(function (m) {
+      return h("button", { "class": "big alt", style: "width:100%;margin-top:10px", text: m[1], onclick: function () { bg.remove(); showCash(m[0]); } });
+    });
     function draw() {
       clear(box);
       cart = cart.filter(function (l) { return l.qty > 0; }); save(); drawBar();
@@ -911,21 +930,22 @@ function renderSale() {
       api("POST", "pos-checkout", { items: cart, location: st.location || "" }).then(function (r) { ssSet(PAY_KEY, r.id); showPay(r, total()); bg.remove(); })
         .catch(function (er) { payBtn.disabled = false; msg.className = "msg err"; msg.textContent = er.message; loadProducts(); });
     }
-    bg = overlay([h("h2", { text: "Your Bag" }), box, h("p", { "class": "muted", text: "Card payments: tax, if any, and your receipt are handled on the secure payment page." }), payBtn, cashBtn, msg,
+    bg = overlay([h("h2", { text: "Your Bag" }), box, h("p", { "class": "muted", text: "Card payments: tax, if any, and your receipt are handled on the secure payment page." }), payBtn, cashBtn].concat(appBtns, [msg,
       h("p"), h("button", { "class": "big alt", style: "width:100%", text: "Keep shopping", onclick: function () { bg.remove(); } }),
-      h("p"), h("button", { "class": "staff", style: "color:var(--sage)", text: "Empty the bag", onclick: function () { cart.length = 0; draw(); } })]);
+      h("p"), h("button", { "class": "staff", style: "color:var(--sage)", text: "Empty the bag", onclick: function () { cart.length = 0; draw(); } })]));
     draw();
   }
-  function showCash() {
+  function showCash(method) {
+    method = method || "cash";
     var rate = Number(st.taxPct) || 0, sub = total(), tax = Math.round(sub * rate / 100), key = "k" + Math.random().toString(36).slice(2) + Date.now().toString(36);
     var email = h("input", { type: "email", placeholder: "you@example.com", autocomplete: "email", inputmode: "email", "aria-label": "Email for your receipt" });
     var cname = h("input", { type: "text", maxlength: "100", placeholder: "Name (optional)", autocomplete: "name", "aria-label": "Name (optional)" });
     var pin = h("input", { "class": "pin", type: "password", inputmode: "numeric", maxlength: "4", autocomplete: "off", placeholder: "Staff PIN", "aria-label": "Staff PIN" });
     var msg = h("p", { "class": "msg err", role: "status" }), cbg;
-    var done = h("button", { "class": "big", style: "width:100%", text: "Cash received", onclick: function () {
-      if (pin.value !== st.pin) { msg.textContent = "Staff PIN needed to confirm the cash."; pin.value = ""; return; }
+    var done = h("button", { "class": "big", style: "width:100%", text: method === "cash" ? "Cash received" : "Payment received", onclick: function () {
+      if (pin.value !== st.pin) { msg.textContent = "Staff PIN needed to confirm the payment."; pin.value = ""; return; }
       done.disabled = true; msg.className = "msg"; msg.textContent = "Recording the sale...";
-      api("POST", "pos-cash", { items: cart, email: email.value, name: cname.value, taxPct: rate, key: key, location: st.location || "" }).then(function (r) {
+      api("POST", "pos-cash", { items: cart, email: email.value, name: cname.value, taxPct: rate, key: key, location: st.location || "", method: method }).then(function (r) {
         cbg.remove(); cart.length = 0; save(); drawBar();
         var t = h("div", { "class": "thanks" }, [h("div", null, [h("h1", { text: "Thank You!" }), h("p", { text: r.emailed ? "A receipt is on its way to your email." : "Enjoy your jars!" })])]);
         root.appendChild(t); setTimeout(function () { t.remove(); }, 5000); loadProducts();
@@ -933,14 +953,23 @@ function renderSale() {
     } });
     var rows = [h("div", { style: "display:flex;justify-content:space-between" }, [h("span", { text: "Subtotal" }), h("span", { text: money(sub) })])];
     if (tax > 0) rows.push(h("div", { style: "display:flex;justify-content:space-between" }, [h("span", { text: "Sales tax (" + rate + "%)" }), h("span", { text: money(tax) })]));
-    cbg = overlay([h("h2", { style: "text-align:center", text: "Pay With Cash" }),
+    var qrBlock = null;
+    if (method !== "cash") {
+      var lk2 = st.links || {}, amt = ((sub + tax) / 100).toFixed(2);
+      var link = method === "cashapp" ? "https://cash.app/$" + lk2.cashapp + "/" + amt : "https://venmo.com/" + lk2.venmo + "?txn=pay&amount=" + amt + "&note=" + encodeURIComponent("Queen E's Heirr");
+      var qb = h("div", { style: "width:min(280px,66vw);margin:10px auto;background:#fff;border-radius:18px;padding:10px;border:1.5px solid var(--linen)" });
+      qb.innerHTML = qrSvg(link, 260).replace('width="260" height="260"', 'width="100%" height="auto" style="display:block"');
+      qrBlock = h("div", null, [h("p", { style: "text-align:center;margin:0;font-weight:600", text: "Scan with your phone camera to pay " + money(sub + tax) + " in " + (PAYLABEL[method]) }), qb,
+        h("p", { "class": "muted", style: "text-align:center", text: "The amount is filled in. Confirm the payment in the app, then show our team the \u201cPayment sent\u201d screen." })]);
+    }
+    cbg = overlay([h("h2", { style: "text-align:center", text: "Pay With " + PAYLABEL[method] }),
       h("div", { style: "font-size:1.05rem;margin:8px 0" }, rows),
       h("div", { style: "display:flex;justify-content:space-between;font:700 1.6rem 'Playfair Display',serif;color:var(--forest);padding:8px 0 14px;border-top:1px solid var(--linen)" }, [h("span", { text: "Total" }), h("span", { text: money(sub + tax) })]),
-      h("p", { style: "margin:0 0 6px;font-weight:600", text: "Please hand your cash to our team." }),
+      qrBlock || h("p", { style: "margin:0 0 6px;font-weight:600", text: "Please hand your cash to our team." }),
       h("label", null, ["Name (optional)", cname]),
       h("p"),
       h("label", null, ["Email for a receipt (optional)", email]),
-      h("p", { "class": "muted", text: "Team member: enter the staff PIN once the cash is received." }),
+      h("p", { "class": "muted", text: "Team member: enter the staff PIN once the " + (method === "cash" ? "cash" : "payment") + " is received." }),
       pin, msg, h("p"), done, h("p"),
       h("button", { "class": "big alt", style: "width:100%", text: "Go back", onclick: function () { cbg.remove(); } })]);
   }

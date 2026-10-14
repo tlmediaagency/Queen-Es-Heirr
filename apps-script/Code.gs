@@ -347,7 +347,8 @@ function bookingNotice_(b, cls) {
   if (email) {
     const lines = ["Your seat" + (seats === 1 ? " is" : "s are") + " reserved.", "", title, when, place ? "Where: " + place : "", "Seats: " + seats + "   Paid: " + paid, notes ? "\n" + notes : "",
       "", "A calendar invite is on its way. Questions? Reply to this email or write " + TO + ".", "", "Queen E's Heirr", "https://queenesheirr.com"].filter(function (x) { return x !== null; });
-    const html = '<div style="font-family:Georgia,serif;max-width:480px;margin:auto;border:1px solid #e5dbd1;border-radius:16px;overflow:hidden">' +
+    const how = { cashapp: "with Cash App", venmo: "with Venmo", tap: "by card (Tap to Pay)" }[sale.method] || "in cash";
+  const html = '<div style="font-family:Georgia,serif;max-width:480px;margin:auto;border:1px solid #e5dbd1;border-radius:16px;overflow:hidden">' +
       '<div style="background:#1b3b22;padding:18px;text-align:center"><div style="color:#d4af37;font-size:20px;letter-spacing:.08em">QUEEN E\'S HEIRR</div></div>' +
       '<div style="padding:22px;color:#0e2012;line-height:1.55"><p style="margin:0 0 10px">' + (name ? "Hi " + esc_(name) + "," : "Hello,") + '</p>' +
       '<p style="margin:0 0 14px">Your seat' + (seats === 1 ? " is" : "s are") + ' reserved. Thank you!</p>' +
@@ -382,11 +383,11 @@ function cashReceipt_(sale) {
   const html = '<div style="font-family:Georgia,serif;max-width:480px;margin:auto;border:1px solid #e5dbd1;border-radius:16px;overflow:hidden">' +
     '<div style="background:#1b3b22;padding:18px;text-align:center"><div style="color:#d4af37;font-size:20px;letter-spacing:.08em">QUEEN E\'S HEIRR</div></div>' +
     '<div style="padding:22px;color:#0e2012;line-height:1.5"><p style="margin:0 0 4px;font-size:18px"><strong>Thank you for your purchase!</strong></p><p style="margin:0 0 14px;color:#5f6f63;font-size:14px">Receipt ' + esc_(num) + ' &middot; ' + esc_(when) + '</p>' +
-    '<table style="width:100%;border-collapse:collapse;font-size:15px">' + rows + taxRow + '<tr><td style="padding:10px 0 0;border-top:1px solid #e5dbd1"><strong>Total paid in cash</strong></td><td style="padding:10px 0 0;border-top:1px solid #e5dbd1;text-align:right"><strong>' + money(sale.total) + '</strong></td></tr></table>' +
+    '<table style="width:100%;border-collapse:collapse;font-size:15px">' + rows + taxRow + '<tr><td style="padding:10px 0 0;border-top:1px solid #e5dbd1"><strong>Total paid ' + how + '</strong></td><td style="padding:10px 0 0;border-top:1px solid #e5dbd1;text-align:right"><strong>' + money(sale.total) + '</strong></td></tr></table>' +
     '<p style="margin:16px 0 0;color:#5f6f63;font-size:14px">Questions? Write ' + esc_(TO) + ' or visit queenesheirr.com.</p></div></div>';
   const plain = "Thank you for your purchase from Queen E's Heirr!\nReceipt " + num + " - " + when + "\n\n" +
     items.map(function (x) { return (+x.qty || 1) + " x " + clean_(x.name, 100) + " (" + clean_(x.size, 40) + ") " + money((+x.cents || 0) * (+x.qty || 1)); }).join("\n") +
-    (+sale.tax > 0 ? "\nSales tax (" + (+sale.rate || 0) + "%): " + money(sale.tax) : "") + "\nTotal paid in cash: " + money(sale.total) + "\n\nQuestions? " + TO + "\nhttps://queenesheirr.com";
+    (+sale.tax > 0 ? "\nSales tax (" + (+sale.rate || 0) + "%): " + money(sale.tax) : "") + "\nTotal paid " + how + ": " + money(sale.total) + "\n\nQuestions? " + TO + "\nhttps://queenesheirr.com";
   try {
     MailApp.sendEmail({ to: email, replyTo: TO, name: "Queen E's Heirr", subject: "Your Queen E's Heirr receipt (" + money(sale.total) + ")", body: plain, htmlBody: html });
     return { ok: true };

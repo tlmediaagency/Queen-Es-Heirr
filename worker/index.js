@@ -228,7 +228,10 @@ async function payRedirect(env, id) {
 }
 
 // Cash sale at an event: same stock/price rules as card sales, recorded in KV, optional emailed receipt.
-async function posCash(env, items, email, taxPct, key, name, location) {
+const PAY_METHODS = ["cash", "cashapp", "venmo", "tap"];
+async function posCash(env, items, email, taxPct, key, name, location, method, paymentId) {
+  method = PAY_METHODS.includes(method) ? method : "cash";
+  paymentId = /^(ch|py)_[A-Za-z0-9]+$/.test(paymentId || "") ? paymentId : "";
   if (!env.ADMIN_KV) throw new Error("Storage is not set up");
   if (!Array.isArray(items) || items.length === 0 || items.length > 20) throw new Error("The bag is empty");
   email = String(email || "").trim().slice(0, 200);
@@ -269,7 +272,7 @@ async function posCash(env, items, email, taxPct, key, name, location) {
   }
   const idb = new Uint8Array(6); crypto.getRandomValues(idb);
   const id = "cash_" + Array.from(idb).map((x) => x.toString(16).padStart(2, "0")).join("");
-  const rec = { id, key, ts: Date.now(), name, location, email, subtotal, tax, total, rate, items: lines.map((l) => ({ name: l.name, size: l.size, qty: l.qty, cents: l.cents, priceId: l.priceId })) };
+  const rec = { id, key, method, paymentId, ts: Date.now(), name, location, email, subtotal, tax, total, rate, items: lines.map((l) => ({ name: l.name, size: l.size, qty: l.qty, cents: l.cents, priceId: l.priceId })) };
   sales.push(rec);
   await env.ADMIN_KV.put("cashsales", JSON.stringify(sales.slice(-1000)));
   const emailed = email ? await sendCashReceipt(env, rec) : false;
