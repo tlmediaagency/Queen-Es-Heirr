@@ -261,3 +261,9 @@ a.btn[href] { text-decoration: none; }
 .qv-info .btn { width: 100%; justify-content: center; margin-top: .8rem; }
 .qv-x { position: absolute; top: 8px; right: 8px; z-index: 2; width: 44px; height: 44px; border-radius: 50%; border: 0; background: rgba(255,255,255,.92); font-size: 1.6rem; line-height: 1; cursor: pointer; box-shadow: 0 1px 6px rgba(0,0,0,.25); }
 @media (min-width: 720px) { .qv { grid-template-columns: 1fr 1fr; } .qv img { height: 100%; aspect-ratio: auto; min-height: 380px; } }
+
+.judah-book { text-align: center; margin-top: 1.5rem; }
+.judah-book img { width: min(300px, 70vw); height: auto; border-radius: 6px; box-shadow: 0 18px 40px rgba(0,0,0,.28); transition: transform .25s ease; }
+.judah-book a:hover img, .judah-book a:focus-visible img { transform: translateY(-4px) rotate(-1deg); }
+.judah-book p { margin: 1rem auto 0; max-width: 34ch; font-size: .95rem; }
+@media (prefers-reduced-motion: reduce) { .judah-book img { transition: none; } }
