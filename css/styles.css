@@ -296,3 +296,10 @@ a.btn[href] { text-decoration: none; }
 .promo-btns { display: flex; flex-wrap: wrap; gap: .75rem; justify-content: center; margin-top: 1.2rem; }
 .judah-promo .btn.ghost { color: #fff; border-color: rgba(255,255,255,.7); background: transparent; }
 @media (min-width: 760px) { .promo-in { grid-template-columns: auto 1fr; text-align: left; gap: 3rem; justify-items: start; } .promo-text p:not(.kicker) { margin-left: 0; } .promo-btns { justify-content: flex-start; } }
+@media (max-width: 640px) {
+  .judah-hero > img, .judah-promo .promo-bg { display: none; }
+  .judah-hero { background: #0c1f10; }
+  .judah-hero-text { padding: 2rem 0; }
+  .judah-book img { width: min(190px, 52vw); }
+  [data-shop][data-category] .card { width: min(260px, 78%); flex-basis: auto; }
+}
