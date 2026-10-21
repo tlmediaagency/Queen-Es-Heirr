@@ -263,7 +263,7 @@ export async function handleAdmin(request, env, url, d) {
   const body = request.method === "POST" || request.method === "PUT" ? await request.json().catch(() => ({})) : {};
 
   try {
-    const mk = await marketingRoute(route, request.method, body, env, me, { upcoming, readEvents, publicClasses }, j);
+    const mk = await marketingRoute(route, request.method, body, env, me, { upcoming, readEvents, publicClasses, stripeGet }, j);
     if (mk) return mk;
     const sh = await shippingRoute(route, request.method, body, env, me, { stripeGet }, j, url.origin);
     if (sh) return sh;

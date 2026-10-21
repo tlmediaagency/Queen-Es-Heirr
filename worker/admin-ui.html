@@ -390,6 +390,13 @@ function viewShipSetup(n) {
 }
 /* MARKETING: MAILING LIST */
 var SUB_PAGE = 100;
+var TAGS = [["jam", "Jams & pickled goods"], ["leadership", "Leadership materials"], ["professional", "Professionals"], ["education", "Schools & organizations"], ["general", "General news"]];
+function tagName(t) { var x = TAGS.filter(function (y) { return y[0] === t; })[0]; return x ? x[1] : t; }
+function tagPicker(selected) {
+  var boxes = TAGS.map(function (t) { return { t: t[0], c: h("input", { type: "checkbox", checked: (selected || []).indexOf(t[0]) > -1 }) }; });
+  return { node: h("div", { style: "display:flex;flex-wrap:wrap;gap:6px 16px" }, boxes.map(function (b) { return h("label", { "class": "chk" }, [b.c, tagName(b.t)]); })),
+    get: function () { return boxes.filter(function (b) { return b.c.checked; }).map(function (b) { return b.t; }); } };
+}
 function viewSubscribers(n) {
   loading(n);
   api("GET", "subscribers").then(function (d) {
@@ -400,39 +407,50 @@ function viewSubscribers(n) {
     function drawStats() {
       stats.textContent = count("subscribed") + " subscribed · " + count("unsubscribed") + " unsubscribed · " + all.length + " total. You can send " + d.quota + " more emails today.";
     }
+    function tagStats() { return TAGS.map(function (t) { return tagName(t[0]) + " " + all.filter(function (x) { return x.status === "subscribed" && (x.tags || ["general"]).indexOf(t[0]) > -1; }).length; }).join(" · "); }
+    var tstats = h("p", { "class": "muted" });
     n.appendChild(h("p", { "class": "muted", text: "This is the same list as the Subscribers tab in your Google Sheet. People who sign up on the website appear here, and anyone who clicks Unsubscribe is marked automatically." }));
-    drawStats(); n.appendChild(stats);
+    drawStats(); n.appendChild(stats); tstats.textContent = "Groups: " + tagStats(); n.appendChild(tstats);
+    n.appendChild(h("div", { "class": "card" }, [h("h3", { text: "Customers Who Opted In at Checkout" }),
+      h("p", { "class": "muted", text: "New opt-ins are added automatically. This button catches any that were missed. It only ever adds people who ticked the box, and never anyone who unsubscribed." }),
+      h("button", { "class": "btn small", text: "Pull in checkout opt-ins", onclick: function (e) {
+        var b = e.currentTarget; b.disabled = true;
+        api("POST", "subscribers-from-stripe", {}).then(function (r) { toast("Added " + r.added + (r.tagged ? ", updated " + r.tagged : "")); if (r.added || r.tagged) viewSubscribers(n); else { b.disabled = false; } }).catch(function (er) { b.disabled = false; toast(er.message); });
+      } })]));
 
     function refresh() { viewSubscribers(n); }
     var aName = h("input", { placeholder: "First and last name (optional)", autocomplete: "off", "aria-label": "Name" });
     var aMail = h("input", { type: "email", placeholder: "email@example.com", autocomplete: "off", "aria-label": "Email" });
+    var aTags = tagPicker([]);
     var aOk = h("input", { type: "checkbox" }), aMsg = h("p", { "class": "msg", role: "status" });
     n.appendChild(h("div", { "class": "card" }, [h("h3", { text: "Add Someone" }),
       h("div", { "class": "row" }, [h("label", null, ["Name", aName]), h("label", null, ["Email", aMail])]),
+      h("p", { "class": "muted", text: "Interests (optional, helps you send the right emails):" }), aTags.node,
       h("label", { "class": "chk" }, [aOk, "This person asked to be on the list"]), h("p"),
       h("button", { "class": "btn primary", text: "Add to list", onclick: function () {
         if (!aOk.checked) { aMsg.className = "msg err"; aMsg.textContent = "Please confirm they asked to be added."; return; }
-        api("POST", "subscriber", { op: "add", email: aMail.value, name: aName.value }).then(function (r) {
+        api("POST", "subscriber", { op: "add", email: aMail.value, name: aName.value, tags: aTags.get() }).then(function (r) {
           if (r.existing && r.status === "unsubscribed") {
             if (!confirm("This person unsubscribed earlier. Only add them back if they asked you to. Add them back?")) return;
-            return api("POST", "subscriber", { op: "add", email: aMail.value, name: aName.value, resubscribe: true }).then(function () { toast("Added back"); refresh(); });
+            return api("POST", "subscriber", { op: "add", email: aMail.value, name: aName.value, tags: aTags.get(), resubscribe: true }).then(function () { toast("Added back"); refresh(); });
           }
           toast(r.existing ? "Already on the list" : "Added"); refresh();
         }).catch(function (er) { aMsg.className = "msg err"; aMsg.textContent = er.message; });
       } }), aMsg]));
 
     var iBox = h("textarea", { rows: "6", placeholder: "One person per line:\nJane Smith, jane@example.com\nsam@example.com", "aria-label": "People to import" });
+    var iTags = tagPicker([]);
     var iOk = h("input", { type: "checkbox" }), iMsg = h("p", { "class": "msg", role: "status" });
     var iCard = h("div", { "class": "hide" }, [
       h("p", { "class": "muted", text: "Paste people you already have permission to email, such as customers who asked to hear from you. Anyone who unsubscribed before stays unsubscribed. Up to 500 at a time." }),
-      iBox, h("label", { "class": "chk" }, [iOk, "These people asked to hear from Queen E's Heirr"]), h("p"),
+      iBox, h("p", { "class": "muted", text: "Put everyone in these groups (optional):" }), iTags.node, h("label", { "class": "chk" }, [iOk, "These people asked to hear from Queen E's Heirr"]), h("p"),
       h("button", { "class": "btn primary", text: "Import", onclick: function () {
         var rows = iBox.value.split(/\n/).map(function (l) { return l.trim(); }).filter(Boolean).map(function (l) {
           var m = l.match(/[^\s,;<>"]+@[^\s,;<>"]+/); if (!m) return { name: "", email: l };
           return { email: m[0], name: l.replace(m[0], "").replace(/[<>",;]/g, " ").replace(/\s+/g, " ").trim() };
         });
         if (!rows.length) { iMsg.className = "msg err"; iMsg.textContent = "Paste at least one email."; return; }
-        api("POST", "subscribers-import", { rows: rows, consent: iOk.checked }).then(function (r) {
+        api("POST", "subscribers-import", { rows: rows, consent: iOk.checked, tags: iTags.get() }).then(function (r) {
           toast("Added " + r.added);
           iMsg.className = "msg ok"; iMsg.textContent = "Added " + r.added + ". Already on the list: " + r.already + ". Stayed unsubscribed: " + r.unsubscribed + ". Not valid: " + r.invalid + ".";
           if (r.added) setTimeout(refresh, 2500);
@@ -443,21 +461,30 @@ function viewSubscribers(n) {
 
     var search = h("input", { type: "search", placeholder: "Search name or email", "aria-label": "Search the list", autocomplete: "off" });
     var sel = h("select", { "aria-label": "Show" }, [["subscribed", "Subscribed"], ["unsubscribed", "Unsubscribed"], ["", "Everyone"]].map(function (o) { return h("option", { value: o[0], text: o[1] }); }));
+    var segSel = h("select", { "aria-label": "Group" }, [h("option", { value: "", text: "All groups" })].concat(TAGS.map(function (t) { return h("option", { value: t[0], text: t[1] }); })));
+    var seg = "";
+    segSel.addEventListener("change", function () { seg = segSel.value; shown = SUB_PAGE; draw(); });
     var list = h("div");
     function draw() {
       clear(list);
-      var rows = all.filter(function (x) { return (!flt || x.status === flt) && (!q || (x.name + " " + x.email).toLowerCase().indexOf(q) > -1); })
+      var rows = all.filter(function (x) { return (!flt || x.status === flt) && (!seg || (x.tags || ["general"]).indexOf(seg) > -1) && (!q || (x.name + " " + x.email).toLowerCase().indexOf(q) > -1); })
         .sort(function (a, b) { return (b.on || "").localeCompare(a.on || ""); });
       list.appendChild(h("p", { "class": "muted", text: rows.length + " " + (rows.length === 1 ? "person" : "people") }));
       rows.slice(0, shown).forEach(function (s) {
         var sub = s.status === "subscribed";
+        var tp = tagPicker(s.tags || ["general"]);
+        var editBox = h("div", { "class": "hide", style: "margin-top:8px" }, [tp.node, h("p"), h("button", { "class": "btn small primary", text: "Save groups", onclick: function () {
+          var t = tp.get(); api("POST", "subscriber", { op: "tags", email: s.email, tags: t }).then(function () { s.tags = t.length ? t : ["general"]; tstats.textContent = "Groups: " + tagStats(); toast("Saved"); draw(); }).catch(function (er) { toast(er.message); });
+        } })]);
         var nameIn = h("input", { value: s.name, placeholder: "Name", "aria-label": "Name for " + s.email, style: "max-width:240px" });
         nameIn.addEventListener("change", function () {
           api("POST", "subscriber", { op: "name", email: s.email, name: nameIn.value }).then(function () { s.name = nameIn.value; toast("Saved"); }).catch(function (er) { toast(er.message); });
         });
         list.appendChild(h("div", { "class": "card", style: "display:flex;flex-wrap:wrap;gap:10px 14px;align-items:center;justify-content:space-between" }, [
           h("div", null, [h("div", null, [h("a", { href: "mailto:" + s.email, text: s.email }), " ", h("span", { "class": "pill" + (sub ? "" : " void"), text: sub ? "Subscribed" : "Unsubscribed" })]),
-            h("div", { "class": "muted", text: s.on ? "Joined " + chiDate(Date.parse(s.on)) : "" }), nameIn]),
+            h("div", { "class": "muted", text: s.on ? "Joined " + chiDate(Date.parse(s.on)) : "" }), nameIn,
+            h("div", { style: "margin-top:6px" }, [h("span", { "class": "muted", text: "Groups: " + (s.tags || ["general"]).map(tagName).join(", ") + " " }),
+              h("button", { "class": "btn small", text: "Edit groups", onclick: function (e) { editBox.classList.toggle("hide"); } })]), editBox]),
           h("div", null, [
             h("button", { "class": "btn small", text: sub ? "Unsubscribe" : "Add back", onclick: function () {
               if (sub ? !confirm("Stop emailing " + s.email + "?") : !confirm("Only add " + s.email + " back if they asked you to. Add them back?")) return;
@@ -473,9 +500,9 @@ function viewSubscribers(n) {
     search.addEventListener("input", function () { q = search.value.trim().toLowerCase(); shown = SUB_PAGE; draw(); });
     sel.addEventListener("change", function () { flt = sel.value; shown = SUB_PAGE; draw(); });
     sel.value = flt;
-    n.appendChild(h("div", { "class": "tools" }, [h("label", null, ["Search", search]), h("label", null, ["Show", sel]),
+    n.appendChild(h("div", { "class": "tools" }, [h("label", null, ["Search", search]), h("label", null, ["Show", sel]), h("label", null, ["Group", segSel]),
       h("button", { "class": "btn", text: "Download CSV", onclick: function () {
-        csvDownload("mailing-list.csv", ["Name", "Email", "Status", "Joined"], all.map(function (s) { return [s.name, s.email, s.status, s.on ? chiDate(Date.parse(s.on)) : ""]; }));
+        csvDownload("mailing-list.csv", ["Name", "Email", "Status", "Joined", "Groups"], all.map(function (s) { return [s.name, s.email, s.status, s.on ? chiDate(Date.parse(s.on)) : "", (s.tags || []).map(tagName).join("; ")]; }));
       } })]));
     n.appendChild(list); draw();
   }).catch(function (er) { failed(n, er); });
@@ -494,6 +521,18 @@ function viewCampaigns(n) {
   clear(n);
   var D = ssGet(CAMP_KEY) || { subject: "", preheader: "", headline: "", body: "", imageUrl: "", buttonLabel: "", buttonUrl: "", greet: true, includeEvents: false, includeClasses: false };
   var sending = false, root = h("div"); n.appendChild(root);
+  var aud = { tags: [] }, audCounts = {}, audNote = h("p", { "class": "muted" });
+  function audText() {
+    var picked = aud.tags;
+    var cnt = Object.keys(audCounts).length ? (picked.length ? audCounts.__some(picked) : audCounts.__all) : null;
+    audNote.textContent = (picked.length ? "Sending to: " + picked.map(tagName).join(" + ") : "Sending to: everyone subscribed") + (cnt == null ? "" : " (" + cnt + " " + (cnt === 1 ? "person" : "people") + ")");
+  }
+  api("GET", "subscribers").then(function (r) {
+    var subs = (r.subscribers || []).filter(function (x) { return x.status === "subscribed"; });
+    audCounts.__all = subs.length;
+    audCounts.__some = function (tags) { return subs.filter(function (x) { return (x.tags || ["general"]).some(function (t) { return tags.indexOf(t) > -1; }); }).length; };
+    audText();
+  }).catch(function () {});
   function save() { ssSet(CAMP_KEY, D); }
 
   // mailing address (required in the footer of every marketing email)
@@ -555,12 +594,12 @@ function viewCampaigns(n) {
     api("POST", "campaign-test", { fields: fields() }).then(function (r) { smsg.className = "msg ok"; smsg.textContent = "Test sent to " + r.to + ". Check your inbox (and spam) to see how it looks on your phone."; })
       .catch(function (er) { smsg.className = "msg err"; smsg.textContent = er.message; }).then(function () { testBtn.disabled = false; });
   } });
-  var sendBtn = h("button", { "class": "btn primary", text: "Send to the list", onclick: function () { go(); } });
+  var sendBtn = h("button", { "class": "btn primary", text: "Send", onclick: function () { go(); } });
   function lockForm(on) { sending = on; sendBtn.disabled = on; testBtn.disabled = on; form.style.opacity = on ? ".5" : ""; form.style.pointerEvents = on ? "none" : ""; window.onbeforeunload = on ? function () { return "Your email is still sending."; } : null; }
   function go() {
     if (sending) return;
     smsg.className = "msg"; smsg.textContent = "Checking the list...";
-    api("POST", "campaign-start", { fields: fields() }).then(function (s) {
+    api("POST", "campaign-start", { fields: fields(), audience: aud.tags }).then(function (s) {
       if (!confirm("Send “" + D.subject + "” to " + s.total + " " + (s.total === 1 ? "person" : "people") + " now? This cannot be undone. Have you sent yourself a test?")) { smsg.textContent = ""; return; }
       lockForm(true); bar.style.display = ""; bar.max = s.total; bar.value = 0;
       var sent = 0, failed = 0, i = 0;
@@ -572,7 +611,7 @@ function viewCampaigns(n) {
           .catch(function (er) { failed += part.length; i += part.length; bar.value = i; smsg.textContent = "A group did not send (" + er.message + "). Continuing..."; return next(); });
       }
       function finish() {
-        return api("POST", "campaign-done", { id: s.id, fields: fields(), total: s.total, sent: sent, failed: failed }).catch(function () {}).then(function () {
+        return api("POST", "campaign-done", { id: s.id, audience: aud.tags, fields: fields(), total: s.total, sent: sent, failed: failed }).catch(function () {}).then(function () {
           lockForm(false); bar.style.display = "none"; smsg.className = failed ? "msg err" : "msg ok";
           smsg.textContent = "Done. Sent to " + sent + " of " + s.total + (failed ? ". " + failed + " did not send; check the Campaigns tab in your Google Sheet." : ".");
           history();
@@ -581,6 +620,10 @@ function viewCampaigns(n) {
       return next();
     }).catch(function (er) { lockForm(false); smsg.className = "msg err"; smsg.textContent = er.message; });
   }
+  var audBoxes = TAGS.map(function (t) { var c = h("input", { type: "checkbox" }); c.addEventListener("change", function () { aud.tags = audBoxes.filter(function (b) { return b.c.checked; }).map(function (b) { return b.t; }); audText(); }); return { t: t[0], c: c }; });
+  root.appendChild(h("div", { "class": "card" }, [h("h3", { text: "Who Gets It" }),
+    h("p", { "class": "muted", text: "Leave everything unticked to email the whole list, or tick groups to reach only those people. Someone in more than one group gets it once." }),
+    h("div", { style: "display:flex;flex-wrap:wrap;gap:6px 16px" }, audBoxes.map(function (b) { return h("label", { "class": "chk" }, [b.c, tagName(b.t)]); })), audNote]));
   root.appendChild(h("div", { "class": "card" }, [h("h3", { text: "Send" }),
     h("p", { "class": "muted", text: "Always send yourself a test first. Emails go only to people who are currently subscribed, and each one has its own unsubscribe link." }),
     h("div", null, [testBtn, " ", sendBtn]), bar, smsg,

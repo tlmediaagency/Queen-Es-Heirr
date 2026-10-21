@@ -123,7 +123,7 @@ function doPost(e) {
       });
       sheet.appendRow(row);
     }
-    if (/mailing list/i.test(subject) && replyTo) addSubscriber_(String(fields.name || "").slice(0, 100), replyTo);
+    if (/mailing list/i.test(subject) && replyTo) addSubscriber_(String(fields.name || "").slice(0, 100), replyTo, cleanTags_(String(fields.interests || "") + "," + String(fields.role || "")));
     return out_({ ok: true });
   } catch (err) {
     return out_({ ok: false });
@@ -207,12 +207,24 @@ function setup() {
 // ---------- Mailing list ----------
 // "Subscribers" tab: Subscribed on | Name | Email | Status (subscribed / unsubscribed) | Updated
 
+// Column F "Tags" holds interests/audience segments: jam, leadership, professional, education, general (comma separated).
+const TAG_LIST_ = ["jam", "leadership", "professional", "education", "general"];
+function cleanTags_(v) {
+  const arr = Array.isArray(v) ? v : String(v || "").split(/[,;]+/);
+  const out = [];
+  arr.forEach(function (t) { t = String(t || "").trim().toLowerCase(); if (TAG_LIST_.indexOf(t) > -1 && out.indexOf(t) < 0) out.push(t); });
+  return out;
+}
+function mergeTags_(existing, add) { return cleanTags_(cleanTags_(existing).concat(cleanTags_(add))).join(","); }
+
 function subscribersSheet_() {
   const ss = spreadsheet_();
   let sh = ss.getSheetByName("Subscribers");
   if (!sh) {
     sh = ss.insertSheet("Subscribers");
-    sh.appendRow(["Subscribed on", "Name", "Email", "Status", "Updated"]);
+    sh.appendRow(["Subscribed on", "Name", "Email", "Status", "Updated", "Tags"]);
+  } else if (!String(sh.getRange(1, 6).getValue())) {
+    sh.getRange(1, 6).setValue("Tags");
   }
   return sh;
 }
@@ -223,15 +235,17 @@ function findSubscriberRow_(sh, email) {
   return 0;
 }
 
-function addSubscriber_(name, email) {
+function addSubscriber_(name, email, tags) {
   const lock = LockService.getScriptLock();
   lock.waitLock(10000);
   try {
     const sh = subscribersSheet_();
     const safe = function (v) { v = String(v).slice(0, 200); return /^[=+\-@]/.test(v) ? "'" + v : v; };
     const row = findSubscriberRow_(sh, email);
-    if (row) { sh.getRange(row, 4, 1, 2).setValues([["subscribed", new Date()]]); }
-    else sh.appendRow([new Date(), safe(name), email, "subscribed", new Date()]);
+    if (row) {
+      sh.getRange(row, 4, 1, 2).setValues([["subscribed", new Date()]]);
+      if (tags && tags.length) sh.getRange(row, 6).setValue(mergeTags_(sh.getRange(row, 6).getValue(), tags));
+    } else sh.appendRow([new Date(), safe(name), email, "subscribed", new Date(), cleanTags_(tags).join(",")]);
   } finally { lock.releaseLock(); }
 }
 
@@ -341,7 +355,8 @@ function mkt_(d) {
       case "sub_list": {
         const vals = subscribersSheet_().getDataRange().getValues().slice(1);
         const subs = vals.filter(function (r) { return r[2]; }).slice(0, 5000).map(function (r) {
-          return { name: String(r[1] || ""), email: String(r[2]), status: String(r[3] || "subscribed"), on: iso_(r[0]), updated: iso_(r[4]) };
+          const tg = cleanTags_(r[5]);
+          return { name: String(r[1] || ""), email: String(r[2]), status: String(r[3] || "subscribed"), on: iso_(r[0]), updated: iso_(r[4]), tags: tg.length ? tg : ["general"] };
         });
         return { ok: true, subscribers: subs, quota: MailApp.getRemainingDailyQuota() };
       }
@@ -355,10 +370,21 @@ function mkt_(d) {
             if (status === "unsubscribed" && d.resubscribe !== true) return { ok: true, existing: true, status: status };
             if (status !== "subscribed") sh.getRange(row, 4, 1, 2).setValues([["subscribed", new Date()]]);
             if (d.name && !String(sh.getRange(row, 2).getValue())) sh.getRange(row, 2).setValue(safe(d.name));
+            if (cleanTags_(d.tags).length) sh.getRange(row, 6).setValue(mergeTags_(sh.getRange(row, 6).getValue(), d.tags));
             return { ok: true, existing: true, status: "subscribed" };
           }
-          sh.appendRow([new Date(), safe(d.name), email, "subscribed", new Date()]);
+          sh.appendRow([new Date(), safe(d.name), email, "subscribed", new Date(), cleanTags_(d.tags).join(",")]);
           return { ok: true, added: true };
+        } finally { lock.releaseLock(); }
+      }
+      case "sub_tags": {
+        if (!EMAIL_RE_.test(email)) return { ok: false, error: "Missing email." };
+        const lock = LockService.getScriptLock(); lock.waitLock(10000);
+        try {
+          const sh = subscribersSheet_(), row = findSubscriberRow_(sh, email);
+          if (!row) return { ok: false, error: "That person is not on the list." };
+          sh.getRange(row, 6).setValue(cleanTags_(d.tags).join(","));
+          return { ok: true };
         } finally { lock.releaseLock(); }
       }
       case "sub_set": case "sub_name": case "sub_delete": {
@@ -381,18 +407,24 @@ function mkt_(d) {
         const lock = LockService.getScriptLock(); lock.waitLock(20000);
         try {
           const sh = subscribersSheet_();
-          const have = {};
-          sh.getDataRange().getValues().slice(1).forEach(function (r) { have[String(r[2]).toLowerCase()] = String(r[3]); });
-          const out = { added: 0, already: 0, unsubscribed: 0, invalid: 0 }, add = [];
+          const vals = sh.getDataRange().getValues();
+          const have = {}, rowOf = {}, tagsOf = {};
+          vals.slice(1).forEach(function (r, i) { const k = String(r[2]).toLowerCase(); have[k] = String(r[3]); rowOf[k] = i + 2; tagsOf[k] = String(r[5] || ""); });
+          const out = { added: 0, already: 0, unsubscribed: 0, invalid: 0, tagged: 0 }, add = [];
           rows.forEach(function (r) {
             const em = String((r && r.email) || "").trim().toLowerCase().slice(0, 200);
             if (!EMAIL_RE_.test(em)) { out.invalid++; return; }
+            const tg = cleanTags_(r.tags && r.tags.length ? r.tags : d.tags);
             if (have[em] === "unsubscribed") { out.unsubscribed++; return; }
-            if (have[em]) { out.already++; return; }
+            if (have[em]) {
+              out.already++;
+              if (tg.length) { const m = mergeTags_(tagsOf[em], tg); if (m !== cleanTags_(tagsOf[em]).join(",")) { sh.getRange(rowOf[em], 6).setValue(m); tagsOf[em] = m; out.tagged++; } }
+              return;
+            }
             have[em] = "subscribed"; out.added++;
-            add.push([new Date(), safe(r.name), em, "subscribed", new Date()]);
+            add.push([new Date(), safe(r.name), em, "subscribed", new Date(), tg.join(",")]);
           });
-          if (add.length) sh.getRange(sh.getLastRow() + 1, 1, add.length, 5).setValues(add);
+          if (add.length) sh.getRange(sh.getLastRow() + 1, 1, add.length, 6).setValues(add);
           out.ok = true; return out;
         } finally { lock.releaseLock(); }
       }

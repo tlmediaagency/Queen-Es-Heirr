@@ -560,7 +560,7 @@
       fetch(CFG.CHECKOUT_URL, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ items: lines, fulfillment: fulfillment(), eventId: fulfillment() === "event" && eventSel ? eventSel.value : undefined })
+        body: JSON.stringify({ items: lines, fulfillment: fulfillment(), eventId: fulfillment() === "event" && eventSel ? eventSel.value : undefined, optin: !!(document.querySelector("[data-optin]") && document.querySelector("[data-optin]").checked) })
       }).then(function (r) {
         return r.json().then(function (d) { if (!r.ok) throw new Error(d.error || "Checkout failed"); return d; });
       }).then(function (d) {

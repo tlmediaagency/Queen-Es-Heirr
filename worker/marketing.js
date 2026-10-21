@@ -6,6 +6,25 @@ const SERIF = "Georgia,'Times New Roman',serif", SANS = "Helvetica,Arial,sans-se
 const EMAIL_RE = /^[^@\s]+@[^@\s]+\.[^@\s]+$/;
 const HTTPS_RE = /^https:\/\/[^\s"'<>]{4,500}$/;
 const CHUNK = 40;
+export const TAGS = [["jam", "Jams & pickled goods"], ["leadership", "Leadership materials"], ["professional", "Professionals"], ["education", "Schools & organizations"], ["general", "General news"]];
+export const cleanTags = (v) => { const out = []; (Array.isArray(v) ? v : String(v || "").split(/[,;]+/)).forEach((t) => { t = String(t || "").trim().toLowerCase(); if (TAGS.some((x) => x[0] === t) && !out.includes(t)) out.push(t); }); return out; };
+const CAT_TAG = { "Jams": "jam", "Pickled goods": "jam", "Books": "leadership", "Curriculum & Resources": "leadership" };
+// Interests guessed from what someone bought.
+export function tagsFromSession(s) {
+  const out = [];
+  ((s.line_items && s.line_items.data) || []).forEach((l) => {
+    const p = l.price && l.price.product && typeof l.price.product === "object" ? l.price.product : {};
+    const t = CAT_TAG[(p.metadata || {}).category]; if (t && !out.includes(t)) out.push(t);
+  });
+  return out.length ? out : ["general"];
+}
+// Someone ticked "email me" at checkout. Called from the Stripe webhook and the manual sync.
+export async function addOptIn(env, session, resubscribe) {
+  const cd = session.customer_details || {};
+  const email = String(cd.email || "").trim().toLowerCase();
+  if (!EMAIL_RE.test(email)) return { skipped: true };
+  return mail(env, "sub_add", { email, name: one(cd.name, 100), tags: tagsFromSession(session), resubscribe: resubscribe === true });
+}
 
 const esc = (v) => String(v == null ? "" : v).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
 const one = (v, n) => String(v == null ? "" : v).replace(/[\r\n]+/g, " ").trim().slice(0, n);
@@ -107,7 +126,7 @@ async function context(env, deps, f, settings) {
 
 // Returns a Response for a marketing route, or null when the route isn't one of ours.
 export async function marketingRoute(route, method, body, env, me, deps, j) {
-  const isMine = /^(subscribers|subscriber|subscribers-import|marketing-settings|campaign-[a-z]+|campaigns)$/.test(route);
+  const isMine = /^(subscribers|subscriber|subscribers-import|subscribers-from-stripe|marketing-settings|campaign-[a-z]+|campaigns)$/.test(route);
   if (!isMine) return null;
   try {
     if (route === "marketing-settings" && method === "GET") return j({ address: (await readSettings(env)).address || "" });
@@ -124,7 +143,8 @@ export async function marketingRoute(route, method, body, env, me, deps, j) {
       const email = String(body.email || "").trim().toLowerCase();
       if (!EMAIL_RE.test(email)) return j({ error: "That email address does not look right." }, 400);
       const op = body.op;
-      if (op === "add") return j(await mail(env, "sub_add", { email, name: one(body.name, 100), resubscribe: body.resubscribe === true }));
+      if (op === "add") return j(await mail(env, "sub_add", { email, name: one(body.name, 100), tags: cleanTags(body.tags), resubscribe: body.resubscribe === true }));
+      if (op === "tags") return j(await mail(env, "sub_tags", { email, tags: cleanTags(body.tags) }));
       if (op === "set") return j(await mail(env, "sub_set", { email, status: body.status === "unsubscribed" ? "unsubscribed" : "subscribed" }));
       if (op === "name") return j(await mail(env, "sub_name", { email, name: one(body.name, 100) }));
       if (op === "delete") return j(await mail(env, "sub_delete", { email }));
@@ -133,7 +153,26 @@ export async function marketingRoute(route, method, body, env, me, deps, j) {
     if (route === "subscribers-import" && method === "POST") {
       if (body.consent !== true) return j({ error: "Please confirm these people asked to hear from you." }, 400);
       const rows = (Array.isArray(body.rows) ? body.rows : []).slice(0, 500).map((r) => ({ name: one(r && r.name, 100), email: String((r && r.email) || "").trim().toLowerCase() }));
-      return j(await mail(env, "sub_import", { rows }));
+      return j(await mail(env, "sub_import", { rows, tags: cleanTags(body.tags) }));
+    }
+    if (route === "subscribers-from-stripe" && method === "POST") {
+      // Pulls in customers who ticked the "email me" box at checkout. Never touches anyone who did not tick it.
+      const rows = [];
+      let after = "", seen = 0;
+      for (let page = 0; page < 3; page++) {
+        const r = await deps.stripeGet(env, `/checkout/sessions?limit=100&expand[]=data.line_items.data.price.product${after ? "&starting_after=" + after : ""}`);
+        for (const s of r.data) {
+          seen++;
+          if (s.payment_status !== "paid" || !s.metadata || s.metadata.optin !== "1") continue;
+          const em = String((s.customer_details && s.customer_details.email) || "").trim().toLowerCase();
+          if (EMAIL_RE.test(em)) rows.push({ email: em, name: one(s.customer_details.name, 100), tags: tagsFromSession(s) });
+        }
+        if (!r.has_more || !r.data.length) break;
+        after = r.data[r.data.length - 1].id;
+      }
+      if (!rows.length) return j({ ok: true, found: 0, seen, added: 0, already: 0, unsubscribed: 0, tagged: 0 });
+      const out = await mail(env, "sub_import", { rows: rows.slice(0, 500) });
+      return j({ ok: true, found: rows.length, seen, added: out.added, already: out.already, unsubscribed: out.unsubscribed, tagged: out.tagged });
     }
     if (route === "campaigns" && method === "GET") return j({ campaigns: (await mail(env, "camp_list", {})).campaigns });
 
@@ -152,11 +191,12 @@ export async function marketingRoute(route, method, body, env, me, deps, j) {
       if (!settings.address) return j({ error: "Add your mailing address first (it goes in the footer of every email, which the law requires)." }, 400);
       if (route === "campaign-start") {
         const list = await mail(env, "sub_list", {});
-        const emails = list.subscribers.filter((s) => s.status === "subscribed" && EMAIL_RE.test(s.email)).map((s) => s.email);
-        if (!emails.length) return j({ error: "There is nobody subscribed yet." }, 400);
+        const want = cleanTags(body.audience);
+        const emails = list.subscribers.filter((s) => s.status === "subscribed" && EMAIL_RE.test(s.email) && (!want.length || (s.tags || ["general"]).some((t) => want.includes(t)))).map((s) => s.email);
+        if (!emails.length) return j({ error: want.length ? "Nobody is subscribed in that group yet." : "There is nobody subscribed yet." }, 400);
         if (emails.length > list.quota) return j({ error: `Your daily sending limit has ${list.quota} emails left and this list has ${emails.length} people. Try again tomorrow.` }, 400);
         const idb = new Uint8Array(6); crypto.getRandomValues(idb);
-        return j({ id: Array.from(idb).map((x) => x.toString(16).padStart(2, "0")).join(""), total: emails.length, quota: list.quota, emails, chunk: CHUNK });
+        return j({ id: Array.from(idb).map((x) => x.toString(16).padStart(2, "0")).join(""), audience: want, total: emails.length, quota: list.quota, emails, chunk: CHUNK });
       }
       if (route === "campaign-chunk") {
         const emails = (Array.isArray(body.emails) ? body.emails : []).map((x) => String(x).trim().toLowerCase()).filter((x) => EMAIL_RE.test(x)).slice(0, CHUNK);
@@ -164,7 +204,7 @@ export async function marketingRoute(route, method, body, env, me, deps, j) {
         return j({ ok: true, sent: r.sent, failed: r.failed, skipped: r.skipped });
       }
       if (route === "campaign-done") {
-        await mail(env, "camp_log", { id: one(body.id, 40), subject: f.subject, total: Number(body.total) || 0, sent: Number(body.sent) || 0, failed: Number(body.failed) || 0 });
+        await mail(env, "camp_log", { id: one(body.id, 40), subject: f.subject + (cleanTags(body.audience).length ? " [" + cleanTags(body.audience).join("+") + "]" : ""), total: Number(body.total) || 0, sent: Number(body.sent) || 0, failed: Number(body.failed) || 0 });
         return j({ ok: true });
       }
     }

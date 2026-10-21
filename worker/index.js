@@ -12,6 +12,7 @@ import { stdSize, CATEGORIES } from "./sizes.js";
 import { SEED } from "./seed-data.js";
 import { handleAdmin, readEvents, upcoming, serveImage, monthlyReport, eventReports } from "./admin.js";
 import { shippoWebhook } from "./shipping.js";
+import { addOptIn } from "./marketing.js";
 import { publicClasses, classCheckout, recordBooking } from "./classes.js";
 
 const API = "https://api.stripe.com/v1";
@@ -188,6 +189,7 @@ async function handleCheckout(request, env, c) {
   params.set("phone_number_collection[enabled]", "true");
   params.set("metadata[fulfillment]", allDigital ? "digital" : ev ? "event" : pickup ? "pickup" : "ship");
   if (ev) params.set("metadata[event]", `${ev.name} (${ev.date})`.slice(0, 200));
+  if (payload.optin === true) params.set("metadata[optin]", "1");
   if (allDigital) {
     params.set("billing_address_collection", "required");
     params.set("custom_text[submit][message]", "Digital item: nothing ships. We will email your download or access details to the address you enter here.");
@@ -522,6 +524,12 @@ async function handleStripeWebhook(request, env) {
   } catch (e) {
     console.log("webhook error", String(e));
     return new Response("error", { status: 500 }); // Stripe will retry
+  }
+  if (session.metadata && session.metadata.optin === "1") {
+    try {
+      const full = await stripeGet(env, `/checkout/sessions/${session.id}?expand[]=line_items.data.price.product`);
+      await addOptIn(env, full, true);
+    } catch (e) { console.log("opt-in failed", String(e)); }   // never make Stripe retry (and recount) over a mailing-list problem
   }
   return new Response("ok", { status: 200 });
 }
