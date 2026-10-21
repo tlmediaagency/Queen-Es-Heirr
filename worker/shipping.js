@@ -9,6 +9,8 @@ const EMAIL_RE = /^[^@\s]+@[^@\s]+\.[^@\s]+$/;
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 const ID_RE = /^cs_[A-Za-z0-9_]+$/;
 const DEFAULT_WEIGHTS = { "Jams": 14, "Pickled goods": 24, "Books": 12, "Curriculum & Resources": 4 };
+const FLAT = { USPS_FlatRateEnvelope: "Flat Rate Envelope", USPS_FlatRateLegalEnvelope: "Legal Flat Rate Envelope", USPS_FlatRatePaddedEnvelope: "Padded Flat Rate Envelope", USPS_SmallFlatRateBox: "Small Flat Rate Box", USPS_FlatRateMediumBox1: "Medium Flat Rate Box (top loading)", USPS_FlatRateMediumBox2: "Medium Flat Rate Box (side loading)", USPS_LargeFlatRateBox: "Large Flat Rate Box" };
+export const FLAT_BOXES = FLAT;
 const STATUSES = ["PRE_TRANSIT", "TRANSIT", "DELIVERED", "RETURNED", "FAILURE", "UNKNOWN"];
 const LOC_TYPES = ["Front Door", "Back Door", "Side Door", "Knock on Door or Ring Bell", "Mail Room", "Office", "Reception", "In/At Mailbox", "Other"];
 
@@ -23,6 +25,9 @@ export const DEFAULT_SHIP = {
     { id: "medium", name: "Medium box (3-4 jars)", length: 10, width: 8, height: 6 },
     { id: "large", name: "Large box (6+ jars)", length: 12, width: 10, height: 8 },
     { id: "book", name: "Book mailer", length: 10, width: 7, height: 1.5 },
+    { id: "flat-s", name: "USPS Small Flat Rate Box", template: "USPS_SmallFlatRateBox", length: 0, width: 0, height: 0 },
+    { id: "flat-m", name: "USPS Medium Flat Rate Box", template: "USPS_FlatRateMediumBox1", length: 0, width: 0, height: 0 },
+    { id: "flat-l", name: "USPS Large Flat Rate Box", template: "USPS_LargeFlatRateBox", length: 0, width: 0, height: 0 },
   ],
   packagingOz: 6,
   weights: DEFAULT_WEIGHTS,
@@ -33,6 +38,7 @@ export const DEFAULT_SHIP = {
 export async function readShipSettings(env) {
   let s = {};
   try { s = JSON.parse((await env.ADMIN_KV.get("shipping")) || "{}"); } catch { s = {}; }
+  if (Array.isArray(s.presets) && !s.presets.some((x) => x.template)) s.presets = s.presets.concat(DEFAULT_SHIP.presets.filter((x) => x.template));
   return { ...DEFAULT_SHIP, ...s, from: { ...DEFAULT_SHIP.from, ...(s.from || {}) }, weights: { ...DEFAULT_WEIGHTS, ...(s.weights || {}) } };
 }
 
@@ -43,6 +49,7 @@ export function cleanShipSettings(b) {
   if (from.state && !/^[A-Z]{2}$/.test(from.state)) throw new Error("Use the 2-letter state, like TX.");
   if (from.zip && !/^\d{5}(-\d{4})?$/.test(from.zip)) throw new Error("The ZIP code should look like 75001.");
   const presets = (Array.isArray(b.presets) ? b.presets : []).slice(0, 10).map((p, i) => {
+    if (p.template && FLAT[p.template]) return { id: /^[a-z0-9-]{2,20}$/.test(p.id || "") ? p.id : "flat" + (i + 1), name: one(p.name, 40) || FLAT[p.template], template: p.template, length: 0, width: 0, height: 0 };
     const L = num(p.length, 1, 60), W = num(p.width, 1, 60), H = num(p.height, 0.1, 60);
     const name = one(p.name, 40);
     if (!name || L == null || W == null || H == null) throw new Error("Each box needs a name and its length, width and height in inches.");
@@ -148,6 +155,17 @@ export function buildShipEmail(kind, o, rec, ctx) {
   return { subject: title + " - Queen E's Heirr", html, text };
 }
 
+export function buildQrEmail(o, rec) {
+  const title = "QR code to print at USPS";
+  const html = `<!doctype html><html><body style="margin:0;background:${CREAM};font:16px/1.6 ${SANS};color:${INK}"><div style="max-width:520px;margin:0 auto;padding:24px"><h2 style="font-family:${SERIF};color:${FOREST}">${title}</h2>` +
+    `<p>Order for <strong>${esc(o.name)}</strong> (${esc(rec.service || "USPS")}, tracking ${esc(rec.trackingNumber)}).</p>` +
+    `<p>Seal the package, then show this code on your phone at a participating Post Office. The clerk scans it and prints the label for you. Do not need a printer.</p>` +
+    `<p style="text-align:center"><img src="${esc(rec.qrUrl)}" alt="QR code" width="260" height="260" style="border:1px solid ${LINEN};padding:10px;background:#fff"></p>` +
+    `<p><a href="${esc(rec.qrUrl)}">Open the QR code</a></p></div></body></html>`;
+  return { subject: "QR code for " + (o.name || "order") + " - Queen E's Heirr", html, text: `${title}
+Order for ${o.name}. Tracking ${rec.trackingNumber}.
+Show this at a participating Post Office: ${rec.qrUrl}` };
+}
 async function sendMail(env, to, mail) {
   if (!env.MAIL_URL || !env.MAIL_SECRET) throw new Error("Email is not set up");
   if (!EMAIL_RE.test(to || "")) throw new Error("This order has no email address to send to.");
@@ -214,9 +232,19 @@ export async function shippingRoute(route, method, body, env, me, deps, j, origi
       if (!o.address || !o.address.street1) return j({ error: "This order has no shipping address." }, 400);
       if (o.address.country && o.address.country !== "US") return j({ error: "International orders need customs forms. Please make that label in Shippo directly." }, 400);
       const pc = body.parcel || {};
-      const L = num(pc.length, 0.5, 60), W = num(pc.width, 0.5, 60), H = num(pc.height, 0.1, 60), oz = num(pc.weight, 0.1, 1120);
-      if (L == null || W == null || H == null || oz == null) return j({ error: "Enter the box size (inches) and the weight (ounces)." }, 400);
-      const sh = await shippo(env, "POST", "/shipments/", { address_from: addrOf(st.from), address_to: toShippoTo(o), parcels: [{ length: String(L), width: String(W), height: String(H), distance_unit: "in", weight: String(oz), mass_unit: "oz" }], async: false });
+      const oz = num(pc.weight, 0.1, 1120);
+      let parcel;
+      if (pc.template) {
+        if (!FLAT[pc.template] || oz == null) return j({ error: "Pick a flat rate box and enter the weight (ounces)." }, 400);
+        parcel = { template: pc.template, weight: String(oz), mass_unit: "oz" };
+      } else {
+        const L = num(pc.length, 0.5, 60), W = num(pc.width, 0.5, 60), H = num(pc.height, 0.1, 60);
+        if (L == null || W == null || H == null || oz == null) return j({ error: "Enter the box size (inches) and the weight (ounces)." }, 400);
+        parcel = { length: String(L), width: String(W), height: String(H), distance_unit: "in", weight: String(oz), mass_unit: "oz" };
+      }
+      const req = { address_from: addrOf(st.from), address_to: toShippoTo(o), parcels: [parcel], async: false };
+      if (body.qr === true) req.extra = { qr_code_requested: true };
+      const sh = await shippo(env, "POST", "/shipments/", req);
       const rates = (sh.rates || []).filter((r) => String(r.provider).toUpperCase() === "USPS").map((r) => ({
         id: r.object_id, service: r.servicelevel && r.servicelevel.name, token: r.servicelevel && r.servicelevel.token, amount: Number(r.amount), currency: r.currency, days: r.estimated_days, terms: r.duration_terms || "" }))
         .sort((a, b) => a.amount - b.amount);
@@ -230,13 +258,14 @@ export async function shippingRoute(route, method, body, env, me, deps, j, origi
       if (existing && !existing.voided) return j({ error: "This order already has a label." }, 400);
       if (!/^[A-Za-z0-9]{10,60}$/.test(body.rateId || "")) return j({ error: "Pick a shipping price first." }, 400);
       const plannedDate = DATE_RE.test(body.shipDate || "") ? body.shipDate : "";
-      const tx = await shippo(env, "POST", "/transactions/", { rate: body.rateId, label_file_type: "PDF_4x6", async: false, metadata: ("Order " + o.id.slice(-10)).slice(0, 100) });
+      const wantQr = body.qr === true;
+      const tx = await shippo(env, "POST", "/transactions/", { rate: body.rateId, label_file_type: wantQr ? "PNG" : "PDF_4x6", async: false, metadata: ("Order " + o.id.slice(-10)).slice(0, 100) });
       if (tx.status !== "SUCCESS") {
         const m = (tx.messages || []).map((x) => x.text).filter(Boolean)[0];
         return j({ error: m ? "USPS said: " + m : "The label could not be made yet. Wait a moment and try again.", status: tx.status }, 400);
       }
       const rate = body.rateInfo || {};
-      const rec = { id: o.id, name: o.name, email: o.email, transactionId: tx.object_id, trackingNumber: tx.tracking_number, trackingUrl: tx.tracking_url_provider || "", labelUrl: tx.label_url, carrier: "USPS",
+      const rec = { id: o.id, name: o.name, email: o.email, transactionId: tx.object_id, trackingNumber: tx.tracking_number, trackingUrl: tx.tracking_url_provider || "", labelUrl: tx.label_url, qrUrl: wantQr ? (tx.qr_code_url || "") : "", carrier: "USPS",
         service: one(rate.service, 60), serviceToken: one(rate.token, 60), cost: Number(rate.amount) || null, boughtAt: Date.now(), plannedDate, status: "PRE_TRANSIT", statusDetail: "Label created", notified: {}, voided: false, mode: mode(env) };
       await writeRec(env, rec);
       if (rec.trackingNumber) await env.ADMIN_KV.put("shiptrack:" + rec.trackingNumber, o.id);
@@ -245,7 +274,12 @@ export async function shippingRoute(route, method, body, env, me, deps, j, origi
       if (body.notify !== false && st.emailShipped && o.email) {
         try { await sendMail(env, o.email, buildShipEmail("shipped", o, rec, { site: env.SITE_URL })); rec.notified.shipped = Date.now(); await writeRec(env, rec); emailed = true; } catch (e) { emailError = e.message; }
       }
-      return j({ ok: true, shipment: rec, emailed, emailError });
+      let qrEmailed = false, qrError = "";
+      if (wantQr) {
+        if (!rec.qrUrl) qrError = "USPS did not give a QR code for this service. Use the label instead.";
+        else { try { await sendMail(env, st.from.email || me.e, buildQrEmail(o, rec)); qrEmailed = true; } catch (e) { qrError = e.message; } }
+      }
+      return j({ ok: true, shipment: rec, emailed, emailError, qrEmailed, qrError });
     }
     if (route === "ship-notify" && method === "POST") {
       const rec = await readRec(env, body.id);

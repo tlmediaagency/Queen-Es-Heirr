@@ -281,16 +281,19 @@ function shipPrepare(o, box, done) {
     var pre = h("select", null, d.presets.map(function (p) { return h("option", { value: p.id, text: p.name + " (" + p.length + "x" + p.width + "x" + p.height + ")" }); }));
     var L = h("input", { inputmode: "decimal" }), W = h("input", { inputmode: "decimal" }), H = h("input", { inputmode: "decimal" }), oz = h("input", { inputmode: "decimal", value: String(d.weightOz) });
     function fill() { var p = d.presets.filter(function (x) { return x.id === pre.value; })[0]; if (p) { L.value = p.length; W.value = p.width; H.value = p.height; } }
-    pre.onchange = fill; fill();
-    var out = h("div"), msg = h("p", { "class": "msg", role: "status" });
+    function fill2() { var p = d.presets.filter(function (x) { return x.id === pre.value; })[0]; var flat = p && p.template; [L, W, H].forEach(function (i) { i.disabled = !!flat; }); fill(); }
+    pre.onchange = fill2; fill2();
+    var out = h("div"), msg = h("p", { "class": "msg", role: "status" }), qr = h("input", { type: "checkbox" });
     var sd = h("input", { type: "date" }), nt = h("input", { type: "checkbox", checked: true });
     box.appendChild(h("div", { "class": "card" }, [
       h("label", null, ["Box", pre]),
       h("div", { "class": "row" }, [h("label", null, ["Length in", L]), h("label", null, ["Width in", W]), h("label", null, ["Height in", H]), h("label", null, ["Weight oz", oz])]),
       h("p", { "class": "muted", text: "Weight is the items plus packing material. Change it if the scale says otherwise. 16 oz = 1 lb." }),
+      h("label", { "class": "chk" }, [qr, "No printer: email me a QR code to show at the Post Office"]),
       h("button", { "class": "btn small primary", text: "See USPS prices", onclick: function () {
         msg.className = "msg"; msg.textContent = "Checking USPS..."; clear(out);
-        api("POST", "ship-rates", { id: o.id, parcel: { length: L.value, width: W.value, height: H.value, weight: oz.value } }).then(function (r) {
+        var cur = d.presets.filter(function (x) { return x.id === pre.value; })[0] || {};
+        api("POST", "ship-rates", { id: o.id, qr: qr.checked, parcel: { template: cur.template || "", length: L.value, width: W.value, height: H.value, weight: oz.value } }).then(function (r) {
           msg.textContent = (r.warnings && r.warnings[0]) || "";
           out.appendChild(h("label", { "class": "chk" }, [nt, "Email the customer their tracking"]));
           out.appendChild(h("label", null, ["Planned ship date (optional)", sd]));
@@ -300,10 +303,10 @@ function shipPrepare(o, box, done) {
               h("button", { "class": "btn small", text: "Buy " + money(Math.round(rt.amount * 100)), onclick: function (e) {
                 if (!confirm("Buy this " + rt.service + " label for " + money(Math.round(rt.amount * 100)) + "?")) return;
                 e.currentTarget.disabled = true;
-                api("POST", "ship-buy", { id: o.id, rateId: rt.id, rateInfo: { service: rt.service, token: rt.token, amount: rt.amount }, shipDate: sd.value, notify: nt.checked }).then(function (b) {
+                api("POST", "ship-buy", { id: o.id, rateId: rt.id, rateInfo: { service: rt.service, token: rt.token, amount: rt.amount }, shipDate: sd.value, notify: nt.checked, qr: qr.checked }).then(function (b) {
                   clear(box);
-                  box.appendChild(h("div", { "class": "card" }, [h("p", { "class": "msg ok", text: "Label ready. Tracking " + b.shipment.trackingNumber + (b.emailed ? ". Customer emailed." : b.emailError ? ". Email not sent: " + b.emailError : ".") }),
-                    h("p", null, [h("a", { "class": "btn small primary", href: b.shipment.labelUrl, target: "_blank", rel: "noopener noreferrer", text: "Open / print label" }), " ", h("button", { "class": "btn small", text: "Done", onclick: done })])]));
+                  box.appendChild(h("div", { "class": "card" }, [h("p", { "class": "msg ok", text: "Label ready. Tracking " + b.shipment.trackingNumber + (b.emailed ? ". Customer emailed." : b.emailError ? ". Email not sent: " + b.emailError : ".") + (b.qrEmailed ? " QR code emailed to you." : b.qrError ? " " + b.qrError : "") }),
+                    h("p", null, [h("a", { "class": "btn small primary", href: b.shipment.labelUrl, target: "_blank", rel: "noopener noreferrer", text: "Open / print label" }), " ", b.shipment.qrUrl ? h("a", { "class": "btn small", href: b.shipment.qrUrl, target: "_blank", rel: "noopener noreferrer", text: "Open QR code" }) : null, " ", h("button", { "class": "btn small", text: "Done", onclick: done })])]));
                 }).catch(function (er) { e.target.disabled = false; msg.className = "msg err"; msg.textContent = er.message; });
               } })]));
           });
@@ -343,7 +346,7 @@ function viewShipped(n) {
         h("p", { "class": "muted", text: [r.service, r.trackingNumber, r.statusDetail, r.location].filter(Boolean).join(" · ") }),
         plan ? h("p", { text: plan }) : null,
         h("p", null, [
-          r.labelUrl ? h("a", { "class": "btn small", href: r.labelUrl, target: "_blank", rel: "noopener noreferrer", text: "Label" }) : null, " ",
+          r.labelUrl ? h("a", { "class": "btn small", href: r.labelUrl, target: "_blank", rel: "noopener noreferrer", text: "Label" }) : null, " ", r.qrUrl ? h("a", { "class": "btn small", href: r.qrUrl, target: "_blank", rel: "noopener noreferrer", text: "QR code" }) : null, " ",
           r.trackingUrl ? h("a", { "class": "btn small", href: r.trackingUrl, target: "_blank", rel: "noopener noreferrer", text: "Track" }) : null, " ",
           h("button", { "class": "btn small", text: r.notified && r.notified.shipped ? "Resend tracking email" : "Email tracking", onclick: function () { api("POST", "ship-notify", { id: r.id, kind: "shipped" }).then(function () { toast("Sent"); }).catch(function (er) { toast(er.message); }); } }), " ",
           r.status === "PRE_TRANSIT" ? h("button", { "class": "btn small danger", text: "Refund label", onclick: function () { if (!confirm("Cancel this label and ask for a refund? Only works if it has not been scanned.")) return; api("POST", "ship-void", { id: r.id }).then(function () { toast("Refund requested"); viewShipped(n); }).catch(function (er) { toast(er.message); }); } }) : null]),
@@ -362,8 +365,8 @@ function viewShipSetup(n) {
       h("label", null, ["Street", F.street1]), h("label", null, ["Apt / suite", F.street2]),
       h("div", { "class": "row" }, [h("label", null, ["City", F.city]), h("label", null, ["State (2 letters)", F.state]), h("label", null, ["ZIP", F.zip])]),
       h("div", { "class": "row" }, [h("label", null, ["Phone", F.phone]), h("label", null, ["Email", F.email])])]);
-    var presets = s.presets.map(function (p) { return { id: p.id, name: h("input", { value: p.name }), l: h("input", { value: p.length }), w: h("input", { value: p.width }), h: h("input", { value: p.height }) }; });
-    var boxCard = h("div", { "class": "card" }, [h("h3", { text: "Box sizes (inches)" })].concat(presets.map(function (p) { return h("div", { "class": "row" }, [h("label", null, ["Name", p.name]), h("label", null, ["L", p.l]), h("label", null, ["W", p.w]), h("label", null, ["H", p.h])]); })));
+    var presets = s.presets.map(function (p) { return { id: p.id, template: p.template || "", name: h("input", { value: p.name }), l: h("input", { value: p.length }), w: h("input", { value: p.width }), h: h("input", { value: p.height }) }; });
+    var boxCard = h("div", { "class": "card" }, [h("h3", { text: "Box sizes (inches)" })].concat(presets.map(function (p) { return p.template ? h("div", { "class": "row" }, [h("label", null, ["Name (USPS box)", p.name])]) : h("div", { "class": "row" }, [h("label", null, ["Name", p.name]), h("label", null, ["L", p.l]), h("label", null, ["W", p.w]), h("label", null, ["H", p.h])]); })));
     var WK = ["Jams", "Pickled goods", "Books", "Curriculum & Resources"], WI = {};
     WK.forEach(function (k) { WI[k] = h("input", { value: s.weights[k], inputmode: "decimal" }); });
     var pack = h("input", { value: s.packagingOz, inputmode: "decimal" });
@@ -378,7 +381,7 @@ function viewShipSetup(n) {
     n.appendChild(h("p", null, [h("button", { "class": "btn primary", text: "Save shipping setup", onclick: function () {
       var from = {}; Object.keys(F).forEach(function (k) { from[k] = F[k].value; });
       var weights = {}; WK.forEach(function (k) { weights[k] = WI[k].value; });
-      api("POST", "ship-settings", { settings: { from: from, presets: presets.map(function (p) { return { id: p.id, name: p.name.value, length: p.l.value, width: p.w.value, height: p.h.value }; }), weights: weights, packagingOz: pack.value, emailShipped: e1.checked, emailDelivered: e2.checked } })
+      api("POST", "ship-settings", { settings: { from: from, presets: presets.map(function (p) { return { id: p.id, template: p.template, name: p.name.value, length: p.l.value, width: p.w.value, height: p.h.value }; }), weights: weights, packagingOz: pack.value, emailShipped: e1.checked, emailDelivered: e2.checked } })
         .then(function () { toast("Saved"); msg.className = "msg ok"; msg.textContent = "Saved."; }).catch(function (er) { msg.className = "msg err"; msg.textContent = er.message; });
     } }), msg]));
     n.appendChild(h("div", { "class": "card" }, [h("h3", { text: "Delivery updates from Shippo" }),
