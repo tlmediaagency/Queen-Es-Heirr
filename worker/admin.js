@@ -3,6 +3,7 @@
 import UI from "./admin-ui.js";
 import { adminClasses, cleanClasses, adminBookings, readClasses, readBookings, publicClasses } from "./classes.js";
 import { marketingRoute } from "./marketing.js";
+import { shippingRoute } from "./shipping.js";
 import { stdSize, CATEGORIES } from "./sizes.js";
 import { ICON_192, ICON_512 } from "./admin-icons.js";
 
@@ -264,6 +265,8 @@ export async function handleAdmin(request, env, url, d) {
   try {
     const mk = await marketingRoute(route, request.method, body, env, me, { upcoming, readEvents, publicClasses }, j);
     if (mk) return mk;
+    const sh = await shippingRoute(route, request.method, body, env, me, { stripeGet }, j, url.origin);
+    if (sh) return sh;
     if (route === "products" && request.method === "GET") {
       const [pa, ph, pr] = await Promise.all([
         stripeGet(env, "/products?active=true&limit=100"),
@@ -273,7 +276,7 @@ export async function handleAdmin(request, env, url, d) {
       const by = {};
       for (const x of pr.data) (by[typeof x.product === "string" ? x.product : x.product.id] ||= []).push(x);
       const shape = (p, active) => ({
-        id: p.id, name: p.name, image: (p.images && p.images[0]) || "", active, category: CATEGORIES.includes(p.metadata && p.metadata.category) ? p.metadata.category : "Jams", description: p.description || "", digital: (p.metadata && p.metadata.digital) === "true", buyUrl: (p.metadata && p.metadata.buy_url) || "", sort: Number((p.metadata && p.metadata.sort) || 1000),
+        id: p.id, name: p.name, image: (p.images && p.images[0]) || "", active, category: CATEGORIES.includes(p.metadata && p.metadata.category) ? p.metadata.category : "Jams", description: p.description || "", digital: (p.metadata && p.metadata.digital) === "true", buyUrl: (p.metadata && p.metadata.buy_url) || "", weightOz: (p.metadata && p.metadata.weight_oz) || "", sort: Number((p.metadata && p.metadata.sort) || 1000),
         featured: (p.metadata && p.metadata.featured) === "true", restocked: Number((p.metadata && p.metadata.restocked) || 0),
         sizes: (by[p.id] || []).map((x) => ({
           priceId: x.id, label: stdSize((p.metadata && p.metadata.category) || "Jams", x.nickname), cents: x.unit_amount, stock: stockOf(x),
@@ -353,6 +356,11 @@ export async function handleAdmin(request, env, url, d) {
         const bu = body.buyUrl.trim();
         if (bu && !/^https:\/\/[^\s]{4,480}$/.test(bu)) return j({ error: "The buy link must start with https://" }, 400);
         q.set("metadata[buy_url]", bu);
+      }
+      if (body.weightOz !== undefined) {
+        const w = String(body.weightOz).trim();
+        if (w && !(Number(w) > 0 && Number(w) <= 1600)) return j({ error: "Weight is in ounces, like 14." }, 400);
+        q.set("metadata[weight_oz]", w);
       }
       if (typeof body.active === "boolean") q.set("active", String(body.active));
       if (typeof body.featured === "boolean") q.set("metadata[featured]", String(body.featured));

@@ -32,6 +32,14 @@ function doPost(e) {
       if (!want3 || data.secret !== want3) return out_({ ok: false });
       return out_(cashReceipt_(data.sale || {}));
     }
+    // Shipping updates and tracking emails from the admin app (HTML body supplied by the Worker).
+    if (data.action === "send_html") {
+      var want6 = PropertiesService.getScriptProperties().getProperty("MAIL_SECRET");
+      if (!want6 || data.secret !== want6) return out_({ ok: false });
+      if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(data.to || "")) return out_({ ok: false });
+      MailApp.sendEmail({ to: data.to, subject: String(data.subject || "").slice(0, 150), body: String(data.text || ""), htmlBody: String(data.html || ""), name: "Queen E's Heirr" });
+      return out_({ ok: true });
+    }
     // Mailing list management and campaign sending from the admin app (called by the Cloudflare Worker, never by browsers).
     if (data.action === "mkt") {
       const want5 = PropertiesService.getScriptProperties().getProperty("MAIL_SECRET");

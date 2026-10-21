@@ -11,6 +11,7 @@ import { CATALOG } from "./catalog.js";
 import { stdSize, CATEGORIES } from "./sizes.js";
 import { SEED } from "./seed-data.js";
 import { handleAdmin, readEvents, upcoming, serveImage, monthlyReport, eventReports } from "./admin.js";
+import { shippoWebhook } from "./shipping.js";
 import { publicClasses, classCheckout, recordBooking } from "./classes.js";
 
 const API = "https://api.stripe.com/v1";
@@ -591,6 +592,7 @@ export default {
       if (!c.ok) return json({ error: "Origin not allowed" }, 403, c.headers);
       return handleWholesaleRequest(request, env, c);
     }
+    if (url.pathname === "/shippo-webhook" && request.method === "POST") return shippoWebhook(request, env, ctx, { stripeGet });
     if (url.pathname === "/stripe-webhook" && request.method === "POST") return handleStripeWebhook(request, env);
     if (url.pathname === "/admin/set-stock" && request.method === "POST") return handleSetStock(request, env, c, url);
     if (url.pathname === "/admin/seed" && request.method === "POST") return handleSeed(request, env, c);

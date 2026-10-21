@@ -206,6 +206,7 @@ var PAYLABEL = { cash: "Cash", cashapp: "Cash App", venmo: "Venmo", tap: "Tap to
 var GROUPS = [
   ["Orders & Reports", [["orders", "Orders"], ["requests", "Requests"], ["ledger", "Ledger"], ["reports", "Reports"]]],
   ["Products", [["products", "Products"]]],
+  ["Shipping", [["toship", "To Ship"], ["shipped", "Shipped"], ["shipsetup", "Shipping Setup"]]],
   ["Events", [["events", "Events"]]],
   ["Classes & Bookings", [["classes", "Classes"], ["bookings", "Bookings"]]],
   ["Marketing", [["subscribers", "Mailing List"], ["campaigns", "Email Campaigns"]]]
@@ -244,8 +245,145 @@ function start() {
     }));
   }
   shell(subnav ? [nav, subnav, body] : [nav, body]);
-  ({ orders: viewOrders, products: viewProducts, requests: viewRequests, classes: viewClasses, bookings: viewBookings, events: viewEvents, ledger: viewLedger, reports: viewReports, sale: viewSale, subscribers: viewSubscribers, campaigns: viewCampaigns })[current](body);
+  ({ orders: viewOrders, products: viewProducts, requests: viewRequests, classes: viewClasses, bookings: viewBookings, events: viewEvents, ledger: viewLedger, reports: viewReports, sale: viewSale, subscribers: viewSubscribers, campaigns: viewCampaigns, toship: viewToShip, shipped: viewShipped, shipsetup: viewShipSetup })[current](body);
   keepAwake(current === "sale");
+}
+
+/* SHIPPING */
+function shipBadge(st) { var m = { PRE_TRANSIT: "Label made", TRANSIT: "On the way", DELIVERED: "Delivered", RETURNED: "Returned", FAILURE: "Problem", UNKNOWN: "Label made" }; return m[st] || "Label made"; }
+function shipDay(d) { return d ? new Date(d + "T12:00:00").toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric" }) : ""; }
+function modeNote(mode) { return mode === "test" ? h("p", { "class": "msg err", text: "Test mode: labels are practice only and cost nothing." }) : mode === "none" ? h("p", { "class": "msg err", text: "Shippo is not connected yet. Add your Shippo key in Cloudflare (a secret named SHIPPO_API_KEY)." }) : null; }
+function viewToShip(n) {
+  loading(n);
+  api("GET", "ship-queue").then(function (d) {
+    clear(n);
+    var mn = modeNote(d.mode); if (mn) n.appendChild(mn);
+    if (!d.ready) n.appendChild(h("p", { "class": "msg err", text: "Fill in Shipping Setup (your ship-from address and phone) before making labels." }));
+    n.appendChild(h("p", { "class": "muted", text: "Paid orders that still need to go out. Open one to pick a box, see USPS prices, and print the label." }));
+    if (!d.orders.length) n.appendChild(h("p", { "class": "muted", text: "Nothing waiting to ship. Nice work!" }));
+    d.orders.forEach(function (o) {
+      var box = h("div");
+      var card = h("div", { "class": "card" }, [
+        h("div", { style: "display:flex;justify-content:space-between;gap:8px;flex-wrap:wrap" }, [h("strong", { text: o.name || o.email }), h("span", { "class": "muted", text: new Date(o.created).toLocaleDateString() })]),
+        h("ul", null, o.items.map(function (i) { return h("li", { text: i.qty + " x " + i.name }); })),
+        h("p", { "class": "muted", text: o.hasAddress ? o.address : "No shipping address on this order." }),
+        h("p", null, [h("button", { "class": "btn small primary", text: "Make label", onclick: function () { if (!box.firstChild) shipPrepare(o, box, function () { viewToShip(n); }); } })]), box]);
+      n.appendChild(card);
+    });
+    if (d.orders.length) n.appendChild(h("p", { "class": "muted", text: "Pickup and drop-off days are set after the label is made, on the Shipped tab." }));
+  }).catch(function (er) { failed(n, er); });
+}
+function shipPrepare(o, box, done) {
+  box.appendChild(h("p", { "class": "muted", text: "Getting ready..." }));
+  api("POST", "ship-prepare", { id: o.id }).then(function (d) {
+    clear(box);
+    if (!d.order.address) { box.appendChild(h("p", { "class": "msg err", text: "This order has no shipping address." })); return; }
+    var pre = h("select", null, d.presets.map(function (p) { return h("option", { value: p.id, text: p.name + " (" + p.length + "x" + p.width + "x" + p.height + ")" }); }));
+    var L = h("input", { inputmode: "decimal" }), W = h("input", { inputmode: "decimal" }), H = h("input", { inputmode: "decimal" }), oz = h("input", { inputmode: "decimal", value: String(d.weightOz) });
+    function fill() { var p = d.presets.filter(function (x) { return x.id === pre.value; })[0]; if (p) { L.value = p.length; W.value = p.width; H.value = p.height; } }
+    pre.onchange = fill; fill();
+    var out = h("div"), msg = h("p", { "class": "msg", role: "status" });
+    var sd = h("input", { type: "date" }), nt = h("input", { type: "checkbox", checked: true });
+    box.appendChild(h("div", { "class": "card" }, [
+      h("label", null, ["Box", pre]),
+      h("div", { "class": "row" }, [h("label", null, ["Length in", L]), h("label", null, ["Width in", W]), h("label", null, ["Height in", H]), h("label", null, ["Weight oz", oz])]),
+      h("p", { "class": "muted", text: "Weight is the items plus packing material. Change it if the scale says otherwise. 16 oz = 1 lb." }),
+      h("button", { "class": "btn small primary", text: "See USPS prices", onclick: function () {
+        msg.className = "msg"; msg.textContent = "Checking USPS..."; clear(out);
+        api("POST", "ship-rates", { id: o.id, parcel: { length: L.value, width: W.value, height: H.value, weight: oz.value } }).then(function (r) {
+          msg.textContent = (r.warnings && r.warnings[0]) || "";
+          out.appendChild(h("label", { "class": "chk" }, [nt, "Email the customer their tracking"]));
+          out.appendChild(h("label", null, ["Planned ship date (optional)", sd]));
+          r.rates.forEach(function (rt) {
+            out.appendChild(h("div", { style: "display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap;border-top:1px solid var(--linen);padding:8px 0" }, [
+              h("span", null, [h("strong", { text: rt.service }), h("br"), h("span", { "class": "muted", text: (rt.days ? rt.days + " day" + (rt.days > 1 ? "s" : "") : rt.terms) || "" })]),
+              h("button", { "class": "btn small", text: "Buy " + money(Math.round(rt.amount * 100)), onclick: function (e) {
+                if (!confirm("Buy this " + rt.service + " label for " + money(Math.round(rt.amount * 100)) + "?")) return;
+                e.currentTarget.disabled = true;
+                api("POST", "ship-buy", { id: o.id, rateId: rt.id, rateInfo: { service: rt.service, token: rt.token, amount: rt.amount }, shipDate: sd.value, notify: nt.checked }).then(function (b) {
+                  clear(box);
+                  box.appendChild(h("div", { "class": "card" }, [h("p", { "class": "msg ok", text: "Label ready. Tracking " + b.shipment.trackingNumber + (b.emailed ? ". Customer emailed." : b.emailError ? ". Email not sent: " + b.emailError : ".") }),
+                    h("p", null, [h("a", { "class": "btn small primary", href: b.shipment.labelUrl, target: "_blank", rel: "noopener noreferrer", text: "Open / print label" }), " ", h("button", { "class": "btn small", text: "Done", onclick: done })])]));
+                }).catch(function (er) { e.target.disabled = false; msg.className = "msg err"; msg.textContent = er.message; });
+              } })]));
+          });
+        }).catch(function (er) { msg.className = "msg err"; msg.textContent = er.message; });
+      } }), msg, out]));
+  }).catch(function (er) { clear(box); box.appendChild(h("p", { "class": "msg err", text: er.message })); });
+}
+function viewShipped(n) {
+  loading(n);
+  api("GET", "ship-shipped").then(function (d) {
+    clear(n);
+    var sel = {};
+    var list = d.shipments || [];
+    if (!list.length) { n.appendChild(h("p", { "class": "muted", text: "No labels yet." })); return; }
+    var date = h("input", { type: "date" }), start = h("input", { type: "time", value: "09:00" }), end = h("input", { type: "time", value: "17:00" });
+    var loc = h("select", null, ["Front Door", "Back Door", "Side Door", "Knock on Door or Ring Bell", "Mail Room", "Office", "Reception", "In/At Mailbox", "Other"].map(function (x) { return h("option", { value: x, text: x }); }));
+    var ins = h("input", { placeholder: "Where to leave packages (optional)" }), pm = h("p", { "class": "msg", role: "status" }), notifyPlan = h("input", { type: "checkbox" });
+    n.appendChild(h("div", { "class": "card" }, [h("h3", { text: "Pickup or drop-off day" }),
+      h("p", { "class": "muted", text: "Tick the packages below, pick a day. USPS will pick up Priority Mail packages from your address (free, one request per day). Ground Advantage packages must be dropped off, so just save the day." }),
+      h("label", null, ["Day", date]), h("div", { "class": "row" }, [h("label", null, ["From", start]), h("label", null, ["To", end])]),
+      h("label", null, ["Where", loc]), h("label", null, ["Note for the carrier", ins]),
+      h("label", { "class": "chk" }, [notifyPlan, "Email customers their planned ship day"]), h("p"),
+      h("button", { "class": "btn small primary", text: "Schedule USPS pickup", onclick: function () {
+        var ids = Object.keys(sel).filter(function (k) { return sel[k]; });
+        api("POST", "ship-pickup", { ids: ids, date: date.value, start: start.value, end: end.value, locationType: loc.value, instructions: ins.value }).then(function (r) { toast("Pickup confirmed " + (r.confirmation || "")); viewShipped(n); }).catch(function (er) { pm.className = "msg err"; pm.textContent = er.message; });
+      } }), " ",
+      h("button", { "class": "btn small", text: "Save as my drop-off day", onclick: function () {
+        var ids = Object.keys(sel).filter(function (k) { return sel[k]; });
+        api("POST", "ship-dropoff", { ids: ids, date: date.value, notify: notifyPlan.checked }).then(function (r) { toast("Saved for " + r.updated + (r.emailed ? ", emailed " + r.emailed : "")); viewShipped(n); }).catch(function (er) { pm.className = "msg err"; pm.textContent = er.message; });
+      } }), pm]));
+    list.forEach(function (r) {
+      var cb = h("input", { type: "checkbox", onchange: function () { sel[r.id] = cb.checked; } });
+      var note = h("input", { placeholder: "Send a quick message about this order" });
+      var plan = r.pickup ? "USPS pickup " + shipDay(r.pickup.date) + (r.pickup.confirmation ? " (#" + r.pickup.confirmation + ")" : "") : r.plannedDate ? (r.plan === "dropoff" ? "Drop-off " : "Ship ") + shipDay(r.plannedDate) : "";
+      n.appendChild(h("div", { "class": "card" }, [
+        h("div", { style: "display:flex;justify-content:space-between;gap:8px;flex-wrap:wrap" }, [h("label", { "class": "chk" }, [cb, h("strong", { text: r.name || r.email })]), h("span", { "class": "pill", text: shipBadge(r.status) })]),
+        h("p", { "class": "muted", text: [r.service, r.trackingNumber, r.statusDetail, r.location].filter(Boolean).join(" · ") }),
+        plan ? h("p", { text: plan }) : null,
+        h("p", null, [
+          r.labelUrl ? h("a", { "class": "btn small", href: r.labelUrl, target: "_blank", rel: "noopener noreferrer", text: "Label" }) : null, " ",
+          r.trackingUrl ? h("a", { "class": "btn small", href: r.trackingUrl, target: "_blank", rel: "noopener noreferrer", text: "Track" }) : null, " ",
+          h("button", { "class": "btn small", text: r.notified && r.notified.shipped ? "Resend tracking email" : "Email tracking", onclick: function () { api("POST", "ship-notify", { id: r.id, kind: "shipped" }).then(function () { toast("Sent"); }).catch(function (er) { toast(er.message); }); } }), " ",
+          r.status === "PRE_TRANSIT" ? h("button", { "class": "btn small danger", text: "Refund label", onclick: function () { if (!confirm("Cancel this label and ask for a refund? Only works if it has not been scanned.")) return; api("POST", "ship-void", { id: r.id }).then(function () { toast("Refund requested"); viewShipped(n); }).catch(function (er) { toast(er.message); }); } }) : null]),
+        h("div", { "class": "row" }, [h("label", null, ["Message to customer", note]), h("button", { "class": "btn small", text: "Send", onclick: function () { api("POST", "ship-notify", { id: r.id, kind: "note", note: note.value }).then(function () { note.value = ""; toast("Sent"); }).catch(function (er) { toast(er.message); }); } })])]));
+    });
+  }).catch(function (er) { failed(n, er); });
+}
+function viewShipSetup(n) {
+  loading(n);
+  api("GET", "ship-settings").then(function (d) {
+    clear(n);
+    var s = d.settings, f = s.from, mn = modeNote(d.mode); if (mn) n.appendChild(mn);
+    var F = {}; ["name", "company", "street1", "street2", "city", "state", "zip", "phone", "email"].forEach(function (k) { F[k] = h("input", { value: f[k] || "" }); });
+    var fromCard = h("div", { "class": "card" }, [h("h3", { text: "Ship-from address" }),
+      h("div", { "class": "row" }, [h("label", null, ["Your name", F.name]), h("label", null, ["Business", F.company])]),
+      h("label", null, ["Street", F.street1]), h("label", null, ["Apt / suite", F.street2]),
+      h("div", { "class": "row" }, [h("label", null, ["City", F.city]), h("label", null, ["State (2 letters)", F.state]), h("label", null, ["ZIP", F.zip])]),
+      h("div", { "class": "row" }, [h("label", null, ["Phone", F.phone]), h("label", null, ["Email", F.email])])]);
+    var presets = s.presets.map(function (p) { return { id: p.id, name: h("input", { value: p.name }), l: h("input", { value: p.length }), w: h("input", { value: p.width }), h: h("input", { value: p.height }) }; });
+    var boxCard = h("div", { "class": "card" }, [h("h3", { text: "Box sizes (inches)" })].concat(presets.map(function (p) { return h("div", { "class": "row" }, [h("label", null, ["Name", p.name]), h("label", null, ["L", p.l]), h("label", null, ["W", p.w]), h("label", null, ["H", p.h])]); })));
+    var WK = ["Jams", "Pickled goods", "Books", "Curriculum & Resources"], WI = {};
+    WK.forEach(function (k) { WI[k] = h("input", { value: s.weights[k], inputmode: "decimal" }); });
+    var pack = h("input", { value: s.packagingOz, inputmode: "decimal" });
+    var wCard = h("div", { "class": "card" }, [h("h3", { text: "Typical weights (ounces)" }), h("p", { "class": "muted", text: "Used to guess the package weight. You can set an exact weight on any product, and always change it before buying a label." })]
+      .concat(WK.map(function (k) { return h("label", null, [k + " (each)", WI[k]]); }), [h("label", null, ["Box + padding", pack])]));
+    var e1 = h("input", { type: "checkbox", checked: s.emailShipped }), e2 = h("input", { type: "checkbox", checked: s.emailDelivered });
+    var eCard = h("div", { "class": "card" }, [h("h3", { text: "Customer emails" }),
+      h("label", { "class": "chk" }, [e1, "Email tracking when a label is made"]), h("label", { "class": "chk" }, [e2, "Email when USPS shows it was delivered"])]);
+    var msg = h("p", { "class": "msg", role: "status" });
+    var wh = h("input", { value: d.webhookUrl, readonly: "readonly", onclick: function (e) { e.target.select(); } });
+    n.appendChild(fromCard); n.appendChild(boxCard); n.appendChild(wCard); n.appendChild(eCard);
+    n.appendChild(h("p", null, [h("button", { "class": "btn primary", text: "Save shipping setup", onclick: function () {
+      var from = {}; Object.keys(F).forEach(function (k) { from[k] = F[k].value; });
+      var weights = {}; WK.forEach(function (k) { weights[k] = WI[k].value; });
+      api("POST", "ship-settings", { settings: { from: from, presets: presets.map(function (p) { return { id: p.id, name: p.name.value, length: p.l.value, width: p.w.value, height: p.h.value }; }), weights: weights, packagingOz: pack.value, emailShipped: e1.checked, emailDelivered: e2.checked } })
+        .then(function () { toast("Saved"); msg.className = "msg ok"; msg.textContent = "Saved."; }).catch(function (er) { msg.className = "msg err"; msg.textContent = er.message; });
+    } }), msg]));
+    n.appendChild(h("div", { "class": "card" }, [h("h3", { text: "Delivery updates from Shippo" }),
+      h("p", { "class": "muted", text: "In Shippo, go to Settings > API > Webhooks, add a webhook for Track Updated, and paste this address. Then orders mark themselves delivered." }), wh]));
+  }).catch(function (er) { failed(n, er); });
 }
 /* MARKETING: MAILING LIST */
 var SUB_PAGE = 100;
@@ -654,11 +792,12 @@ function productCard(p, reload, move, idx, total) {
   var name = h("input", { value: p.name }), desc = h("textarea", { rows: "3", text: p.description }), pick = photoPicker(p.image);
   var cat = h("select", null, CATEGORIES.map(function (c) { return h("option", { value: c, selected: c === p.category, text: c }); }));
   var dig = h("input", { type: "checkbox", checked: !!p.digital });
+  var wt = h("input", { value: p.weightOz || "", inputmode: "decimal", placeholder: "Leave blank to use the category default" });
   var buy = h("input", { value: p.buyUrl || "", placeholder: "https://www.amazon.com/dp/...", inputmode: "url", autocapitalize: "off" });
   var details = h("div", { "class": "hide" }, [
-    h("label", null, ["Name", name]), h("label", null, ["Category", cat]), h("label", { "class": "chk" }, [dig, "Digital item (nothing ships, no shipping fee)"]), h("label", null, ["Description", desc]), h("label", null, ["Outside buy link (optional)", buy]), h("p", { "class": "muted", text: "Add an Amazon link and the website shows a Buy on Amazon button instead of Add to Cart. The item stays here, so you can still sell it at events." }), pick.node,
+    h("label", null, ["Name", name]), h("label", null, ["Category", cat]), h("label", { "class": "chk" }, [dig, "Digital item (nothing ships, no shipping fee)"]), h("label", null, ["Description", desc]), h("label", null, ["Weight in ounces, packed (for shipping labels)", wt]), h("label", null, ["Outside buy link (optional)", buy]), h("p", { "class": "muted", text: "Add an Amazon link and the website shows a Buy on Amazon button instead of Add to Cart. The item stays here, so you can still sell it at events." }), pick.node,
     h("p"), h("button", { "class": "btn small primary", text: "Save details", onclick: function () {
-      var body = { name: name.value, description: desc.value, category: cat.value, digital: dig.checked, buyUrl: buy.value }; if (pick.holder.url && pick.holder.url !== p.image) body.image = pick.holder.url;
+      var body = { name: name.value, description: desc.value, category: cat.value, digital: dig.checked, buyUrl: buy.value, weightOz: wt.value }; if (pick.holder.url && pick.holder.url !== p.image) body.image = pick.holder.url;
       api("POST", "product/" + p.id, body).then(function () { toast("Saved"); reload(); }).catch(function (er) { toast(er.message); });
     } })]);
   card.appendChild(details);
