@@ -32,6 +32,12 @@ function doPost(e) {
       if (!want3 || data.secret !== want3) return out_({ ok: false });
       return out_(cashReceipt_(data.sale || {}));
     }
+    // Mailing list management and campaign sending from the admin app (called by the Cloudflare Worker, never by browsers).
+    if (data.action === "mkt") {
+      const want5 = PropertiesService.getScriptProperties().getProperty("MAIL_SECRET");
+      if (!want5 || data.secret !== want5) return out_({ ok: false });
+      return out_(mkt_(data));
+    }
     // Monthly or on-demand sales report with CSV attachments (called by the Cloudflare Worker).
     if (data.action === "report_email") {
       const want4 = PropertiesService.getScriptProperties().getProperty("MAIL_SECRET");
@@ -305,6 +311,119 @@ function sendNewsletter() {
   Logger.log("Sent to " + rows.length + " subscribers.");
 }
 
+
+// ---- Mailing list + campaigns (admin app) ------------------------------------------------------
+const EMAIL_RE_ = /^[^@\s]+@[^@\s]+\.[^@\s]+$/;
+
+function iso_(v) { try { const d = new Date(v); return isNaN(d) ? "" : d.toISOString(); } catch (e) { return ""; } }
+
+function campaignsSheet_() {
+  const ss = spreadsheet_();
+  let sh = ss.getSheetByName("Campaigns");
+  if (!sh) { sh = ss.insertSheet("Campaigns"); sh.appendRow(["Sent on", "Subject", "Recipients", "Sent", "Failed", "Campaign id"]); }
+  return sh;
+}
+
+function mkt_(d) {
+  try {
+    const clean = function (v, n) { return String(v == null ? "" : v).replace(/[\r\n]+/g, " ").trim().slice(0, n); };
+    const safe = function (v) { v = clean(v, 200); return /^[=+\-@]/.test(v) ? "'" + v : v; };
+    const email = String(d.email || "").trim().toLowerCase().slice(0, 200);
+    switch (d.op) {
+      case "sub_list": {
+        const vals = subscribersSheet_().getDataRange().getValues().slice(1);
+        const subs = vals.filter(function (r) { return r[2]; }).slice(0, 5000).map(function (r) {
+          return { name: String(r[1] || ""), email: String(r[2]), status: String(r[3] || "subscribed"), on: iso_(r[0]), updated: iso_(r[4]) };
+        });
+        return { ok: true, subscribers: subs, quota: MailApp.getRemainingDailyQuota() };
+      }
+      case "sub_add": {
+        if (!EMAIL_RE_.test(email)) return { ok: false, error: "That email address does not look right." };
+        const lock = LockService.getScriptLock(); lock.waitLock(10000);
+        try {
+          const sh = subscribersSheet_(), row = findSubscriberRow_(sh, email);
+          if (row) {
+            const status = String(sh.getRange(row, 4).getValue());
+            if (status === "unsubscribed" && d.resubscribe !== true) return { ok: true, existing: true, status: status };
+            if (status !== "subscribed") sh.getRange(row, 4, 1, 2).setValues([["subscribed", new Date()]]);
+            if (d.name && !String(sh.getRange(row, 2).getValue())) sh.getRange(row, 2).setValue(safe(d.name));
+            return { ok: true, existing: true, status: "subscribed" };
+          }
+          sh.appendRow([new Date(), safe(d.name), email, "subscribed", new Date()]);
+          return { ok: true, added: true };
+        } finally { lock.releaseLock(); }
+      }
+      case "sub_set": case "sub_name": case "sub_delete": {
+        if (!EMAIL_RE_.test(email)) return { ok: false, error: "Missing email." };
+        const lock = LockService.getScriptLock(); lock.waitLock(10000);
+        try {
+          const sh = subscribersSheet_(), row = findSubscriberRow_(sh, email);
+          if (!row) return { ok: false, error: "That person is not on the list." };
+          if (d.op === "sub_delete") sh.deleteRow(row);
+          else if (d.op === "sub_name") sh.getRange(row, 2).setValue(safe(d.name));
+          else {
+            if (d.status !== "subscribed" && d.status !== "unsubscribed") return { ok: false, error: "Bad status." };
+            sh.getRange(row, 4, 1, 2).setValues([[d.status, new Date()]]);
+          }
+          return { ok: true };
+        } finally { lock.releaseLock(); }
+      }
+      case "sub_import": {
+        const rows = (Array.isArray(d.rows) ? d.rows : []).slice(0, 500);
+        const lock = LockService.getScriptLock(); lock.waitLock(20000);
+        try {
+          const sh = subscribersSheet_();
+          const have = {};
+          sh.getDataRange().getValues().slice(1).forEach(function (r) { have[String(r[2]).toLowerCase()] = String(r[3]); });
+          const out = { added: 0, already: 0, unsubscribed: 0, invalid: 0 }, add = [];
+          rows.forEach(function (r) {
+            const em = String((r && r.email) || "").trim().toLowerCase().slice(0, 200);
+            if (!EMAIL_RE_.test(em)) { out.invalid++; return; }
+            if (have[em] === "unsubscribed") { out.unsubscribed++; return; }
+            if (have[em]) { out.already++; return; }
+            have[em] = "subscribed"; out.added++;
+            add.push([new Date(), safe(r.name), em, "subscribed", new Date()]);
+          });
+          if (add.length) sh.getRange(sh.getLastRow() + 1, 1, add.length, 5).setValues(add);
+          out.ok = true; return out;
+        } finally { lock.releaseLock(); }
+      }
+      case "camp_send": {
+        const subject = clean(d.subject, 150), html = String(d.html || ""), text = String(d.text || "");
+        const list = (Array.isArray(d.emails) ? d.emails : []).slice(0, 40).map(function (x) { return String(x).trim().toLowerCase(); }).filter(function (x) { return EMAIL_RE_.test(x); });
+        if (!subject || !html || !text) return { ok: false, error: "Missing subject or message." };
+        if (!list.length) return { ok: true, sent: 0, failed: 0, skipped: 0 };
+        if (list.length > MailApp.getRemainingDailyQuota()) return { ok: false, error: "Not enough daily email quota left (" + MailApp.getRemainingDailyQuota() + "). Try again tomorrow." };
+        const info = {};
+        subscribersSheet_().getDataRange().getValues().slice(1).forEach(function (r) { info[String(r[2]).toLowerCase()] = { name: String(r[1] || ""), status: String(r[3]) }; });
+        let sent = 0, failed = 0, skipped = 0;
+        list.forEach(function (em) {
+          const rec = info[em];
+          if (!d.test && (!rec || rec.status !== "subscribed")) { skipped++; return; }
+          const first = rec ? String(rec.name || "").split(" ")[0].replace(/[<>&"]/g, "") : "";
+          const unsub = d.test ? "#" : unsubscribeUrl_(em);
+          const hi = first ? "Hi " + first + "," : "Hello,";
+          const fill = function (s) { return s.split("{{UNSUB}}").join(unsub).split("{{HI}}").join(hi); };
+          try {
+            MailApp.sendEmail({ to: em, replyTo: TO, name: "Queen E's Heirr", subject: (d.test ? "[TEST] " : "") + subject, body: fill(text), htmlBody: fill(html) });
+            sent++;
+          } catch (err) { failed++; console.log("campaign send failed: " + err); }
+        });
+        return { ok: true, sent: sent, failed: failed, skipped: skipped };
+      }
+      case "camp_log": {
+        campaignsSheet_().appendRow([new Date(), safe(d.subject), Number(d.total) || 0, Number(d.sent) || 0, Number(d.failed) || 0, clean(d.id, 40)]);
+        return { ok: true };
+      }
+      case "camp_list": {
+        const sh = campaignsSheet_();
+        const vals = sh.getDataRange().getValues().slice(1).slice(-30).reverse();
+        return { ok: true, campaigns: vals.map(function (r) { return { on: iso_(r[0]), subject: String(r[1]), total: Number(r[2]) || 0, sent: Number(r[3]) || 0, failed: Number(r[4]) || 0 }; }) };
+      }
+      default: return { ok: false, error: "Unknown request." };
+    }
+  } catch (err) { console.log("mkt failed: " + err); return { ok: false, error: "The mailing list service had a problem. Please try again." }; }
+}
 
 // ---- Class bookings ----------------------------------------------------------------------------
 function esc_(v) { return String(v == null ? "" : v).replace(/[&<>"]/g, function (c) { return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]; }); }

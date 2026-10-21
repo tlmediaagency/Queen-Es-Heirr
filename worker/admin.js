@@ -1,7 +1,8 @@
 // Client admin API + app. Same-origin only (served by this Worker). Login: emailed 6-digit code.
 // Needs: KV binding ADMIN_KV; secrets SESSION_SECRET, MAIL_SECRET; var ADMIN_EMAILS; var MAIL_URL (Apps Script web app URL).
 import UI from "./admin-ui.js";
-import { adminClasses, cleanClasses, adminBookings, readClasses, readBookings } from "./classes.js";
+import { adminClasses, cleanClasses, adminBookings, readClasses, readBookings, publicClasses } from "./classes.js";
+import { marketingRoute } from "./marketing.js";
 import { stdSize, CATEGORIES } from "./sizes.js";
 import { ICON_192, ICON_512 } from "./admin-icons.js";
 
@@ -261,6 +262,8 @@ export async function handleAdmin(request, env, url, d) {
   const body = request.method === "POST" || request.method === "PUT" ? await request.json().catch(() => ({})) : {};
 
   try {
+    const mk = await marketingRoute(route, request.method, body, env, me, { upcoming, readEvents, publicClasses }, j);
+    if (mk) return mk;
     if (route === "products" && request.method === "GET") {
       const [pa, ph, pr] = await Promise.all([
         stripeGet(env, "/products?active=true&limit=100"),

@@ -203,7 +203,14 @@ function renderLogin(step) {
 }
 
 var PAYLABEL = { cash: "Cash", cashapp: "Cash App", venmo: "Venmo", tap: "Tap to Pay" };
-var tabs = [["orders", "Orders"], ["requests", "Requests"], ["bookings", "Bookings"], ["products", "Products"], ["classes", "Classes"], ["events", "Events"], ["ledger", "Ledger"], ["reports", "Reports"], ["sale", "Event Sale"]];
+var GROUPS = [
+  ["Orders & Reports", [["orders", "Orders"], ["requests", "Requests"], ["ledger", "Ledger"], ["reports", "Reports"]]],
+  ["Products", [["products", "Products"]]],
+  ["Events", [["events", "Events"]]],
+  ["Classes & Bookings", [["classes", "Classes"], ["bookings", "Bookings"]]],
+  ["Marketing", [["subscribers", "Mailing List"], ["campaigns", "Email Campaigns"]]]
+];
+function groupOf(key) { return GROUPS.filter(function (g) { return g[1].some(function (v) { return v[0] === key; }); })[0] || null; }
 var current = "orders";
 var wakeLock = null, renewTimer = null;
 function keepAwake(on) {   // keeps the screen from dimming or locking while the sale screen is open
@@ -224,22 +231,240 @@ document.addEventListener("visibilitychange", function () {
 function start() {
   if (!renewTimer) { renewSession(); renewTimer = setInterval(renewSession, 20 * 60 * 1000); }
   var body = h("div");
-    var kids = [];
-  tabs.forEach(function (t, i) {
-    kids.push(h("button", { "class": "tab" + (t[0] === "sale" ? " go" : ""), role: "tab", "aria-selected": String(t[0] === current), onclick: function () { current = t[0]; start(); }, text: t[1] }));
-    var nx = tabs[i + 1];
-    if (nx && (nx[0] === "products" || nx[0] === "ledger" || nx[0] === "sale")) kids.push(h("span", { "class": "sep", "aria-hidden": "true" }));
+  var kids = [], grp = groupOf(current);
+  GROUPS.forEach(function (g) {
+    kids.push(h("button", { "class": "tab", role: "tab", "aria-selected": String(g === grp), onclick: function () { current = g[1][0][0]; start(); }, text: g[0] }));
   });
+  kids.push(h("button", { "class": "tab go", role: "tab", "aria-selected": String(current === "sale"), onclick: function () { current = "sale"; start(); }, text: "Event Sale" }));
   var nav = h("nav", { role: "tablist" }, kids);
-  shell([nav, body]);
-  ({ orders: viewOrders, products: viewProducts, requests: viewRequests, classes: viewClasses, bookings: viewBookings, events: viewEvents, ledger: viewLedger, reports: viewReports, sale: viewSale })[current](body);
+  var subnav = null;
+  if (grp && grp[1].length > 1) {
+    subnav = h("nav", { "class": "seg", "aria-label": grp[0] }, grp[1].map(function (v) {
+      return h("button", { "class": "tab", "aria-selected": String(v[0] === current), onclick: function () { current = v[0]; start(); }, text: v[1] });
+    }));
+  }
+  shell(subnav ? [nav, subnav, body] : [nav, body]);
+  ({ orders: viewOrders, products: viewProducts, requests: viewRequests, classes: viewClasses, bookings: viewBookings, events: viewEvents, ledger: viewLedger, reports: viewReports, sale: viewSale, subscribers: viewSubscribers, campaigns: viewCampaigns })[current](body);
   keepAwake(current === "sale");
+}
+/* MARKETING: MAILING LIST */
+var SUB_PAGE = 100;
+function viewSubscribers(n) {
+  loading(n);
+  api("GET", "subscribers").then(function (d) {
+    clear(n);
+    var all = d.subscribers || [], q = "", flt = "subscribed", shown = SUB_PAGE;
+    function count(s) { return all.filter(function (x) { return x.status === s; }).length; }
+    var stats = h("p", { "class": "muted" });
+    function drawStats() {
+      stats.textContent = count("subscribed") + " subscribed · " + count("unsubscribed") + " unsubscribed · " + all.length + " total. You can send " + d.quota + " more emails today.";
+    }
+    n.appendChild(h("p", { "class": "muted", text: "This is the same list as the Subscribers tab in your Google Sheet. People who sign up on the website appear here, and anyone who clicks Unsubscribe is marked automatically." }));
+    drawStats(); n.appendChild(stats);
+
+    function refresh() { viewSubscribers(n); }
+    var aName = h("input", { placeholder: "First and last name (optional)", autocomplete: "off", "aria-label": "Name" });
+    var aMail = h("input", { type: "email", placeholder: "email@example.com", autocomplete: "off", "aria-label": "Email" });
+    var aOk = h("input", { type: "checkbox" }), aMsg = h("p", { "class": "msg", role: "status" });
+    n.appendChild(h("div", { "class": "card" }, [h("h3", { text: "Add Someone" }),
+      h("div", { "class": "row" }, [h("label", null, ["Name", aName]), h("label", null, ["Email", aMail])]),
+      h("label", { "class": "chk" }, [aOk, "This person asked to be on the list"]), h("p"),
+      h("button", { "class": "btn primary", text: "Add to list", onclick: function () {
+        if (!aOk.checked) { aMsg.className = "msg err"; aMsg.textContent = "Please confirm they asked to be added."; return; }
+        api("POST", "subscriber", { op: "add", email: aMail.value, name: aName.value }).then(function (r) {
+          if (r.existing && r.status === "unsubscribed") {
+            if (!confirm("This person unsubscribed earlier. Only add them back if they asked you to. Add them back?")) return;
+            return api("POST", "subscriber", { op: "add", email: aMail.value, name: aName.value, resubscribe: true }).then(function () { toast("Added back"); refresh(); });
+          }
+          toast(r.existing ? "Already on the list" : "Added"); refresh();
+        }).catch(function (er) { aMsg.className = "msg err"; aMsg.textContent = er.message; });
+      } }), aMsg]));
+
+    var iBox = h("textarea", { rows: "6", placeholder: "One person per line:\nJane Smith, jane@example.com\nsam@example.com", "aria-label": "People to import" });
+    var iOk = h("input", { type: "checkbox" }), iMsg = h("p", { "class": "msg", role: "status" });
+    var iCard = h("div", { "class": "hide" }, [
+      h("p", { "class": "muted", text: "Paste people you already have permission to email, such as customers who asked to hear from you. Anyone who unsubscribed before stays unsubscribed. Up to 500 at a time." }),
+      iBox, h("label", { "class": "chk" }, [iOk, "These people asked to hear from Queen E's Heirr"]), h("p"),
+      h("button", { "class": "btn primary", text: "Import", onclick: function () {
+        var rows = iBox.value.split(/\n/).map(function (l) { return l.trim(); }).filter(Boolean).map(function (l) {
+          var m = l.match(/[^\s,;<>"]+@[^\s,;<>"]+/); if (!m) return { name: "", email: l };
+          return { email: m[0], name: l.replace(m[0], "").replace(/[<>",;]/g, " ").replace(/\s+/g, " ").trim() };
+        });
+        if (!rows.length) { iMsg.className = "msg err"; iMsg.textContent = "Paste at least one email."; return; }
+        api("POST", "subscribers-import", { rows: rows, consent: iOk.checked }).then(function (r) {
+          toast("Added " + r.added);
+          iMsg.className = "msg ok"; iMsg.textContent = "Added " + r.added + ". Already on the list: " + r.already + ". Stayed unsubscribed: " + r.unsubscribed + ". Not valid: " + r.invalid + ".";
+          if (r.added) setTimeout(refresh, 2500);
+        }).catch(function (er) { iMsg.className = "msg err"; iMsg.textContent = er.message; });
+      } }), iMsg]);
+    n.appendChild(h("div", { "class": "card" }, [h("h3", { text: "Import a List" }),
+      h("button", { "class": "btn small", text: "Show import box", onclick: function (e) { iCard.classList.toggle("hide"); e.currentTarget.textContent = iCard.classList.contains("hide") ? "Show import box" : "Hide import box"; } }), iCard]));
+
+    var search = h("input", { type: "search", placeholder: "Search name or email", "aria-label": "Search the list", autocomplete: "off" });
+    var sel = h("select", { "aria-label": "Show" }, [["subscribed", "Subscribed"], ["unsubscribed", "Unsubscribed"], ["", "Everyone"]].map(function (o) { return h("option", { value: o[0], text: o[1] }); }));
+    var list = h("div");
+    function draw() {
+      clear(list);
+      var rows = all.filter(function (x) { return (!flt || x.status === flt) && (!q || (x.name + " " + x.email).toLowerCase().indexOf(q) > -1); })
+        .sort(function (a, b) { return (b.on || "").localeCompare(a.on || ""); });
+      list.appendChild(h("p", { "class": "muted", text: rows.length + " " + (rows.length === 1 ? "person" : "people") }));
+      rows.slice(0, shown).forEach(function (s) {
+        var sub = s.status === "subscribed";
+        var nameIn = h("input", { value: s.name, placeholder: "Name", "aria-label": "Name for " + s.email, style: "max-width:240px" });
+        nameIn.addEventListener("change", function () {
+          api("POST", "subscriber", { op: "name", email: s.email, name: nameIn.value }).then(function () { s.name = nameIn.value; toast("Saved"); }).catch(function (er) { toast(er.message); });
+        });
+        list.appendChild(h("div", { "class": "card", style: "display:flex;flex-wrap:wrap;gap:10px 14px;align-items:center;justify-content:space-between" }, [
+          h("div", null, [h("div", null, [h("a", { href: "mailto:" + s.email, text: s.email }), " ", h("span", { "class": "pill" + (sub ? "" : " void"), text: sub ? "Subscribed" : "Unsubscribed" })]),
+            h("div", { "class": "muted", text: s.on ? "Joined " + chiDate(Date.parse(s.on)) : "" }), nameIn]),
+          h("div", null, [
+            h("button", { "class": "btn small", text: sub ? "Unsubscribe" : "Add back", onclick: function () {
+              if (sub ? !confirm("Stop emailing " + s.email + "?") : !confirm("Only add " + s.email + " back if they asked you to. Add them back?")) return;
+              api("POST", "subscriber", { op: "set", email: s.email, status: sub ? "unsubscribed" : "subscribed" }).then(function () { s.status = sub ? "unsubscribed" : "subscribed"; drawStats(); draw(); toast("Saved"); }).catch(function (er) { toast(er.message); });
+            } }), " ",
+            h("button", { "class": "btn small danger", text: "Remove", onclick: function () {
+              if (!confirm("Remove " + s.email + " from the list completely? To keep them from being emailed again, use Unsubscribe instead.")) return;
+              api("POST", "subscriber", { op: "delete", email: s.email }).then(function () { all.splice(all.indexOf(s), 1); drawStats(); draw(); toast("Removed"); }).catch(function (er) { toast(er.message); });
+            } })])]));
+      });
+      if (rows.length > shown) list.appendChild(h("button", { "class": "btn", text: "Show more", onclick: function () { shown += SUB_PAGE; draw(); } }));
+    }
+    search.addEventListener("input", function () { q = search.value.trim().toLowerCase(); shown = SUB_PAGE; draw(); });
+    sel.addEventListener("change", function () { flt = sel.value; shown = SUB_PAGE; draw(); });
+    sel.value = flt;
+    n.appendChild(h("div", { "class": "tools" }, [h("label", null, ["Search", search]), h("label", null, ["Show", sel]),
+      h("button", { "class": "btn", text: "Download CSV", onclick: function () {
+        csvDownload("mailing-list.csv", ["Name", "Email", "Status", "Joined"], all.map(function (s) { return [s.name, s.email, s.status, s.on ? chiDate(Date.parse(s.on)) : ""]; }));
+      } })]));
+    n.appendChild(list); draw();
+  }).catch(function (er) { failed(n, er); });
+}
+
+/* MARKETING: EMAIL CAMPAIGNS */
+var CAMP_KEY = "qe_campaign";
+var CAMP_TEMPLATES = [
+  ["blank", "Start from scratch", { subject: "", preheader: "", headline: "", body: "", buttonLabel: "", buttonUrl: "", includeEvents: false, includeClasses: false }],
+  ["flavor", "New flavor or product", { subject: "Something new from Queen E's Heirr", preheader: "Small batch, made with love.", headline: "Just Out of the Kitchen", body: "We have something new for you, and we think you will love it.\n\nWrite a few sentences here about the flavor, what inspired it, and what to pair it with.\n\nIt is made in small batches, so once a batch is gone, it is gone.", buttonLabel: "Shop Now", buttonUrl: "https://queenesheirr.com/shop/", includeEvents: false, includeClasses: false }],
+  ["events", "Where to find us", { subject: "Come see us!", preheader: "Our next markets and pop-ups.", headline: "Come Say Hello", body: "We would love to see you in person. Here is where you can find us next.\n\nStop by to taste, chat, and take a jar home.", buttonLabel: "See the Shop", buttonUrl: "https://queenesheirr.com/shop/", includeEvents: true, includeClasses: false }],
+  ["class", "Class announcement", { subject: "New class dates are up", preheader: "Seats are limited.", headline: "Learn With Queen E's", body: "New class dates are open for booking, and seats are limited.\n\nBring a friend, learn something delicious, and take your creations home.", buttonLabel: "Book a Seat", buttonUrl: "https://queenesheirr.com/classes/", includeEvents: false, includeClasses: true }],
+  ["thanks", "Thank you", { subject: "Thank you from Queen E's Heirr", preheader: "We are grateful for you.", headline: "Thank You", body: "Thank you for supporting Queen E's Heirr. Every jar, class, and kind word means so much to our family.\n\nWe are grateful for you.", buttonLabel: "", buttonUrl: "", includeEvents: false, includeClasses: false }]
+];
+function viewCampaigns(n) {
+  clear(n);
+  var D = ssGet(CAMP_KEY) || { subject: "", preheader: "", headline: "", body: "", imageUrl: "", buttonLabel: "", buttonUrl: "", greet: true, includeEvents: false, includeClasses: false };
+  var sending = false, root = h("div"); n.appendChild(root);
+  function save() { ssSet(CAMP_KEY, D); }
+
+  // mailing address (required in the footer of every marketing email)
+  var addr = h("textarea", { rows: "3", placeholder: "Queen E's Heirr\nStreet address or PO Box\nCity, State ZIP", "aria-label": "Mailing address" }), addrMsg = h("p", { "class": "msg", role: "status" });
+  api("GET", "marketing-settings").then(function (s) { addr.value = s.address || ""; if (!s.address) { addrMsg.className = "msg err"; addrMsg.textContent = "Add your mailing address before sending. It goes in the footer of every email."; } }).catch(function () {});
+  var addrCard = h("div", { "class": "card" }, [h("h3", { text: "Your Mailing Address" }),
+    h("p", { "class": "muted", text: "The law requires a real mailing address (a PO Box works) at the bottom of marketing emails. It is added to every email automatically." }),
+    addr, h("p"), h("button", { "class": "btn small primary", text: "Save address", onclick: function () {
+      api("POST", "marketing-settings", { address: addr.value }).then(function (r) { addr.value = r.address; addrMsg.className = "msg ok"; addrMsg.textContent = "Saved."; preview(); }).catch(function (er) { addrMsg.className = "msg err"; addrMsg.textContent = er.message; });
+    } }), addrMsg]);
+
+  // template picker
+  var tsel = h("select", { "aria-label": "Start from a template" }, CAMP_TEMPLATES.map(function (t) { return h("option", { value: t[0], text: t[1] }); }));
+  root.appendChild(h("div", { "class": "card" }, [h("h3", { text: "Write an Email" }),
+    h("div", { "class": "tools" }, [h("label", null, ["Start from", tsel]), h("button", { "class": "btn", text: "Use this template", onclick: function () {
+      var t = CAMP_TEMPLATES.filter(function (x) { return x[0] === tsel.value; })[0];
+      if ((D.subject || D.body) && !confirm("Replace what you have written with this template?")) return;
+      var img = D.imageUrl; D = Object.assign({ greet: true, imageUrl: img }, t[2]); save(); viewCampaigns(n);
+    } })])]));
+
+  function field(label, el) { return h("label", null, [label, el]); }
+  function bind(el, key) { el.value = D[key] || ""; el.addEventListener("input", function () { D[key] = el.value; save(); queuePreview(); }); return el; }
+  function flag(label, key) { var c = h("input", { type: "checkbox", checked: !!D[key] }); c.addEventListener("change", function () { D[key] = c.checked; save(); queuePreview(); }); return h("label", { "class": "chk" }, [c, label]); }
+  var pick = photoPicker(D.imageUrl, "Photo added to the email.", "Photo at the top (optional)");
+  var lastImg = D.imageUrl || "";
+  var poll = setInterval(function () {
+    if (!document.body.contains(root)) { clearInterval(poll); return; }
+    if (pick.holder.url !== lastImg) { lastImg = pick.holder.url; D.imageUrl = lastImg; save(); queuePreview(); }
+  }, 700);
+  var form = h("div", { "class": "card", style: "display:grid;gap:14px" }, [
+    field("Subject line (what shows in the inbox)", bind(h("input", { maxlength: "150" }), "subject")),
+    field("Preview text (the gray text after the subject)", bind(h("input", { maxlength: "150" }), "preheader")),
+    field("Headline inside the email", bind(h("input", { maxlength: "120" }), "headline")),
+    field("Message", bind(h("textarea", { rows: "9", maxlength: "8000" }), "body")),
+    h("p", { "class": "muted", text: "Leave a blank line to start a new paragraph. Web links turn into clickable links on their own." }),
+    pick.node,
+    h("div", { "class": "row" }, [field("Button text (optional)", bind(h("input", { maxlength: "40", placeholder: "Shop Now" }), "buttonLabel")), field("Button link", bind(h("input", { placeholder: "https://queenesheirr.com/shop/", inputmode: "url", autocapitalize: "off" }), "buttonUrl"))]),
+    flag("Start with “Hi [first name],”", "greet"),
+    flag("Add my upcoming events", "includeEvents"),
+    flag("Add my upcoming classes", "includeClasses")]);
+  root.appendChild(form);
+
+  // preview
+  var frame = h("iframe", { title: "Email preview", sandbox: "", style: "width:100%;height:640px;border:1px solid var(--linen);border-radius:14px;background:#fff" });
+  var pmsg = h("p", { "class": "msg", role: "status" }), ptimer = null;
+  function preview() {
+    var f = fields();
+    if (!f.subject.trim() || (!f.headline.trim() && !f.body.trim())) { pmsg.className = "msg"; pmsg.textContent = "Add a subject and a message to see the preview."; frame.srcdoc = ""; return; }
+    api("POST", "campaign-preview", { fields: f }).then(function (r) { frame.srcdoc = r.html; pmsg.className = "msg"; pmsg.textContent = ""; }).catch(function (er) { pmsg.className = "msg err"; pmsg.textContent = er.message; });
+  }
+  function queuePreview() { clearTimeout(ptimer); ptimer = setTimeout(preview, 700); }
+  function fields() { return { subject: D.subject, preheader: D.preheader, headline: D.headline, body: D.body, imageUrl: D.imageUrl, buttonLabel: D.buttonLabel, buttonUrl: D.buttonUrl, greet: D.greet !== false, includeEvents: !!D.includeEvents, includeClasses: !!D.includeClasses }; }
+  root.appendChild(h("div", { "class": "card" }, [h("h3", { text: "Preview" }), pmsg, frame]));
+
+  // send
+  var smsg = h("p", { "class": "msg", role: "status" }), bar = h("progress", { max: "100", value: "0", style: "width:100%;display:none" });
+  var testBtn = h("button", { "class": "btn", text: "Send me a test", onclick: function () {
+    if (sending) return; testBtn.disabled = true; smsg.className = "msg"; smsg.textContent = "Sending a test...";
+    api("POST", "campaign-test", { fields: fields() }).then(function (r) { smsg.className = "msg ok"; smsg.textContent = "Test sent to " + r.to + ". Check your inbox (and spam) to see how it looks on your phone."; })
+      .catch(function (er) { smsg.className = "msg err"; smsg.textContent = er.message; }).then(function () { testBtn.disabled = false; });
+  } });
+  var sendBtn = h("button", { "class": "btn primary", text: "Send to the list", onclick: function () { go(); } });
+  function lockForm(on) { sending = on; sendBtn.disabled = on; testBtn.disabled = on; form.style.opacity = on ? ".5" : ""; form.style.pointerEvents = on ? "none" : ""; window.onbeforeunload = on ? function () { return "Your email is still sending."; } : null; }
+  function go() {
+    if (sending) return;
+    smsg.className = "msg"; smsg.textContent = "Checking the list...";
+    api("POST", "campaign-start", { fields: fields() }).then(function (s) {
+      if (!confirm("Send “" + D.subject + "” to " + s.total + " " + (s.total === 1 ? "person" : "people") + " now? This cannot be undone. Have you sent yourself a test?")) { smsg.textContent = ""; return; }
+      lockForm(true); bar.style.display = ""; bar.max = s.total; bar.value = 0;
+      var sent = 0, failed = 0, i = 0;
+      function next() {
+        if (i >= s.emails.length) return finish();
+        var part = s.emails.slice(i, i + s.chunk);
+        smsg.textContent = "Sending... " + Math.min(i + part.length, s.total) + " of " + s.total + ". Please keep this page open.";
+        return api("POST", "campaign-chunk", { fields: fields(), emails: part }).then(function (r) { sent += r.sent; failed += r.failed; i += part.length; bar.value = i; return next(); })
+          .catch(function (er) { failed += part.length; i += part.length; bar.value = i; smsg.textContent = "A group did not send (" + er.message + "). Continuing..."; return next(); });
+      }
+      function finish() {
+        return api("POST", "campaign-done", { id: s.id, fields: fields(), total: s.total, sent: sent, failed: failed }).catch(function () {}).then(function () {
+          lockForm(false); bar.style.display = "none"; smsg.className = failed ? "msg err" : "msg ok";
+          smsg.textContent = "Done. Sent to " + sent + " of " + s.total + (failed ? ". " + failed + " did not send; check the Campaigns tab in your Google Sheet." : ".");
+          history();
+        });
+      }
+      return next();
+    }).catch(function (er) { lockForm(false); smsg.className = "msg err"; smsg.textContent = er.message; });
+  }
+  root.appendChild(h("div", { "class": "card" }, [h("h3", { text: "Send" }),
+    h("p", { "class": "muted", text: "Always send yourself a test first. Emails go only to people who are currently subscribed, and each one has its own unsubscribe link." }),
+    h("div", null, [testBtn, " ", sendBtn]), bar, smsg,
+    h("p", { "class": "muted" }, [h("button", { "class": "btn small", text: "Start a new email", onclick: function () { if (confirm("Clear this email and start over?")) { ssSet(CAMP_KEY, null); viewCampaigns(n); } } })])]));
+
+  root.appendChild(addrCard);
+  // history
+  var hist = h("div", { "class": "card" }); root.appendChild(hist);
+  function history() {
+    clear(hist); hist.appendChild(h("h3", { text: "Sent Emails" }));
+    api("GET", "campaigns").then(function (r) {
+      if (!r.campaigns.length) { hist.appendChild(h("p", { "class": "muted", text: "Nothing sent yet." })); return; }
+      r.campaigns.forEach(function (c) {
+        hist.appendChild(h("div", { style: "padding:8px 0;border-top:1px solid var(--linen)" }, [h("strong", { text: c.subject }),
+          h("div", { "class": "muted", text: (c.on ? chiDate(Date.parse(c.on)) + " · " : "") + "sent to " + c.sent + " of " + c.total + (c.failed ? " · " + c.failed + " failed" : "") })]));
+      });
+    }).catch(function (er) { hist.appendChild(h("p", { "class": "msg err", text: er.message })); });
+  }
+  history(); preview();
 }
 function loading(n) { clear(n); n.appendChild(h("p", { "class": "muted", text: "Loading..." })); }
 function failed(n, er) { clear(n); n.appendChild(h("p", { "class": "msg err", text: er.message })); }
 
 /* PHOTO PICKER: shrinks the photo in the browser, uploads it, and fills in the address */
-function photoPicker(current) {
+function photoPicker(current, readyMsg, label) {
   var holder = { url: current || "" };
   var preview = h("img", { alt: "", style: "max-width:140px;max-height:140px;border-radius:12px;border:1px solid var(--linen);" + (current ? "" : "display:none") });
   if (current) preview.src = current;
@@ -258,7 +483,7 @@ function photoPicker(current) {
         var rd = new FileReader();
         rd.onload = function () {
           api("POST", "image", { data: String(rd.result).split(",")[1] }).then(function (d) {
-            holder.url = d.url; preview.src = URL.createObjectURL(blob); preview.style.display = ""; status.textContent = "Photo ready. Click Save to use it.";
+            holder.url = d.url; preview.src = URL.createObjectURL(blob); preview.style.display = ""; status.textContent = readyMsg || "Photo ready. Click Save to use it.";
           }).catch(function (er) { status.textContent = er.message; });
         };
         rd.readAsDataURL(blob);
@@ -267,7 +492,7 @@ function photoPicker(current) {
     img.onerror = function () { status.textContent = "That file could not be read as a photo."; };
     img.src = objUrl;
   });
-  return { holder: holder, node: h("div", null, [h("label", null, ["Product photo", file]), h("div", { style: "margin-top:6px;display:flex;gap:10px;align-items:center" }, [preview, status])]) };
+  return { holder: holder, node: h("div", null, [h("label", null, [label || "Product photo", file]), h("div", { style: "margin-top:6px;display:flex;gap:10px;align-items:center" }, [preview, status])]) };
 }
 
 /* ORDERS */
