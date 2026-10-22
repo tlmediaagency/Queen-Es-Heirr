@@ -4,6 +4,7 @@ import UI from "./admin-ui.js";
 import { adminClasses, cleanClasses, adminBookings, readClasses, readBookings, publicClasses } from "./classes.js";
 import { marketingRoute } from "./marketing.js";
 import { shippingRoute } from "./shipping.js";
+import { blogRoute } from "./blog.js";
 import { stdSize, CATEGORIES } from "./sizes.js";
 import { ICON_192, ICON_512 } from "./admin-icons.js";
 
@@ -267,6 +268,8 @@ export async function handleAdmin(request, env, url, d) {
     if (mk) return mk;
     const sh = await shippingRoute(route, request.method, body, env, me, { stripeGet }, j, url.origin);
     if (sh) return sh;
+    const bl = await blogRoute(route, request.method, body, env, me, j, url.origin);
+    if (bl) return bl;
     if (route === "products" && request.method === "GET") {
       const [pa, ph, pr] = await Promise.all([
         stripeGet(env, "/products?active=true&limit=100"),

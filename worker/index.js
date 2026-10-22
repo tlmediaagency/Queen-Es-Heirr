@@ -13,6 +13,7 @@ import { SEED } from "./seed-data.js";
 import { handleAdmin, readEvents, upcoming, serveImage, monthlyReport, eventReports } from "./admin.js";
 import { shippoWebhook } from "./shipping.js";
 import { addOptIn } from "./marketing.js";
+import { blogPublic } from "./blog.js";
 import { publicClasses, classCheckout, recordBooking } from "./classes.js";
 
 const API = "https://api.stripe.com/v1";
@@ -577,6 +578,10 @@ export default {
     if (im && request.method === "GET") return serveImage(env, im[1]);
     const pm = url.pathname.match(/^\/pay\/(cs_[A-Za-z0-9_]+)$/);
     if (pm && request.method === "GET") return payRedirect(env, pm[1]);
+    if ((url.pathname === "/blog" || url.pathname.startsWith("/blog/")) && request.method === "GET") {
+      const r = await blogPublic(url, env, c.headers, json);
+      if (r) return r;
+    }
     if (url.pathname === "/events" && request.method === "GET") {
       return json(upcoming(await readEvents(env)), 200, { ...c.headers, "Cache-Control": "public, max-age=60" });
     }

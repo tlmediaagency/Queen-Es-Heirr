@@ -385,6 +385,55 @@
   renderShop();
 
 
+  // Queen Talk blog: posts are written in the admin app and served by the Worker.
+  var blogList = document.querySelector("[data-blog-list]"), blogPost = document.querySelector("[data-blog-post]");
+  function blogDate(d) { var p = String(d || "").split("-"); return p.length === 3 ? new Date(+p[0], +p[1] - 1, +p[2]).toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" }) : ""; }
+  function blogCard(p) {
+    var href = "/stories/post/?s=" + encodeURIComponent(p.slug);
+    var card = el("article", { "class": "card" });
+    if (p.image) { var a1 = el("a", { href: href, "aria-hidden": "true", tabindex: "-1" }); a1.appendChild(el("img", { src: p.image, alt: "", loading: "lazy" })); card.appendChild(a1); }
+    var pad = el("div", { "class": "pad" });
+    if (p.category) pad.appendChild(el("p", { "class": "kicker" }, p.category));
+    var h2 = el("h2"); h2.appendChild(el("a", { href: href }, p.title)); pad.appendChild(h2);
+    pad.appendChild(el("p", { "class": "muted" }, p.excerpt));
+    pad.appendChild(el("p", { "class": "post-meta" }, blogDate(p.date)));
+    pad.appendChild(el("a", { "class": "quick-link", href: href }, "Read more"));
+    card.appendChild(pad); return card;
+  }
+  if (blogList && CFG.CHECKOUT_URL) {
+    fetch(workerUrl("/blog")).then(function (r) { return r.json(); }).then(function (d) {
+      if (!d.posts || !d.posts.length) return;
+      while (blogList.firstChild) blogList.removeChild(blogList.firstChild);
+      d.posts.forEach(function (p) { blogList.appendChild(blogCard(p)); });
+    }).catch(function () {});   // keep the built-in stories if the Worker can't be reached
+  }
+  if (blogPost) {
+    var slug = (location.search.match(/[?&]s=([a-z0-9-]+)/) || [])[1];
+    var fail = function () { blogPost.textContent = ""; blogPost.appendChild(el("p", { "class": "muted" }, "We couldn't find that post.")); blogPost.appendChild(el("p")).appendChild(el("a", { "class": "btn", href: "/stories/" }, "Back to Queen Talk")); };
+    if (!slug || !CFG.CHECKOUT_URL) fail();
+    else fetch(workerUrl("/blog/" + slug)).then(function (r) { if (!r.ok) throw new Error("x"); return r.json(); }).then(function (d) {
+      var p = d.post; document.title = p.title + " | Queen E's Heirr";
+      var setMeta = function (sel, val) { var m = document.querySelector(sel); if (m) m.setAttribute("content", val); };
+      var url = "https://queenesheirr.com/stories/post/?s=" + p.slug;
+      setMeta('meta[name="description"]', p.excerpt); setMeta('meta[property="og:title"]', p.title); setMeta('meta[property="og:description"]', p.excerpt); setMeta('meta[property="og:url"]', url);
+      var can = document.querySelector('link[rel="canonical"]'); if (can) can.setAttribute("href", url);
+      blogPost.textContent = "";
+      if (p.category) blogPost.appendChild(el("p", { "class": "kicker" }, p.category));
+      blogPost.appendChild(el("h1", null, p.title));
+      blogPost.appendChild(el("p", { "class": "post-meta" }, blogDate(p.date) + (p.author ? " · " + p.author : "")));
+      if (p.image) blogPost.appendChild(el("img", { "class": "post-hero", src: p.image, alt: "" }));
+      var body = el("div", { "class": "post-body" }); body.innerHTML = p.html; blogPost.appendChild(body);
+      var foot = el("p", { "class": "post-foot" });
+      var sh = el("button", { "class": "btn", type: "button" }, "Share this post");
+      sh.addEventListener("click", function () {
+        if (navigator.share) { navigator.share({ title: p.title, url: d.post.share }).catch(function () {}); return; }
+        try { navigator.clipboard.writeText(d.post.share).then(function () { sh.textContent = "Link copied"; }); } catch (e) { window.prompt("Copy this link", d.post.share); }
+      });
+      foot.appendChild(sh); foot.appendChild(document.createTextNode(" ")); foot.appendChild(el("a", { "class": "btn", href: "/stories/" }, "More from Queen Talk"));
+      blogPost.appendChild(foot);
+    }).catch(fail);
+  }
+
   // Class dates: paid seat booking (Stripe Checkout through the Worker) + optional Google booking calendar.
   var classList = document.querySelector("[data-class-list]");
   function workerUrl(path) { return String(CFG.CHECKOUT_URL || "").replace(/\/checkout$/, path); }
