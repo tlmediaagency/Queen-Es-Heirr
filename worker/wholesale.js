@@ -58,7 +58,7 @@ export function buildWsEmail(kind, o, ctx) {
     title = "We got your refill request";
     subject = "Your wholesale refill request - Queen E's Heirr";
     body = P(`Hi ${esc(first)},`) + P("Thank you! Here is your request with an instant quote. LyKinda will review it, confirm availability, and send you a final quote with a drop-off date to approve.") + table(o.lines) +
-      P("Prices are wholesale (retail less $2.00 per jar), before any adjustments.") + btn(link, "View my request");
+      P("Prices shown are your wholesale prices, before any adjustments.") + btn(link, "View my request");
     text = `Hi ${first},\n\nThank you! Your refill request:\n${textLines(o.lines)}\n\nLyKinda will review it and send a final quote with a drop-off date to approve.\n${link}`;
   } else if (kind === "confirmed") {
     title = "Your quote is ready to approve";

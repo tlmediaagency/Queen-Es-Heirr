@@ -14,7 +14,7 @@ Founder: LyKinda Thibodeaux. Website: https://queenesheirr.com (formerly queenej
 
 ## Shop
 - [The Shop](https://queenesheirr.com/shop/): jams (blueberry, strawberry, peach, raspberry, apple, blackberry, peppered, pineapple and mango flavors) and pickled goods (dill, sweet and savory, tart n tangy, candied jalapeños). Jars ship across the United States; checkout is by Stripe. Most flavors are seasonal.
-- [Wholesale](https://queenesheirr.com/wholesale/): retailers choose jars and receive a quote at wholesale pricing ($2.00 off each jar). Approved vendors reorder at [/wholesale/portal/](https://queenesheirr.com/wholesale/portal/).
+- [Wholesale](https://queenesheirr.com/wholesale/): retailers choose jars and receive a quote at discounted wholesale pricing. Approved vendors reorder at [/wholesale/portal/](https://queenesheirr.com/wholesale/portal/).
 - [Locations](https://queenesheirr.com/locations/): in-store at Bayou Stuf in Lacombe, Louisiana.
 
 ## Classes and training
@@ -36,7 +36,7 @@ info@queenesheirr.com · Instagram and Facebook: @queenesheirr
 - Product types: artisan jams, pepper jams, pickled vegetables, gift jars.
 - Standard sizes: Regular (8 oz) and Large (12 oz) jams; Regular (12 oz) and Large (16 oz) pickled goods; 4 oz specialty jar.
 - Sold online (US shipping, local pickup, event pickup), at events, and in store at Bayou Stuf in Lacombe, Louisiana.
-- Wholesale: $2.00 off retail per jar, by quote.
+- Wholesale: discounted from retail, by quote.
 
 ## Questions and answers
 Q: Are the jams small batch?
@@ -78,8 +78,11 @@ A: It is Queen E's leadership curriculum for students and professionals, and it 
 Q: Can Queen E's come to my festival, market or event?
 A: Yes. Use the Invite Queen E's page to tell us about your pop-up, festival, market or private event.
 
+Q: Can I buy Queen E's jam wholesale to sell in my store or use in my restaurant?
+A: Yes. Stores, restaurants and other businesses can buy Queen E's at a wholesale discount. Use the Wholesale page to choose the jars you would like and we will send you a quote to approve. Once you are an approved vendor, you can reorder any time in the Wholesale Portal.
+
 Q: How do stores carry Queen E's?
-A: Use the Wholesale page to choose the jars you would like. Wholesale pricing is $2.00 off each jar, and we send you a quote to approve. Stores can also use the form on Locations.
+A: Use the Wholesale page to choose the jars you would like. Wholesale customers receive a discount on every jar, and we send you a quote to approve. Stores can also use the form on Locations.
 
 Q: How do I reorder as a current wholesale vendor?
 A: Approved vendors can sign in to the Wholesale Portal with a code sent to their email, send a refill request and get an instant quote. LyKinda reviews it, adjusts quantities if needed and sets a drop-off date, then you approve the final quote. You can pay by card online before the drop-off or by check at drop-off.

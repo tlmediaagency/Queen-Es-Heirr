@@ -15,7 +15,7 @@ Founder: LyKinda Thibodeaux. Website: https://queenesheirr.com (formerly queenej
 ## Shop
 - [J.U.D.A.H. book and curriculum](https://queenesheirr.com/judah/): the J.U.D.A.H. Leadership book and curriculum, sold online with checkout by Stripe.
 - [The Shop](https://queenesheirr.com/shop/): jams (blueberry, strawberry, peach, raspberry, apple, blackberry, peppered, pineapple and mango flavors) and pickled goods (dill, sweet and savory, tart n tangy, candied jalapeños). Jars ship across the United States; checkout is by Stripe. Most flavors are seasonal.
-- [Wholesale](https://queenesheirr.com/wholesale/): retailers choose jars and receive a quote at wholesale pricing ($2.00 off each jar).
+- [Wholesale](https://queenesheirr.com/wholesale/): retailers choose jars and receive a quote at discounted wholesale pricing.
 - [Locations](https://queenesheirr.com/locations/): in-store at Bayou Stuf in Lacombe, Louisiana.
 
 ## Classes and training
