@@ -14,6 +14,7 @@ import { handleAdmin, readEvents, upcoming, serveImage, monthlyReport, eventRepo
 import { shippoWebhook, quoteOptions, verifyQuote } from "./shipping.js";
 import { addOptIn } from "./marketing.js";
 import { blogPublic } from "./blog.js";
+import { wholesalePublic, wsPaid } from "./wholesale.js";
 import { onEventOrderPaid, eventReminders } from "./eventorders.js";
 import { publicClasses, classCheckout, recordBooking } from "./classes.js";
 
@@ -529,6 +530,10 @@ async function handleStripeWebhook(request, env) {
   }
   const session = evt.data && evt.data.object;
   if (!session || session.payment_status !== "paid") return new Response("not paid", { status: 200 });
+  if (session.metadata && session.metadata.kind === "ws_order") {
+    try { await wsPaid(env, session); } catch (e) { console.log("ws paid error", String(e)); }
+    return new Response("ok", { status: 200 });
+  }
   if (session.metadata && session.metadata.kind === "class") {
     try { await recordBooking(env, session); } catch (e) { console.log("booking error", String(e)); return new Response("error", { status: 500 }); }
     return new Response("ok", { status: 200 });
@@ -612,6 +617,10 @@ export default {
     if (pm && request.method === "GET") return payRedirect(env, pm[1]);
     if ((url.pathname === "/blog" || url.pathname.startsWith("/blog/")) && request.method === "GET") {
       const r = await blogPublic(url, env, c.headers, json);
+      if (r) return r;
+    }
+    if (url.pathname.startsWith("/ws/")) {
+      const r = await wholesalePublic(request, env, url, c, { json, loadCatalog, stdSize, stripePost });
       if (r) return r;
     }
     if (url.pathname === "/events" && request.method === "GET") {

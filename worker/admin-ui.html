@@ -208,6 +208,7 @@ var GROUPS = [
   ["Orders & Reports", [["orders", "Orders"], ["requests", "Requests"], ["ledger", "Ledger"], ["reports", "Reports"], ["eventpickups", "Event Pickups"]]],
   ["Products", [["products", "Products"]]],
   ["Shipping", [["toship", "To Ship"], ["shipped", "Shipped"], ["shipsetup", "Shipping Setup"]]],
+  ["Wholesale", [["wsorders", "Refill Orders"], ["wsvendors", "Vendors"]]],
   ["Events", [["events", "Events"]]],
   ["Blog", [["blog", "Blog Posts"]]],
   ["Classes & Bookings", [["classes", "Classes"], ["bookings", "Bookings"]]],
@@ -247,7 +248,7 @@ function start() {
     }));
   }
   shell(subnav ? [nav, subnav, body] : [nav, body]);
-  ({ orders: viewOrders, products: viewProducts, requests: viewRequests, classes: viewClasses, bookings: viewBookings, events: viewEvents, ledger: viewLedger, reports: viewReports, sale: viewSale, eventpickups: viewEventPickups, subscribers: viewSubscribers, campaigns: viewCampaigns, toship: viewToShip, shipped: viewShipped, shipsetup: viewShipSetup, blog: viewBlog })[current](body);
+  ({ orders: viewOrders, products: viewProducts, requests: viewRequests, classes: viewClasses, bookings: viewBookings, events: viewEvents, ledger: viewLedger, reports: viewReports, sale: viewSale, eventpickups: viewEventPickups, subscribers: viewSubscribers, campaigns: viewCampaigns, toship: viewToShip, shipped: viewShipped, shipsetup: viewShipSetup, blog: viewBlog, wsorders: viewWsOrders, wsvendors: viewWsVendors })[current](body);
   keepAwake(current === "sale");
 }
 
@@ -577,6 +578,126 @@ function viewEventPickups(n) {
     var up = d.events.filter(function (e) { return !e.past; }).slice(-1)[0];
     if (up) sel.value = up.id;
     load();
+  }).catch(function (er) { failed(n, er); });
+}
+/* WHOLESALE */
+var WS_STATUS = { requested: "Needs your review", confirmed: "Waiting on vendor", approved: "Approved", delivered: "Delivered", cancelled: "Cancelled" };
+function money2(c) { return "$" + (c / 100).toFixed(2); }
+function viewWsOrders(n) {
+  loading(n);
+  api("GET", "ws-orders").then(function (d) {
+    clear(n);
+    var show = "open";
+    var filt = h("select", { "aria-label": "Show" }, [["open", "Open orders"], ["all", "All orders"]].map(function (o) { return h("option", { value: o[0], text: o[1] }); }));
+    var list = h("div");
+    n.appendChild(h("p", { "class": "muted", text: "Vendors send refill requests from the wholesale portal. Adjust the items, set a drop-off date, and send the quote. They approve it and choose to pay by card or at drop-off." }));
+    n.appendChild(h("label", null, ["Show", filt]));
+    n.appendChild(list);
+    function draw() {
+      clear(list);
+      var rows = d.orders.filter(function (o) { return filt.value === "all" || ["requested", "confirmed", "approved"].indexOf(o.status) > -1 || (o.status === "delivered" && !o.paid); });
+      if (!rows.length) list.appendChild(h("p", { "class": "muted", text: "Nothing here right now." }));
+      rows.forEach(function (o) { list.appendChild(card(o)); });
+    }
+    function card(o) {
+      var lines = o.lines.map(function (l) { return { id: l.id, size: l.size, name: l.name, qty: l.qty, unitCents: l.unitCents }; });
+      var box = h("div", { "class": "card" });
+      var editable = ["requested", "confirmed", "approved"].indexOf(o.status) > -1 && !o.paid;
+      var date = h("input", { type: "date", value: o.dropoff || "", min: d.today });
+      var note = h("textarea", { rows: 2, placeholder: "Note to the vendor (optional)", maxlength: 500 }); note.value = o.ownerNote || "";
+      var msg = h("p", { "class": "msg", role: "status" });
+      var linesBox = h("div");
+      var totalEl = h("strong");
+      function sum() { return lines.reduce(function (t, l) { return t + l.qty * l.unitCents; }, 0); }
+      function drawLines() {
+        clear(linesBox);
+        lines.forEach(function (l, i) {
+          var q = h("input", { type: "number", min: 1, max: 500, value: l.qty, style: "width:70px", disabled: !editable });
+          var p = h("input", { type: "number", step: "0.01", min: 0, value: (l.unitCents / 100).toFixed(2), style: "width:84px", disabled: !editable, "aria-label": "Price each" });
+          q.addEventListener("input", function () { l.qty = Math.max(1, parseInt(q.value, 10) || 1); totalEl.textContent = "Total " + money2(sum()); });
+          p.addEventListener("input", function () { l.unitCents = Math.max(0, Math.round(parseFloat(p.value || "0") * 100)); totalEl.textContent = "Total " + money2(sum()); });
+          linesBox.appendChild(h("div", { style: "display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin:4px 0" }, [q, "x", h("span", { text: l.name, style: "flex:1;min-width:140px" }), "$", p,
+            editable ? h("button", { "class": "btn small", text: "Remove", onclick: function () { if (lines.length > 1) { lines.splice(i, 1); drawLines(); } else toast("An order needs at least one item."); } }) : null]));
+        });
+        totalEl.textContent = "Total " + money2(sum());
+      }
+      drawLines();
+      var add = null;
+      if (editable) {
+        var sel = h("select", { "aria-label": "Add an item" }, [h("option", { value: "", text: "Add an item..." })]);
+        d.catalog.forEach(function (p) { p.sizes.forEach(function (s) { sel.appendChild(h("option", { value: p.id + "|" + s.label, text: p.name + " (" + s.label + ") " + money2(s.cents) })); }); });
+        sel.addEventListener("change", function () {
+          if (!sel.value) return; var k = sel.value.split("|"), p = d.catalog.filter(function (x) { return x.id === k[0]; })[0], s = p.sizes.filter(function (z) { return z.label === k[1]; })[0];
+          var ex = lines.filter(function (l) { return l.id === p.id && l.size === s.label; })[0];
+          if (ex) ex.qty += 1; else lines.push({ id: p.id, size: s.label, name: p.name + " (" + s.label + ")", qty: 1, unitCents: s.cents });
+          sel.value = ""; drawLines();
+        });
+        add = sel;
+      }
+      function go(action, extra) {
+        msg.className = "msg"; msg.textContent = "Working...";
+        var payload = { id: o.id, action: action, dropoff: date.value, ownerNote: note.value };
+        if (editable) payload.lines = lines;
+        Object.keys(extra || {}).forEach(function (k) { payload[k] = extra[k]; });
+        return api("POST", "ws-order", payload).then(function (r) {
+          var i = d.orders.indexOf(o); d.orders[i] = r.order; o = r.order;
+          var fresh = card(r.order); box.parentNode.replaceChild(fresh, box);
+          var m = fresh.querySelector(".msg"); m.className = "msg ok";
+          m.textContent = "Saved." + (r.emailed ? " Email sent to the vendor." : "") + (r.emailError ? " The email did not send: " + r.emailError : "");
+        }).catch(function (er) { msg.className = "msg err"; msg.textContent = er.message; });
+      }
+      var acts = [];
+      if (o.status === "requested" || o.status === "confirmed") {
+        acts.push(h("button", { "class": "btn small primary", text: o.status === "confirmed" ? "Resend quote to vendor" : "Send quote with drop-off date", onclick: function () { go("confirm"); } }));
+      }
+      if (editable) acts.push(h("button", { "class": "btn small", text: "Save changes", onclick: function () { go("save"); } }));
+      if (o.status === "approved") acts.push(h("button", { "class": "btn small primary", text: "Mark delivered", onclick: function () { go("delivered"); } }));
+      if (o.status === "delivered" && !o.paid || o.status === "approved" && !o.paid) {
+        acts.push(h("button", { "class": "btn small", text: "Mark paid (check)", onclick: function () { go("paid", { paidMethod: "check" }); } }));
+        acts.push(h("button", { "class": "btn small", text: "Mark paid (cash)", onclick: function () { go("paid", { paidMethod: "cash" }); } }));
+      }
+      if (o.status !== "delivered" && o.status !== "cancelled") acts.push(h("button", { "class": "btn small", text: "Cancel", onclick: function () { if (confirm("Cancel this order?")) go("cancel", { email: confirm("Email the vendor that it was cancelled?") }); } }));
+      if (o.status === "cancelled") acts.push(h("button", { "class": "btn small", text: "Reopen", onclick: function () { go("reopen"); } }));
+      [h("div", { style: "display:flex;justify-content:space-between;gap:8px;flex-wrap:wrap" }, [h("strong", { text: o.business }), h("span", { "class": "pill" + (o.status === "requested" ? " event" : ""), text: WS_STATUS[o.status] + (o.paid ? " · Paid" : "") })]),
+        h("p", { "class": "muted", text: [o.contact, o.vendor, o.phone].filter(Boolean).join(" · ") + " · requested " + new Date(o.created).toLocaleDateString() }),
+        o.note ? h("p", { text: "Their note: " + o.note }) : null,
+        o.pay ? h("p", { "class": "muted", text: "Vendor chose: " + (o.pay === "card" ? "pay by card online" : "pay at drop-off") }) : null,
+        linesBox, totalEl,
+        editable ? h("label", null, ["Drop-off date", date]) : (o.dropoff ? h("p", { text: "Drop-off: " + o.dropoff }) : null),
+        editable ? add : null, editable ? note : null,
+        h("p", { "class": "noprint", style: "display:flex;gap:8px;flex-wrap:wrap" }, acts), msg
+      ].forEach(function (x) { if (x) box.appendChild(x); });
+      return box;
+    }
+    filt.addEventListener("change", draw);
+    draw();
+  }).catch(function (er) { failed(n, er); });
+}
+function viewWsVendors(n) {
+  loading(n);
+  api("GET", "ws-vendors").then(function (d) {
+    clear(n);
+    var vendors = d.vendors;
+    n.appendChild(h("p", { "class": "muted", text: "Only vendors listed here can sign in to the wholesale portal (with a code emailed to them). Add a store after you've approved them." }));
+    var f = { business: h("input", { placeholder: "Business name" }), contact: h("input", { placeholder: "Contact name" }), email: h("input", { type: "email", placeholder: "Email (their sign-in)" }), phone: h("input", { type: "tel", placeholder: "Phone" }) };
+    var msg = h("p", { "class": "msg", role: "status" }), list = h("div");
+    n.appendChild(h("div", { "class": "card" }, [h("h3", { text: "Add or update a vendor" }), f.business, f.contact, f.email, f.phone,
+      h("button", { "class": "btn small primary", text: "Save vendor", onclick: function () {
+        api("POST", "ws-vendor", { business: f.business.value, contact: f.contact.value, email: f.email.value, phone: f.phone.value }).then(function (r) { vendors = r.vendors; Object.keys(f).forEach(function (k) { f[k].value = ""; }); msg.className = "msg ok"; msg.textContent = "Saved."; draw(); }).catch(function (er) { msg.className = "msg err"; msg.textContent = er.message; });
+      } }), msg]));
+    n.appendChild(list);
+    function draw() {
+      clear(list);
+      if (!vendors.length) list.appendChild(h("p", { "class": "muted", text: "No vendors yet." }));
+      vendors.forEach(function (v) {
+        function save(patch) { api("POST", "ws-vendor", Object.assign({}, v, patch)).then(function (r) { vendors = r.vendors; draw(); }).catch(function (er) { toast(er.message); }); }
+        list.appendChild(h("div", { "class": "card" }, [h("div", { style: "display:flex;justify-content:space-between;gap:8px;flex-wrap:wrap" }, [h("strong", { text: v.business }), h("span", { "class": "pill", text: v.active === false ? "Paused" : "Active" })]),
+          h("p", { "class": "muted", text: [v.contact, v.email, v.phone].filter(Boolean).join(" · ") }),
+          h("p", null, [h("button", { "class": "btn small", text: v.active === false ? "Turn on" : "Pause", onclick: function () { save({ active: v.active === false }); } }), " ",
+            h("button", { "class": "btn small", text: "Remove", onclick: function () { if (confirm("Remove " + v.business + "?")) api("POST", "ws-vendor", { email: v.email, op: "delete" }).then(function (r) { vendors = r.vendors; draw(); }).catch(function (er) { toast(er.message); }); } })])]));
+      });
+    }
+    draw();
   }).catch(function (er) { failed(n, er); });
 }
 /* MARKETING: MAILING LIST */

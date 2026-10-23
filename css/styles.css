@@ -332,3 +332,15 @@ a.btn[href] { text-decoration: none; }
 .ship-quote .field input { width: 100%; }
 .ship-opt { display: flex; gap: .4rem; align-items: center; font-size: .92rem; padding: .35rem 0; }
 .ship-opt input { width: 1.1rem; height: 1.1rem; flex: none; }
+
+/* wholesale portal */
+.ws-portal { max-width: 760px; }
+.ws-card { background: #fff; border: 1px solid var(--linen); border-radius: 16px; padding: 18px; margin: 14px 0; }
+.ws-row { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; padding: 8px 0; border-bottom: 1px solid var(--linen); }
+.ws-row .ws-name { flex: 1; min-width: 160px; }
+.ws-row input[type=number] { width: 84px; }
+.ws-pill { display: inline-block; padding: 2px 12px; border-radius: 999px; background: var(--linen); font-size: .85rem; font-weight: 600; }
+.ws-pill.act { background: var(--gold); color: var(--ink, #0e2012); }
+.ws-actions { display: flex; gap: 10px; flex-wrap: wrap; margin-top: 12px; }
+.ws-msg { margin: 10px 0; min-height: 1.2em; }
+.ws-msg.err { color: #9b1c1c; }

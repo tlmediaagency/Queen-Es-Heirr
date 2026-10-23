@@ -5,6 +5,7 @@ import { adminClasses, cleanClasses, adminBookings, readClasses, readBookings, p
 import { marketingRoute } from "./marketing.js";
 import { shippingRoute } from "./shipping.js";
 import { blogRoute } from "./blog.js";
+import { wholesaleAdminRoute } from "./wholesale.js";
 import { eventOrdersRoute } from "./eventorders.js";
 import { stdSize, CATEGORIES } from "./sizes.js";
 import { ICON_192, ICON_512 } from "./admin-icons.js";
@@ -273,6 +274,8 @@ export async function handleAdmin(request, env, url, d) {
     if (bl) return bl;
     const eo = await eventOrdersRoute(route, request.method, body, env, me, { stripeGet }, j);
     if (eo) return eo;
+    const wa = await wholesaleAdminRoute(route, request.method, body, env, me, { loadCatalog, stdSize }, j);
+    if (wa) return wa;
     if (route === "products" && request.method === "GET") {
       const [pa, ph, pr] = await Promise.all([
         stripeGet(env, "/products?active=true&limit=100"),
