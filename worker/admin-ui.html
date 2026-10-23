@@ -891,7 +891,7 @@ function viewCampaignsInner(n) {
     h("div", { "class": "tools" }, [h("label", null, ["Start from", tsel]), h("button", { "class": "btn", text: "Use this template", onclick: function () {
       var t = CAMP_TEMPLATES.filter(function (x) { return x[0] === tsel.value; })[0];
       if ((D.subject || D.body) && !confirm("Replace what you have written with this template?")) return;
-      var img = D.imageUrl; D = Object.assign({ greet: true, imageUrl: img }, t[2]); save(); viewCampaigns(n);
+      var img = D.imageUrl; D = Object.assign({ greet: true, imageUrl: img, bodyHtml: "" }, t[2]); save(); viewCampaigns(n);
     } })])]));
 
   function field(label, el) { return h("label", null, [label, el]); }
@@ -903,12 +903,12 @@ function viewCampaignsInner(n) {
     if (!document.body.contains(root)) { clearInterval(poll); return; }
     if (pick.holder.url !== lastImg) { lastImg = pick.holder.url; D.imageUrl = lastImg; save(); queuePreview(); }
   }, 700);
+  var editor = richEditor(D.bodyHtml || plainToHtml(D.body), function (html) { D.bodyHtml = html; D.body = editor.getText(); save(); queuePreview(); });
   var form = h("div", { "class": "card", style: "display:grid;gap:14px" }, [
     field("Subject line (what shows in the inbox)", bind(h("input", { maxlength: "150" }), "subject")),
     field("Preview text (the gray text after the subject)", bind(h("input", { maxlength: "150" }), "preheader")),
     field("Headline inside the email", bind(h("input", { maxlength: "120" }), "headline")),
-    field("Message", bind(h("textarea", { rows: "9", maxlength: "8000" }), "body")),
-    h("p", { "class": "muted", text: "Leave a blank line to start a new paragraph. Web links turn into clickable links on their own." }),
+    h("div", null, [h("label", { text: "Message" }), editor.node]),
     pick.node,
     h("div", { "class": "row" }, [field("Button text (optional)", bind(h("input", { maxlength: "40", placeholder: "Shop Now" }), "buttonLabel")), field("Button link", bind(h("input", { placeholder: "https://queenesheirr.com/shop/", inputmode: "url", autocapitalize: "off" }), "buttonUrl"))]),
     flag("Start with “Hi [first name],”", "greet"),
@@ -921,11 +921,11 @@ function viewCampaignsInner(n) {
   var pmsg = h("p", { "class": "msg", role: "status" }), ptimer = null;
   function preview() {
     var f = fields();
-    if (!f.subject.trim() || (!f.headline.trim() && !f.body.trim())) { pmsg.className = "msg"; pmsg.textContent = "Add a subject and a message to see the preview."; frame.srcdoc = ""; return; }
+    if (!f.subject.trim() || (!f.headline.trim() && !f.body.trim() && !(f.bodyHtml || "").trim())) { pmsg.className = "msg"; pmsg.textContent = "Add a subject and a message to see the preview."; frame.srcdoc = ""; return; }
     api("POST", "campaign-preview", { fields: f }).then(function (r) { frame.srcdoc = r.html; pmsg.className = "msg"; pmsg.textContent = ""; }).catch(function (er) { pmsg.className = "msg err"; pmsg.textContent = er.message; });
   }
   function queuePreview() { clearTimeout(ptimer); ptimer = setTimeout(preview, 700); }
-  function fields() { return { subject: D.subject, preheader: D.preheader, headline: D.headline, body: D.body, imageUrl: D.imageUrl, buttonLabel: D.buttonLabel, buttonUrl: D.buttonUrl, greet: D.greet !== false, includeEvents: !!D.includeEvents, includeClasses: !!D.includeClasses }; }
+  function fields() { return { subject: D.subject, preheader: D.preheader, headline: D.headline, body: D.body, bodyHtml: D.bodyHtml || "", imageUrl: D.imageUrl, buttonLabel: D.buttonLabel, buttonUrl: D.buttonUrl, greet: D.greet !== false, includeEvents: !!D.includeEvents, includeClasses: !!D.includeClasses }; }
   root.appendChild(h("div", { "class": "card" }, [h("h3", { text: "Preview" }), pmsg, frame]));
 
   // send
@@ -989,6 +989,78 @@ function loading(n) { clear(n); n.appendChild(h("p", { "class": "muted", text: "
 function failed(n, er) { clear(n); n.appendChild(h("p", { "class": "msg err", text: er.message })); }
 
 /* PHOTO PICKER: shrinks the photo in the browser, uploads it, and fills in the address */
+/* RICH TEXT EDITOR (campaign message) */
+function uploadPhotoFile(f) {
+  return new Promise(function (resolve, reject) {
+    var img = new Image(), objUrl = URL.createObjectURL(f);
+    img.onload = function () {
+      var max = 1200, sc = Math.min(1, max / Math.max(img.width, img.height));
+      var c = document.createElement("canvas"); c.width = Math.round(img.width * sc); c.height = Math.round(img.height * sc);
+      var ctx = c.getContext("2d"); ctx.fillStyle = "#fff"; ctx.fillRect(0, 0, c.width, c.height); ctx.drawImage(img, 0, 0, c.width, c.height);
+      URL.revokeObjectURL(objUrl);
+      c.toBlob(function (blob) {
+        var rd = new FileReader();
+        rd.onload = function () { api("POST", "image", { data: String(rd.result).split(",")[1] }).then(function (d) { resolve(d.url); }).catch(reject); };
+        rd.readAsDataURL(blob);
+      }, "image/jpeg", 0.85);
+    };
+    img.onerror = function () { reject(new Error("That file could not be read as a photo.")); };
+    img.src = objUrl;
+  });
+}
+function richEditor(initialHtml, onChange) {
+  var COLORS = [["#1b3b22", "Forest green"], ["#aa8c2c", "Gold"], ["#0e2012", "Near black"], ["#5c6b5a", "Gray green"], ["#9b1c1c", "Red"], ["#1d4ed8", "Blue"]];
+  var SIZES = [["12", "Small"], ["16", "Normal"], ["20", "Large"], ["26", "Extra large"], ["34", "Huge"]];
+  var ed = h("div", { contenteditable: "true", role: "textbox", "aria-multiline": "true", "aria-label": "Message", style: "min-height:220px;max-height:520px;overflow:auto;border:1px solid var(--linen);border-radius:12px;padding:14px;background:#fff;font:16px/1.65 Inter,Helvetica,sans-serif;color:#0e2012" });
+  ed.innerHTML = initialHtml || "";
+  var saved = null, selImg = null, msg = h("span", { "class": "muted" });
+  try { document.execCommand("styleWithCSS", false, true); document.execCommand("defaultParagraphSeparator", false, "p"); } catch (e) {}
+  function changed() { onChange(ed.innerHTML); }
+  function keepSel() { var s = window.getSelection(); if (s.rangeCount && ed.contains(s.anchorNode)) saved = s.getRangeAt(0).cloneRange(); }
+  function restore() { ed.focus(); if (saved) { var s = window.getSelection(); s.removeAllRanges(); s.addRange(saved); } }
+  document.addEventListener("selectionchange", keepSel);
+  function cmd(name, val) { restore(); try { document.execCommand(name, false, val); } catch (e) {} fixSizes(); changed(); keepSel(); }
+  function fixSizes() { // fontSize command makes <font size=7>; turn it into an exact pixel size
+    Array.prototype.forEach.call(ed.querySelectorAll('font[size="7"]'), function (f) { f.removeAttribute("size"); f.style.fontSize = (ed._px || 16) + "px"; });
+    Array.prototype.forEach.call(ed.querySelectorAll('[style*="xxx-large"]'), function (f) { f.style.fontSize = (ed._px || 16) + "px"; });
+  }
+  function btn(label, title, fn, style) { var b = h("button", { type: "button", "class": "btn small", title: title, "aria-label": title, text: label, style: style || "" }); b.addEventListener("mousedown", function (e) { e.preventDefault(); }); b.addEventListener("click", fn); return b; }
+  var sizeSel = h("select", { "aria-label": "Text size", style: "width:auto" }, [h("option", { value: "", text: "Size" })].concat(SIZES.map(function (s) { return h("option", { value: s[0], text: s[1] }); })));
+  sizeSel.addEventListener("change", function () { if (!sizeSel.value) return; ed._px = parseInt(sizeSel.value, 10); cmd("fontSize", "7"); sizeSel.value = ""; });
+  var colorIn = h("input", { type: "color", value: "#1b3b22", "aria-label": "Custom text color", style: "width:38px;height:34px;padding:2px" });
+  colorIn.addEventListener("input", function () { cmd("foreColor", colorIn.value); });
+  var swatches = COLORS.map(function (c) { return btn("", c[1], function () { cmd("foreColor", c[0]); }, "width:28px;height:28px;padding:0;border-radius:50%;background:" + c[0] + ";border:2px solid #fff;box-shadow:0 0 0 1px #999"); });
+  var file = h("input", { type: "file", accept: "image/*", style: "display:none", "aria-label": "Choose a photo to add" });
+  file.addEventListener("change", function () {
+    var f = file.files && file.files[0]; if (!f) return; msg.textContent = "Uploading photo...";
+    uploadPhotoFile(f).then(function (url) { cmd("insertImage", url); msg.textContent = "Photo added. Click it to make it smaller."; file.value = ""; }).catch(function (er) { msg.textContent = er.message; });
+  });
+  var imgSize = h("select", { "aria-label": "Photo size", style: "width:auto;display:none" }, [["100", "Photo: full width"], ["75", "Photo: 75%"], ["50", "Photo: half"], ["25", "Photo: small"]].map(function (s) { return h("option", { value: s[0], text: s[1] }); }));
+  imgSize.addEventListener("change", function () { if (selImg) { selImg.setAttribute("data-w", imgSize.value); selImg.style.width = imgSize.value + "%"; changed(); } });
+  ed.addEventListener("click", function (e) {
+    if (selImg) selImg.style.outline = "";
+    if (e.target && e.target.tagName === "IMG") { selImg = e.target; selImg.style.outline = "3px solid #d4af37"; imgSize.value = selImg.getAttribute("data-w") || "100"; imgSize.style.display = ""; }
+    else { selImg = null; imgSize.style.display = "none"; }
+  });
+  ed.addEventListener("input", changed);
+  ed.addEventListener("paste", function (e) { // paste as plain text so Word/web styling doesn't sneak in
+    e.preventDefault(); var t = (e.clipboardData || window.clipboardData).getData("text/plain");
+    document.execCommand("insertText", false, t); changed();
+  });
+  ed.addEventListener("drop", function (e) { e.preventDefault(); });
+  var bar = h("div", { style: "display:flex;gap:6px;flex-wrap:wrap;align-items:center;margin-bottom:8px", role: "toolbar", "aria-label": "Text formatting" }, [
+    btn("B", "Bold", function () { cmd("bold"); }, "font-weight:700"), btn("I", "Italic", function () { cmd("italic"); }, "font-style:italic"), btn("U", "Underline", function () { cmd("underline"); }, "text-decoration:underline"),
+    sizeSel, h("span", { "class": "muted", text: "Color" })].concat(swatches).concat([colorIn,
+    btn("Left", "Align left", function () { cmd("justifyLeft"); }), btn("Center", "Center", function () { cmd("justifyCenter"); }),
+    btn("• List", "Bulleted list", function () { cmd("insertUnorderedList"); }),
+    btn("Link", "Make the selected text a link", function () { var u = prompt("Paste the web address (starts with https://)", "https://"); if (u && /^https:\/\/\S+$/.test(u)) cmd("createLink", u); else if (u) toast("A link needs to start with https://"); }),
+    btn("Add photo", "Add a photo where the cursor is", function () { restore(); file.click(); }),
+    imgSize, btn("Clear", "Remove formatting from the selection", function () { cmd("removeFormat"); })]));
+  return { node: h("div", null, [bar, ed, h("p", { "class": "muted", style: "margin:6px 0 0" }, [msg, "Select text, then use the buttons. Click in the message where you want a photo, then press Add photo."])]), getHtml: function () { return ed.innerHTML; }, getText: function () { return ed.innerText; }, destroy: function () { document.removeEventListener("selectionchange", keepSel); }, el: ed };
+}
+function plainToHtml(t) {
+  return String(t || "").split(/\n{2,}/).map(function (p) { return p.trim(); }).filter(Boolean).map(function (p) { return "<p>" + p.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/\n/g, "<br>") + "</p>"; }).join("");
+}
 function photoPicker(current, readyMsg, label) {
   var holder = { url: current || "" };
   var preview = h("img", { alt: "", style: "max-width:140px;max-height:140px;border-radius:12px;border:1px solid var(--linen);" + (current ? "" : "display:none") });

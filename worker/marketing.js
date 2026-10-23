@@ -1,3 +1,4 @@
+import { sanitizeRich, richToText } from "./richtext.js";
 // Mailing list + email campaigns for the admin app. The Google Sheet and the sending live in the Apps Script;
 // this file validates input, builds the branded email, and relays to the script with the shared secret.
 
@@ -44,6 +45,7 @@ export function cleanCampaign(f) {
     preheader: one(f.preheader, 150),
     headline: one(f.headline, 120),
     body: String(f.body || "").replace(/\r/g, "").slice(0, 8000).trim(),
+    bodyHtml: sanitizeRich(f.bodyHtml, 40000),
     imageUrl: HTTPS_RE.test(String(f.imageUrl || "").trim()) ? String(f.imageUrl).trim() : "",
     buttonLabel: one(f.buttonLabel, 40),
     buttonUrl: HTTPS_RE.test(String(f.buttonUrl || "").trim()) ? String(f.buttonUrl).trim() : "",
@@ -52,7 +54,8 @@ export function cleanCampaign(f) {
     includeClasses: f.includeClasses === true,
   };
   if (!out.subject) throw new Error("Add a subject line.");
-  if (!out.body && !out.headline) throw new Error("Add a headline or a message.");
+  if (out.bodyHtml) out.body = richToText(out.bodyHtml).slice(0, 8000);
+  if (!out.body && !out.bodyHtml && !out.headline) throw new Error("Add a headline or a message.");
   if (out.buttonLabel && !out.buttonUrl) throw new Error("The button needs a link that starts with https://");
   if (!out.buttonLabel) out.buttonUrl = "";
   return out;
@@ -70,7 +73,8 @@ export function buildCampaign(f, ctx) {
   const p = (inner) => `<p style="font:16px/1.65 ${SANS};color:${INK};margin:0 0 16px">${inner}</p>`;
   const sub = (title) => `<h3 style="font:700 18px/1.3 ${SERIF};color:${FOREST};margin:26px 0 8px;border-top:1px solid ${LINEN};padding-top:20px">${esc(title)}</h3>`;
   if (f.greet) { h += p("{{HI}}"); txt.push("{{HI}}", ""); }
-  paras.forEach((para) => { h += p(linkify(esc(para)).replace(/\n/g, "<br>")); txt.push(para, ""); });
+  if (f.bodyHtml) { h += f.bodyHtml; txt.push(f.body, ""); }
+  else paras.forEach((para) => { h += p(linkify(esc(para)).replace(/\n/g, "<br>")); txt.push(para, ""); });
   if (f.includeEvents && ctx.events && ctx.events.length) {
     h += sub("Where to find us");
     txt.push("WHERE TO FIND US");
