@@ -604,7 +604,7 @@
       if (note) note.textContent = fulfillment() === "event"
         ? "No shipping charge. Pick up your order at the event you choose. Any sales tax is added at secure checkout."
         : fulfillment() === "pickup"
-        ? "No shipping charge. Orders take about 5 business days to prepare, then we will email you to arrange pickup. Any sales tax is added at secure checkout."
+        ? "No shipping charge. We will email you to arrange pickup. Any sales tax is added at secure checkout."
         : "Choose your shipping option above. Orders take about 5 business days to prepare, plus the delivery time shown. Any sales tax is added at secure checkout.";
     });
   });
