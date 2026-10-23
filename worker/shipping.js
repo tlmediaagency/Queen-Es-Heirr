@@ -35,11 +35,19 @@ export const DEFAULT_SHIP = {
   emailDelivered: true,
 };
 
+const ADDR_KEYS = ["name", "company", "street1", "street2", "city", "state", "zip", "phone", "email"];
+function cleanAddr(f) {
+  f = f && typeof f === "object" ? f : {};
+  const a = { name: one(f.name, 60), company: one(f.company, 60), street1: one(f.street1, 80), street2: one(f.street2, 60), city: one(f.city, 50), state: one(f.state, 20).toUpperCase(), zip: one(f.zip, 10), phone: one(f.phone, 20), email: EMAIL_RE.test(f.email || "") ? String(f.email).trim() : "" };
+  if (a.state && !/^[A-Z]{2}$/.test(a.state)) throw new Error("Use the 2-letter state, like TX.");
+  if (a.zip && !/^\d{5}(-\d{4})?$/.test(a.zip)) throw new Error("The ZIP code should look like 75001.");
+  return a;
+}
 export async function readShipSettings(env) {
   let s = {};
   try { s = JSON.parse((await env.ADMIN_KV.get("shipping")) || "{}"); } catch { s = {}; }
   if (Array.isArray(s.presets) && !s.presets.some((x) => x.template)) s.presets = s.presets.concat(DEFAULT_SHIP.presets.filter((x) => x.template));
-  return { ...DEFAULT_SHIP, ...s, from: { ...DEFAULT_SHIP.from, ...(s.from || {}) }, weights: { ...DEFAULT_WEIGHTS, ...(s.weights || {}) } };
+  return { ...DEFAULT_SHIP, ret: { ...(DEFAULT_SHIP.ret || {}) }, ...s, from: { ...DEFAULT_SHIP.from, ...(s.from || {}) }, weights: { ...DEFAULT_WEIGHTS, ...(s.weights || {}) } };
 }
 
 export function cleanShipSettings(b) {
@@ -58,7 +66,9 @@ export function cleanShipSettings(b) {
   if (!presets.length) throw new Error("Keep at least one box size.");
   const weights = {};
   for (const [k, def] of Object.entries(DEFAULT_WEIGHTS)) { const w = num((b.weights || {})[k], 0, 1600); weights[k] = w == null ? def : w; }
-  return { from, presets, packagingOz: num(b.packagingOz, 0, 400) ?? 6, weights, emailShipped: b.emailShipped !== false, emailDelivered: b.emailDelivered !== false };
+  const ret = cleanAddr(b.ret);
+  if (ret.street1 && !(ret.city && ret.state && ret.zip)) throw new Error("The return address needs a city, state and ZIP.");
+  return { from, ret, presets, packagingOz: num(b.packagingOz, 0, 400) ?? 6, weights, emailShipped: b.emailShipped !== false, emailDelivered: b.emailDelivered !== false };
 }
 
 // ---- Shippo ------------------------------------------------------------------------------------
@@ -191,7 +201,7 @@ export async function shippingRoute(route, method, body, env, me, deps, j, origi
   try {
     const st = await readShipSettings(env);
     if (route === "ship-settings" && method === "GET") {
-      return j({ settings: st, mode: mode(env), webhookUrl: `${origin}/shippo-webhook?k=${await webhookKey(env)}`, ready: !!(st.from.street1 && st.from.city && st.from.state && st.from.zip && st.from.phone) });
+      return j({ settings: st, mode: mode(env), webhookUrl: `${origin}/shippo-webhook?k=${await webhookKey(env)}`, lastWebhook: await (async () => { try { return JSON.parse((await env.ADMIN_KV.get("shipwebhook")) || "null"); } catch { return null; } })(), ready: !!(st.from.street1 && st.from.city && st.from.state && st.from.zip && st.from.phone) });
     }
     if (route === "ship-settings" && method === "POST") {
       const clean = cleanShipSettings(body.settings);
@@ -243,6 +253,7 @@ export async function shippingRoute(route, method, body, env, me, deps, j, origi
         parcel = { length: String(L), width: String(W), height: String(H), distance_unit: "in", weight: String(oz), mass_unit: "oz" };
       }
       const req = { address_from: addrOf(st.from), address_to: toShippoTo(o), parcels: [parcel], async: false };
+      if (st.ret && st.ret.street1 && st.ret.city && st.ret.state && st.ret.zip) req.address_return = addrOf({ ...st.ret, name: st.ret.name || st.ret.company || st.from.company || st.from.name, company: st.ret.company || st.from.company, phone: st.ret.phone || st.from.phone, email: st.ret.email || st.from.email });
       if (body.qr === true) req.extra = { qr_code_requested: true };
       const sh = await shippo(env, "POST", "/shipments/", req);
       const rates = (sh.rates || []).filter((r) => String(r.provider).toUpperCase() === "USPS").map((r) => ({
@@ -353,11 +364,13 @@ export async function shippoWebhook(request, env, ctx, deps) {
   if (!env.ADMIN_KV || !env.SESSION_SECRET) return ok({ error: "off" }, 503);
   if (url.searchParams.get("k") !== (await webhookKey(env))) return ok({ error: "no" }, 403);
   let ev; try { ev = await request.json(); } catch { return ok({ error: "bad" }, 400); }
+  try { await env.ADMIN_KV.put("shipwebhook", JSON.stringify({ at: Date.now(), event: one(ev && ev.event, 40), matched: false })); } catch { /* not important */ }
   if (!ev || ev.event !== "track_updated" || !ev.data || !ev.data.tracking_number) return ok({ ok: true });
   const id = await env.ADMIN_KV.get("shiptrack:" + ev.data.tracking_number);
   if (!id) return ok({ ok: true, ignored: true });
   const rec = await readRec(env, id);
   if (!rec || rec.voided) return ok({ ok: true });
+  try { await env.ADMIN_KV.put("shipwebhook", JSON.stringify({ at: Date.now(), event: "track_updated", matched: true })); } catch { /* not important */ }
   const ts = ev.data.tracking_status || {};
   const status = STATUSES.includes(ts.status) ? ts.status : "UNKNOWN";
   rec.status = status; rec.statusDetail = one(ts.status_details, 200); rec.statusDate = one(ts.status_date, 40);

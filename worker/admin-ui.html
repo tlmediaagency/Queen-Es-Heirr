@@ -366,6 +366,11 @@ function viewShipSetup(n) {
       h("label", null, ["Street", F.street1]), h("label", null, ["Apt / suite", F.street2]),
       h("div", { "class": "row" }, [h("label", null, ["City", F.city]), h("label", null, ["State (2 letters)", F.state]), h("label", null, ["ZIP", F.zip])]),
       h("div", { "class": "row" }, [h("label", null, ["Phone", F.phone]), h("label", null, ["Email", F.email])])]);
+    var R = {}, rt = s.ret || {}; ["company", "street1", "street2", "city", "state", "zip"].forEach(function (k) { R[k] = h("input", { value: rt[k] || "" }); });
+    var retCard = h("div", { "class": "card" }, [h("h3", { text: "Return address on the label (optional)" }),
+      h("p", { "class": "muted", text: "USPS requires a return address on every label, and customers will see it. To keep her home address private, enter a PO Box or business mailbox here. Her home address above is still used for pickups and for pricing. Leave this blank to print the home address." }),
+      h("label", null, ["Name on label", R.company]), h("label", null, ["Street or PO Box", R.street1]), h("label", null, ["Apt / suite", R.street2]),
+      h("div", { "class": "row" }, [h("label", null, ["City", R.city]), h("label", null, ["State (2 letters)", R.state]), h("label", null, ["ZIP", R.zip])])]);
     var presets = s.presets.map(function (p) { return { id: p.id, template: p.template || "", name: h("input", { value: p.name }), l: h("input", { value: p.length }), w: h("input", { value: p.width }), h: h("input", { value: p.height }) }; });
     var boxCard = h("div", { "class": "card" }, [h("h3", { text: "Box sizes (inches)" })].concat(presets.map(function (p) { return p.template ? h("div", { "class": "row" }, [h("label", null, ["Name (USPS box)", p.name])]) : h("div", { "class": "row" }, [h("label", null, ["Name", p.name]), h("label", null, ["L", p.l]), h("label", null, ["W", p.w]), h("label", null, ["H", p.h])]); })));
     var WK = ["Jams", "Pickled goods", "Books", "Curriculum & Resources"], WI = {};
@@ -378,15 +383,17 @@ function viewShipSetup(n) {
       h("label", { "class": "chk" }, [e1, "Email tracking when a label is made"]), h("label", { "class": "chk" }, [e2, "Email when USPS shows it was delivered"])]);
     var msg = h("p", { "class": "msg", role: "status" });
     var wh = h("input", { value: d.webhookUrl, readonly: "readonly", onclick: function (e) { e.target.select(); } });
-    n.appendChild(fromCard); n.appendChild(boxCard); n.appendChild(wCard); n.appendChild(eCard);
+    n.appendChild(fromCard); n.appendChild(retCard); n.appendChild(boxCard); n.appendChild(wCard); n.appendChild(eCard);
     n.appendChild(h("p", null, [h("button", { "class": "btn primary", text: "Save shipping setup", onclick: function () {
       var from = {}; Object.keys(F).forEach(function (k) { from[k] = F[k].value; });
       var weights = {}; WK.forEach(function (k) { weights[k] = WI[k].value; });
-      api("POST", "ship-settings", { settings: { from: from, presets: presets.map(function (p) { return { id: p.id, template: p.template, name: p.name.value, length: p.l.value, width: p.w.value, height: p.h.value }; }), weights: weights, packagingOz: pack.value, emailShipped: e1.checked, emailDelivered: e2.checked } })
+      var ret = {}; Object.keys(R).forEach(function (k) { ret[k] = R[k].value; });
+      api("POST", "ship-settings", { settings: { from: from, ret: ret, presets: presets.map(function (p) { return { id: p.id, template: p.template, name: p.name.value, length: p.l.value, width: p.w.value, height: p.h.value }; }), weights: weights, packagingOz: pack.value, emailShipped: e1.checked, emailDelivered: e2.checked } })
         .then(function () { toast("Saved"); msg.className = "msg ok"; msg.textContent = "Saved."; }).catch(function (er) { msg.className = "msg err"; msg.textContent = er.message; });
     } }), msg]));
     n.appendChild(h("div", { "class": "card" }, [h("h3", { text: "Delivery updates from Shippo" }),
-      h("p", { "class": "muted", text: "In Shippo, go to Settings > API > Webhooks, add a webhook for Track Updated, and paste this address. Then orders mark themselves delivered." }), wh]));
+      h("p", { "class": "muted", text: "In Shippo, go to Settings > API > Webhooks, add a webhook for Track Updated, and paste this address. Then orders mark themselves delivered." }), wh,
+      h("p", { "class": "muted", text: d.lastWebhook ? "Last message from Shippo: " + new Date(d.lastWebhook.at).toLocaleString() + (d.lastWebhook.matched ? " (matched a package)" : " (a test or unknown package, nothing to update)") : "Nothing received from Shippo yet. After you press Send sample in Shippo, reload this page to check." })]));
   }).catch(function (er) { failed(n, er); });
 }
 
