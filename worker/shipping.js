@@ -2,6 +2,8 @@
 // follow delivery, refund unused labels, and schedule a USPS pickup or plan a drop-off day.
 // Needs the secret SHIPPO_API_KEY (use a shippo_test_ key first). Customer emails go out through the Apps Script.
 
+import { PDFDocument } from "pdf-lib";
+
 const SHIPPO = "https://api.goshippo.com";
 const FOREST = "#1b3b22", GOLD = "#d4af37", CREAM = "#fcfaf7", INK = "#0e2012", LINEN = "#e5dbd1";
 const SERIF = "Georgia,'Times New Roman',serif", SANS = "Helvetica,Arial,sans-serif";
@@ -327,6 +329,47 @@ export async function shippingRoute(route, method, body, env, me, deps, j, origi
         if (body.notify === true && rec.email) { try { await sendMail(env, rec.email, buildShipEmail("shipdate", await loadOrder(env, deps, id), rec, { site: env.SITE_URL })); mailed++; } catch { /* keep going */ } }
       }
       return j({ ok: true, updated: n, emailed: mailed });
+    }
+    if (route === "ship-labels" && method === "POST") {
+      // One PDF with every selected label (the same Shippo label files, joined, 4x6 each).
+      const ids = (Array.isArray(body.ids) ? body.ids : []).filter((x) => ID_RE.test(x)).slice(0, 25);
+      if (!ids.length) return j({ error: "Tick the packages you want to print." }, 400);
+      const out = await PDFDocument.create();
+      let n = 0, skipped = 0;
+      for (const id of ids) {
+        const rec = await readRec(env, id);
+        if (!rec || rec.voided || !rec.labelUrl || rec.qrUrl) { skipped++; continue; }
+        try {
+          const r = await fetch(rec.labelUrl);
+          const bytes = new Uint8Array(await r.arrayBuffer());
+          if (!r.ok || String.fromCharCode(...bytes.slice(0, 4)) !== "%PDF") { skipped++; continue; }
+          const src = await PDFDocument.load(bytes, { ignoreEncryption: true });
+          (await out.copyPages(src, src.getPageIndices())).forEach((pg) => out.addPage(pg)); n++;
+        } catch { skipped++; }
+      }
+      if (!n) return j({ error: "None of those labels could be put in one file. Open them one at a time with the Label button." }, 400);
+      const pdf = await out.save();
+      return new Response(pdf, { headers: { "Content-Type": "application/pdf", "Content-Disposition": "inline; filename=labels.pdf", "X-Labels": String(n), "X-Skipped": String(skipped), "Cache-Control": "no-store" } });
+    }
+    if (route === "ship-scan" && method === "POST") {
+      const ids = (Array.isArray(body.ids) ? body.ids : []).filter((x) => ID_RE.test(x)).slice(0, 100);
+      if (!ids.length) return j({ error: "Tick the packages for the SCAN form." }, 400);
+      const date = DATE_RE.test(body.date || "") && body.date >= todayCentral() ? body.date : todayCentral();
+      const recs = [];
+      for (const id of ids) { const r = await readRec(env, id); if (r && !r.voided && r.transactionId) recs.push(r); }
+      if (!recs.length) return j({ error: "None of those packages have labels." }, 400);
+      if (!(st.from.street1 && st.from.zip && st.from.phone)) return j({ error: "Add your ship-from address and phone in Shipping Setup first." }, 400);
+      const accts = await shippo(env, "GET", "/carrier_accounts?carrier=usps&service_levels=false");
+      const acct = (accts.results || []).find((a) => a.active !== false) || (accts.results || [])[0];
+      if (!acct) return j({ error: "No USPS account was found in Shippo." }, 400);
+      let mf = await shippo(env, "POST", "/manifests/", { carrier_account: acct.object_id, shipment_date: date + "T23:59:59Z", address_from: addrOf(st.from), transactions: recs.map((r) => r.transactionId), async: false });
+      for (let i = 0; i < 4 && mf.status === "QUEUED"; i++) { await new Promise((r) => setTimeout(r, 1500)); mf = await shippo(env, "GET", "/manifests/" + mf.object_id); }
+      if (mf.status !== "SUCCESS" || !(mf.documents || []).length) {
+        const why = (mf.errors || []).map((e) => (e && (e.text || e.message)) || e).filter((x) => typeof x === "string")[0];
+        return j({ error: mf.status === "QUEUED" ? "USPS is still making the SCAN form. Try again in a minute." : "Shippo could not make the SCAN form" + (why ? ": " + why : ". Packages already on another SCAN form, or from a different day or service, can't be included.") }, 400);
+      }
+      for (const r of recs) { r.scanUrl = mf.documents[0]; r.scanDate = date; await writeRec(env, r); }
+      return j({ ok: true, url: mf.documents[0], count: recs.length });
     }
     if (route === "ship-pickup" && method === "POST") {
       const ids = (Array.isArray(body.ids) ? body.ids : []).filter((x) => ID_RE.test(x)).slice(0, 40);

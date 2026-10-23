@@ -328,6 +328,27 @@ function viewShipped(n) {
     var date = h("input", { type: "date" }), start = h("input", { type: "time", value: "09:00" }), end = h("input", { type: "time", value: "17:00" });
     var loc = h("select", null, ["Front Door", "Back Door", "Side Door", "Knock on Door or Ring Bell", "Mail Room", "Office", "Reception", "In/At Mailbox", "Other"].map(function (x) { return h("option", { value: x, text: x }); }));
     var ins = h("input", { placeholder: "Where to leave packages (optional)" }), pm = h("p", { "class": "msg", role: "status" }), notifyPlan = h("input", { type: "checkbox" });
+    var pdfBox = h("div", { "class": "noprint" }), pdfMsg = h("p", { "class": "msg", role: "status" });
+    function picked() { return Object.keys(sel).filter(function (k) { return sel[k]; }); }
+    function openPdfLink(blobUrl, text) { clear(pdfBox); pdfBox.appendChild(h("p", null, [h("a", { "class": "btn primary", href: blobUrl, target: "_blank", rel: "noopener noreferrer", text: text })])); }
+    var printBtn = h("button", { "class": "btn small primary", text: "Print selected labels (one file)", onclick: function (e) {
+      var ids = picked(); if (!ids.length) { pdfMsg.className = "msg err"; pdfMsg.textContent = "Tick the packages first."; return; }
+      var b = e.currentTarget; b.disabled = true; pdfMsg.className = "msg"; pdfMsg.textContent = "Putting the labels together..."; clear(pdfBox);
+      fetch("/admin/api/ship-labels", { method: "POST", headers: { "Content-Type": "application/json", Authorization: "Bearer " + TOKEN }, body: JSON.stringify({ ids: ids }) }).then(function (r) {
+        if (!r.ok) return r.json().then(function (d) { throw new Error(d.error || "That did not work"); });
+        var sk = Number(r.headers.get("X-Skipped") || 0), cnt = r.headers.get("X-Labels");
+        return r.blob().then(function (bl) { pdfMsg.className = "msg ok"; pdfMsg.textContent = cnt + " label" + (cnt === "1" ? "" : "s") + " ready." + (sk ? " " + sk + " could not be added (QR code or missing label); open those one at a time." : ""); openPdfLink(URL.createObjectURL(new Blob([bl], { type: "application/pdf" })), "Open the labels to print"); });
+      }).catch(function (er) { pdfMsg.className = "msg err"; pdfMsg.textContent = er.message; }).then(function () { b.disabled = false; });
+    } });
+    var scanBtn = h("button", { "class": "btn small", text: "Make SCAN form for selected", onclick: function (e) {
+      var ids = picked(); if (!ids.length) { pdfMsg.className = "msg err"; pdfMsg.textContent = "Tick the packages first."; return; }
+      var b = e.currentTarget; b.disabled = true; pdfMsg.className = "msg"; pdfMsg.textContent = "Asking USPS for the SCAN form..."; clear(pdfBox);
+      api("POST", "ship-scan", { ids: ids, date: date.value }).then(function (r) { pdfMsg.className = "msg ok"; pdfMsg.textContent = "SCAN form ready for " + r.count + " package" + (r.count === 1 ? "" : "s") + ". Print it and bring it with the packages."; clear(pdfBox); pdfBox.appendChild(h("p", null, [h("a", { "class": "btn primary", href: r.url, target: "_blank", rel: "noopener noreferrer", text: "Open the SCAN form" })])); })
+        .catch(function (er) { pdfMsg.className = "msg err"; pdfMsg.textContent = er.message; }).then(function () { b.disabled = false; });
+    } });
+    n.appendChild(h("div", { "class": "card noprint" }, [h("h3", { text: "Print labels and SCAN form" }),
+      h("p", { "class": "muted", text: "Tick packages below. The combined file is made from the same labels Shippo made (nothing changes in Shippo). The SCAN form is the single barcode the post office scans for the whole group, so nobody scans each package. Labels are 4x6; choose \"actual size\" or \"fit\" in your print window." }),
+      h("div", { style: "display:flex;gap:8px;flex-wrap:wrap" }, [printBtn, scanBtn]), pdfMsg, pdfBox]));
     n.appendChild(h("div", { "class": "card" }, [h("h3", { text: "Pickup or drop-off day" }),
       h("p", { "class": "muted", text: "Tick the packages below, pick a day. USPS will pick up Priority Mail packages from your address (free, one request per day). Ground Advantage packages must be dropped off, so just save the day." }),
       h("label", null, ["Day", date]), h("div", { "class": "row" }, [h("label", null, ["From", start]), h("label", null, ["To", end])]),
@@ -349,6 +370,7 @@ function viewShipped(n) {
         h("div", { style: "display:flex;justify-content:space-between;gap:8px;flex-wrap:wrap" }, [h("label", { "class": "chk" }, [cb, h("strong", { text: r.name || r.email })]), h("span", { "class": "pill", text: shipBadge(r.status) })]),
         h("p", { "class": "muted", text: [r.service, r.trackingNumber, r.statusDetail, r.location].filter(Boolean).join(" · ") }),
         plan ? h("p", { text: plan }) : null,
+        r.scanUrl ? h("p", { "class": "muted" }, ["On a SCAN form (" + shipDay(r.scanDate) + "). ", h("a", { href: r.scanUrl, target: "_blank", rel: "noopener noreferrer", text: "Open SCAN form" })]) : null,
         h("p", null, [
           r.labelUrl ? h("a", { "class": "btn small", href: r.labelUrl, target: "_blank", rel: "noopener noreferrer", text: "Label" }) : null, " ", r.qrUrl ? h("a", { "class": "btn small", href: r.qrUrl, target: "_blank", rel: "noopener noreferrer", text: "QR code" }) : null, " ",
           r.trackingUrl ? h("a", { "class": "btn small", href: r.trackingUrl, target: "_blank", rel: "noopener noreferrer", text: "Track" }) : null, " ",
