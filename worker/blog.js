@@ -1,3 +1,4 @@
+import { sanitizeRich, richToText } from "./richtext.js";
 // Queen Talk blog: posts live in the ADMIN_KV key "blog" and are written in the admin app.
 // The website (queenesheirr.com/stories/) fetches them from the public routes below.
 // Post text is simple formatting (## headings, - lists, **bold**, [links](https://...), ![photo](url)); it is escaped and turned into safe HTML here.
@@ -67,14 +68,18 @@ export function renderBody(text, origin) {
   flushP(); flushL();
   return out.join("\n");
 }
+const webHtml = (html, origin) => sanitizeRich(html, 60000, { web: true, imgOk: (u) => okImage(u, origin) || /^https:\/\/[a-z0-9.-]+\/img\/[a-f0-9]{16,32}\.jpg$/.test(u) });
+// A post is stored as bodyHtml (rich editor). Older posts only have markdown-style body text.
+const postHtml = (p, origin) => (p.bodyHtml ? webHtml(p.bodyHtml, origin) : renderBody(p.body, origin));
 const plain = (text) => String(text || "").replace(/!\[[^\]]*\]\([^)]*\)/g, "").replace(/\[([^\]]*)\]\([^)]*\)/g, "$1").replace(/[#>*_`-]+/g, " ").replace(/\s+/g, " ").trim();
 
 function cleanPost(b, origin, existing, all) {
   b = b && typeof b === "object" ? b : {};
   const title = one(b.title, 120);
   if (!title) throw new Error("Give the post a title.");
-  const body = String(b.body || "").replace(/\r/g, "").slice(0, 30000).trim();
-  if (!body) throw new Error("Write something in the post.");
+  let bodyHtml = typeof b.bodyHtml === "string" ? webHtml(b.bodyHtml, origin) : "";
+  let body = bodyHtml ? richToText(bodyHtml).slice(0, 30000) : String(b.body || "").replace(/\r/g, "").slice(0, 30000).trim();
+  if (!body && !/<img /.test(bodyHtml)) throw new Error("Write something in the post.");
   let slug = slugify(one(b.slug, 80) || title);
   if (!SLUG_RE.test(slug)) slug = "post";
   const taken = (s) => all.some((p) => p.slug === s && (!existing || p.id !== existing.id));
@@ -84,7 +89,7 @@ function cleanPost(b, origin, existing, all) {
   const image = String(b.image || "").trim();
   if (image && !okImage(image, origin)) throw new Error("That cover photo is not allowed. Upload it with the photo button.");
   return { id: existing ? existing.id : "", slug, title, category: one(b.category, 30), author: one(b.author, 60) || "Queen E's Heirr", date, status, image,
-    excerpt: one(b.excerpt, 300) || plain(body).slice(0, 180).replace(/\s\S*$/, "") + "...", body, updated: Date.now() };
+    excerpt: one(b.excerpt, 300) || plain(body).slice(0, 180).replace(/\s\S*$/, "") + "...", body, bodyHtml, updated: Date.now() };
 }
 
 const live = (p) => p.status === "published" && p.date <= todayCentral();
@@ -96,10 +101,10 @@ export async function blogRoute(route, method, body, env, me, j, origin) {
   try {
     if (route === "blog-posts" && method === "GET") {
       const posts = (await readPosts(env)).slice().sort((a, b) => (b.date + b.updated).localeCompare(a.date + a.updated));
-      return j({ posts: posts.map((p) => ({ ...p, live: live(p) })), today: todayCentral() });
+      return j({ posts: posts.map((p) => ({ ...p, bodyHtml: p.bodyHtml || webHtml(renderBody(p.body, origin), origin), live: live(p) })), today: todayCentral() });
     }
     if (route === "blog-preview" && method === "POST") {
-      return j({ html: renderBody(body.body, origin) });
+      return j({ html: typeof body.bodyHtml === "string" ? webHtml(body.bodyHtml, origin) : renderBody(body.body, origin) });
     }
     if (route === "blog-save" && method === "POST") {
       const posts = await readPosts(env);
@@ -154,7 +159,7 @@ export async function blogPublic(url, env, headers, json) {
   if (m) {
     const p = (await readPosts(env)).filter(live).find((x) => x.slug === m[1]);
     if (!p) return json({ error: "Not found" }, 404, headers);
-    return json({ post: { ...pub(p), html: renderBody(p.body, url.origin), share: `${url.origin}/blog/share/${p.slug}` } }, 200, cache);
+    return json({ post: { ...pub(p), html: postHtml(p, url.origin), share: `${url.origin}/blog/share/${p.slug}` } }, 200, cache);
   }
   return null;
 }

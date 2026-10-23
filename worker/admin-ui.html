@@ -210,9 +210,8 @@ var GROUPS = [
   ["Shipping", [["toship", "To Ship"], ["shipped", "Shipped"], ["shipsetup", "Shipping Setup"]]],
   ["Wholesale", [["wsorders", "Refill Orders"], ["wsvendors", "Vendors"]]],
   ["Events", [["events", "Events"]]],
-  ["Blog", [["blog", "Blog Posts"]]],
   ["Classes & Bookings", [["classes", "Classes"], ["bookings", "Bookings"]]],
-  ["Marketing", [["subscribers", "Mailing List"], ["campaigns", "Email Campaigns"]]]
+  ["Marketing", [["subscribers", "Mailing List"], ["campaigns", "Email Campaigns"], ["blog", "Blog Posts"]]]
 ];
 function groupOf(key) { return GROUPS.filter(function (g) { return g[1].some(function (v) { return v[0] === key; }); })[0] || null; }
 var current = "orders";
@@ -454,30 +453,22 @@ function blogEditor(n, p, today) {
   var status = h("select", null, [["draft", "Draft (private)"], ["published", "Published"]].map(function (o) { return h("option", { value: o[0], selected: o[0] === p.status, text: o[1] }); }));
   var excerpt = h("textarea", { rows: "2", maxlength: "300", placeholder: "One or two sentences shown on the Queen Talk page. Leave blank to use the start of the post." }); excerpt.value = p.excerpt && !isNew ? p.excerpt : "";
   var slug = h("input", { value: p.slug, maxlength: "80", placeholder: "made-from-the-title", autocapitalize: "off" });
-  var body = h("textarea", { rows: "16", maxlength: "30000", "aria-label": "Post text", style: "font-family:inherit;line-height:1.5" }); body.value = p.body;
   var cover = photoPicker(p.image, "Cover photo ready.", "Cover photo (optional)");
-  var inl = photoPicker("", "Photo ready. Press Add photo to post.", "Photo inside the post");
+  var bodyHtml = p.bodyHtml || "";
+  var ed = richEditor(bodyHtml, function (html) { bodyHtml = html; queue(); });
   var msg = h("p", { "class": "msg", role: "status" });
-  function wrap(a, b, ph) { var s0 = body.selectionStart, e0 = body.selectionEnd, sel = body.value.slice(s0, e0) || ph; body.value = body.value.slice(0, s0) + a + sel + b + body.value.slice(e0); body.focus(); body.setSelectionRange(s0 + a.length, s0 + a.length + sel.length); queue(); }
-  function line(pre, ph) { var s0 = body.selectionStart; var before = body.value.slice(0, s0), nl = before.length && !/\n\n$/.test(before) ? (/\n$/.test(before) ? "\n" : "\n\n") : ""; body.value = before + nl + pre + ph + "\n\n" + body.value.slice(body.selectionEnd); body.focus(); queue(); }
-  var bar = h("div", { style: "display:flex;flex-wrap:wrap;gap:6px" }, [
-    h("button", { type: "button", "class": "btn small", text: "Heading", onclick: function () { line("## ", "Heading"); } }),
-    h("button", { type: "button", "class": "btn small", text: "Bold", onclick: function () { wrap("**", "**", "bold text"); } }),
-    h("button", { type: "button", "class": "btn small", text: "Link", onclick: function () { var u = prompt("Paste the web link (starts with https://)"); if (u) wrap("[", "](" + u.trim() + ")", "link text"); } }),
-    h("button", { type: "button", "class": "btn small", text: "Bulleted list", onclick: function () { line("- ", "First item\n- Second item"); } }),
-    h("button", { type: "button", "class": "btn small", text: "Quote", onclick: function () { line("> ", "A favorite line"); } })]);
   var frame = h("iframe", { title: "Post preview", sandbox: "", style: "width:100%;height:520px;border:1px solid var(--linen);border-radius:14px;background:#fff" });
   var pt = null;
   function queue() { clearTimeout(pt); pt = setTimeout(prev, 600); }
   function prev() {
-    api("POST", "blog-preview", { body: body.value }).then(function (r) {
+    api("POST", "blog-preview", { bodyHtml: bodyHtml }).then(function (r) {
       frame.srcdoc = '<meta charset="utf-8"><style>body{font:17px/1.7 Georgia,serif;color:#0e2012;max-width:640px;margin:20px auto;padding:0 16px}h2,h3{color:#1b3b22}img{max-width:100%;border-radius:12px}blockquote{border-left:4px solid #d4af37;margin:1em 0;padding:.2em 1em;color:#3d5440}a{color:#1b3b22}figure{margin:1.2em 0}figcaption{font-size:.85em;color:#667}</style><h1 style="color:#1b3b22;font-size:1.8rem">' +
         title.value.replace(/[&<>]/g, function (c) { return { "&": "&amp;", "<": "&lt;", ">": "&gt;" }[c]; }) + "</h1>" + r.html;
     }).catch(function () {});
   }
-  body.addEventListener("input", queue); title.addEventListener("input", queue);
+  title.addEventListener("input", queue);
   function save(goStatus) {
-    var payload = { id: p.id, title: title.value, slug: slug.value, category: cat.value, author: author.value, date: date.value, status: goStatus || status.value, image: cover.holder.url, excerpt: excerpt.value, body: body.value };
+    var payload = { id: p.id, title: title.value, slug: slug.value, category: cat.value, author: author.value, date: date.value, status: goStatus || status.value, image: cover.holder.url, excerpt: excerpt.value, bodyHtml: bodyHtml };
     msg.className = "msg"; msg.textContent = "Saving...";
     return api("POST", "blog-save", payload).then(function (r) { p = r.post; status.value = p.status; slug.value = p.slug; isNew = false; msg.className = "msg ok"; msg.textContent = p.status === "published" ? (p.live ? "Saved and live on your site." : "Saved. It will go live on " + p.date + ".") : "Saved as a draft."; toast("Saved"); drawActions(); return r; })
       .catch(function (er) { msg.className = "msg err"; msg.textContent = er.message; });
@@ -501,13 +492,7 @@ function blogEditor(n, p, today) {
   n.appendChild(h("div", { "class": "card", style: "display:grid;gap:14px" }, [cats,
     h("label", null, ["Title", title]), h("div", { "class": "row" }, [h("label", null, ["Category", cat]), h("label", null, ["Author", author])]),
     cover.node, h("label", null, ["Short summary (optional)", excerpt]),
-    h("div", null, [h("p", { style: "margin:0 0 6px;font-weight:600", text: "Post" }), bar, h("div", { style: "height:6px" }), body,
-      h("p", { "class": "muted", text: "Leave a blank line between paragraphs. Use the buttons above for headings, bold, links and lists." })]),
-    h("div", null, [inl.node, h("p"), h("button", { type: "button", "class": "btn small", text: "Add photo to post", onclick: function () {
-      if (!inl.holder.url) { toast("Choose a photo first"); return; }
-      var s0 = body.selectionStart; var cap = prompt("Caption (optional)") || "";
-      body.value = body.value.slice(0, s0) + (s0 && !/\n\n$/.test(body.value.slice(0, s0)) ? "\n\n" : "") + "![" + cap.replace(/[\[\]\n]/g, " ") + "](" + inl.holder.url + ")\n\n" + body.value.slice(s0); inl.holder.url = ""; toast("Photo added"); queue();
-    } })])]));
+    h("div", null, [h("p", { style: "margin:0 0 6px;font-weight:600", text: "Post" }), ed.node])]));
   n.appendChild(h("div", { "class": "card" }, [h("h3", { text: "Preview" }), frame]));
   n.appendChild(h("div", { "class": "card", style: "display:grid;gap:14px" }, [
     h("div", { "class": "row" }, [h("label", null, ["Publish date", date]), h("label", null, ["Status", status])]),

@@ -32,8 +32,26 @@ function cleanStyle(style, extra) {
   (extra || []).forEach((e) => { const p = e.split(":")[0]; if (!keep.some((k) => k.startsWith(p + ":"))) keep.push(e); });
   return keep.join(";");
 }
+let WEB = false, IMG_OK = null;
 const PSTYLE = `font:16px/1.65 ${SANS};color:${INK};margin:0 0 16px`;
+function openWeb(tag, a) {
+  const st = cleanStyle(a.style), at = st ? ` style="${st}"` : "";
+  switch (tag) {
+    case "p": case "h2": case "li": case "blockquote": return `<${tag}${at}>`;
+    case "ul": case "ol": return `<${tag}>`;
+    case "strong": case "em": case "u": return `<${tag}${at}>`;
+    case "span": {
+      let s = st;
+      if (a.color && COLOR_RE.test(a.color)) s = cleanStyle(s + ";color:" + a.color);
+      if (a.size && FONT_SIZES[a.size]) s = cleanStyle(s + ";font-size:" + FONT_SIZES[a.size] + "px");
+      return `<span${s ? ` style="${s}"` : ""}>`;
+    }
+    case "a": { const href = String(a.href || ""); return `<a href="${esc(href)}" rel="noopener noreferrer"${/^https:\/\/(www\.)?queenesheirr\.com/.test(href) || href.startsWith("mailto:") ? "" : ' target="_blank"'}${at}>`; }
+  }
+  return "";
+}
 function open(tag, a) {
+  if (WEB) return openWeb(tag, a);
   const st = cleanStyle(a.style);
   switch (tag) {
     case "p": return `<p style="${PSTYLE}${st ? ";" + st : ""}">`;
@@ -56,7 +74,8 @@ function open(tag, a) {
   }
   return "";
 }
-export function sanitizeRich(input, max) {
+export function sanitizeRich(input, max, opts) {
+  WEB = !!(opts && opts.web); IMG_OK = (opts && opts.imgOk) || null;
   let html = String(input || "").replace(/\r/g, "").replace(/<!--[\s\S]*?-->/g, "").replace(DROP_WITH_CONTENT, "");
   html = html.slice(0, max || 40000);
   const out = [], stack = []; // stack of {tag, implicit}
@@ -87,10 +106,10 @@ export function sanitizeRich(input, max) {
     if (tag === "br") { ensureInline(); out.push("<br>"); continue; }
     if (tag === "img") {
       const srcUrl = String(a.src || "");
-      if (!/^https:\/\/[^\s"'<>]{4,500}$/.test(srcUrl)) continue;
+      if (!/^https:\/\/[^\s"'<>]{4,500}$/.test(srcUrl) || (IMG_OK && !IMG_OK(srcUrl))) continue;
       const w = parseInt(a["data-w"], 10), pct = [25, 50, 75, 100].includes(w) ? w : 100;
       ensureInline();
-      out.push(`<img src="${esc(srcUrl)}" alt="${esc((a.alt || "").slice(0, 120))}" data-w="${pct}" style="display:block;width:${pct}%;max-width:100%;height:auto;margin:14px auto;border:0;border-radius:12px">`);
+      out.push(`<img src="${esc(srcUrl)}" alt="${esc((a.alt || "").slice(0, 120))}" data-w="${pct}" ${WEB ? 'loading="lazy" ' : ""}style="display:block;width:${pct}%;max-width:100%;height:auto;margin:${WEB ? "1.2em" : "14px"} auto;border:0;border-radius:12px">`);
       continue;
     }
     if (tag === "p" || tag === "h2" || tag === "ul" || tag === "ol" || tag === "blockquote") { while (stack.length && (stack[stack.length - 1].tag === "p" || stack[stack.length - 1].tag === "h2")) popTo(stack.length - 1); }
@@ -101,7 +120,7 @@ export function sanitizeRich(input, max) {
   }
   text(html.slice(last));
   popTo(0);
-  return out.join("").replace(/(<p [^>]*>)\s*(<\/p>)/g, "$1<br>$2");
+  return out.join("").replace(/(<p(?: [^>]*)?>)\s*(<\/p>)/g, "$1<br>$2");
 }
 export function richToText(html) {
   return decode(String(html || "")
