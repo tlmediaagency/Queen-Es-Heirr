@@ -394,6 +394,8 @@ function viewShipSetup(n) {
       api("POST", "ship-settings", { settings: { from: from, ret: ret, presets: presets.map(function (p) { return { id: p.id, template: p.template, name: p.name.value, length: p.l.value, width: p.w.value, height: p.h.value, maxOz: p.maxOz.value }; }), markup: markup.value, weights: weights, packagingOz: pack.value, emailShipped: e1.checked, emailDelivered: e2.checked } })
         .then(function () { toast("Saved"); msg.className = "msg ok"; msg.textContent = "Saved."; }).catch(function (er) { msg.className = "msg err"; msg.textContent = er.message; });
     } }), msg]));
+    n.appendChild(h("div", { "class": "card" }, [h("h3", { text: "Website shipping prices" }),
+      h("p", { "class": d.lastQuote && !d.lastQuote.ok ? "msg err" : "muted", text: d.lastQuote ? "Last price check from the website: " + new Date(d.lastQuote.at).toLocaleString() + (d.lastQuote.ok ? " worked." : " fell back to the flat rate. Reason: " + d.lastQuote.why) : "No price checks from the website yet." })]));
     n.appendChild(h("div", { "class": "card" }, [h("h3", { text: "Delivery updates from Shippo" }),
       h("p", { "class": "muted", text: "In Shippo, go to Settings > API > Webhooks, add a webhook for Track Updated, and paste this address. Then orders mark themselves delivered." }), wh,
       h("p", { "class": "muted", text: d.lastWebhook ? "Last message from Shippo: " + new Date(d.lastWebhook.at).toLocaleString() + (d.lastWebhook.matched ? " (matched a package)" : " (a test or unknown package, nothing to update)") : "Nothing received from Shippo yet. After you press Send sample in Shippo, reload this page to check." })]));

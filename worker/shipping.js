@@ -203,7 +203,7 @@ export async function shippingRoute(route, method, body, env, me, deps, j, origi
   try {
     const st = await readShipSettings(env);
     if (route === "ship-settings" && method === "GET") {
-      return j({ settings: st, mode: mode(env), webhookUrl: `${origin}/shippo-webhook?k=${await webhookKey(env)}`, lastWebhook: await (async () => { try { return JSON.parse((await env.ADMIN_KV.get("shipwebhook")) || "null"); } catch { return null; } })(), ready: !!(st.from.street1 && st.from.city && st.from.state && st.from.zip && st.from.phone) });
+      return j({ settings: st, mode: mode(env), webhookUrl: `${origin}/shippo-webhook?k=${await webhookKey(env)}`, lastQuote: await (async () => { try { return JSON.parse((await env.ADMIN_KV.get("shipquote")) || "null"); } catch { return null; } })(), lastWebhook: await (async () => { try { return JSON.parse((await env.ADMIN_KV.get("shipwebhook")) || "null"); } catch { return null; } })(), ready: !!(st.from.street1 && st.from.city && st.from.state && st.from.zip && st.from.phone) });
     }
     if (route === "ship-settings" && method === "POST") {
       const clean = cleanShipSettings(body.settings);
@@ -433,9 +433,12 @@ export async function quoteOptions(env, catalog, items, zip, flatCents) {
   if (!/^\d{5}$/.test(zip || "")) return { error: "Please enter a 5-digit ZIP code." };
   const exp = Date.now() + QUOTE_TTL;
   const wrap = async (token, cents, days) => ({ token, service: SERVICE_NAMES[token] || token, cents, days: days || null, exp, sig: await sign(env, `${zip}|${w}|${token}|${cents}|${exp}`) });
-  const fallback = async (note) => ({ zip, weightOz: w, fallback: true, note, options: [await wrap("flat", flatCents, null)] });
+  const fallback = async (why) => {
+    try { await env.ADMIN_KV.put("shipquote", JSON.stringify({ at: Date.now(), ok: false, why: String(why || "").slice(0, 300) })); } catch { /* ignore */ }
+    return { zip, weightOz: w, fallback: true, options: [await wrap("flat", flatCents, null)] };
+  };
   const ready = env.SHIPPO_API_KEY && st.from.street1 && st.from.city && st.from.state && st.from.zip && st.from.phone;
-  if (!ready || w > 1100) return fallback("");
+  if (!ready || w > 1100) return fallback(!env.SHIPPO_API_KEY ? "No SHIPPO_API_KEY secret was found on the worker." : w > 1100 ? "The bag is too heavy for one parcel." : "Shipping Setup is missing part of the ship-from address or phone: " + ["street1", "city", "state", "zip", "phone"].filter((k) => !st.from[k]).join(", ") + ".");
   try {
     const place = await zipPlace(env, zip);
     if (!place) return { error: "We could not find that ZIP code. Please check it." };
@@ -450,9 +453,10 @@ export async function quoteOptions(env, catalog, items, zip, flatCents) {
     const best = {};
     for (const r of rates) { const t = r.servicelevel.token, c = Math.ceil(Number(r.amount) * 100); if (c > 0 && (!best[t] || c < best[t].c)) best[t] = { c, d: r.estimated_days }; }
     const order = ["usps_ground_advantage", "usps_priority", "usps_priority_express"].filter((t) => best[t]);
-    if (!order.length) return fallback("");
+    if (!order.length) return fallback("Shippo returned no USPS prices (" + (sh.rates || []).length + " rates in all). " + (sh.messages || []).map((m) => m.text || m.code).filter(Boolean).slice(0, 2).join(" "));
+    try { await env.ADMIN_KV.put("shipquote", JSON.stringify({ at: Date.now(), ok: true, why: "" })); } catch { /* ignore */ }
     return { zip, weightOz: w, city: place.city, state: place.state, options: await Promise.all(order.map((t) => wrap(t, best[t].c + st.markupCents, best[t].d))) };
-  } catch (e) { console.log("quote failed", String(e)); return fallback(""); }
+  } catch (e) { console.log("quote failed", String(e)); return fallback(e.message || String(e)); }
 }
 
 export async function verifyQuote(env, catalog, items, q, zip) {
