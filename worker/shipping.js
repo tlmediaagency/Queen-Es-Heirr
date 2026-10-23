@@ -389,6 +389,14 @@ export async function shippoWebhook(request, env, ctx, deps) {
           rec.notified = { ...rec.notified, delivered: Date.now() }; await writeRec(env, rec);
         }
       }
+      if ((status === "FAILURE" || status === "RETURNED") && !(rec.notified && rec.notified["alert_" + status])) {
+        const to = String(env.ADMIN_EMAILS || "").split(",").map((x) => x.trim()).filter((x) => EMAIL_RE.test(x)).slice(0, 5);
+        const what = status === "RETURNED" ? "is being returned to sender" : "has a delivery problem";
+        const text = `The package for ${rec.name || "an order"} ${what}.\n\nUSPS says: ${rec.statusDetail || "no details"}\nTracking: ${rec.trackingNumber}${rec.trackingUrl ? "\n" + rec.trackingUrl : ""}\n\nOpen Shipping > Shipped in the admin app to email the customer or sort it out.`;
+        const html = `<p style="font:16px/1.6 ${SANS};color:${INK}">${esc(text).replace(/\n/g, "<br>")}</p>`;
+        for (const t of to) { try { await sendMail(env, t, { subject: `Shipping problem: ${rec.name || rec.trackingNumber}`, html, text }); } catch { /* keep going */ } }
+        rec.notified = { ...rec.notified, ["alert_" + status]: Date.now() }; await writeRec(env, rec);
+      }
     } catch (e) { console.log("shippo webhook follow-up failed", String(e)); }
   })());
   return ok({ ok: true });
