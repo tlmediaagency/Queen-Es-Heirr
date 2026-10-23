@@ -207,12 +207,12 @@ function setup() {
 // ---------- Mailing list ----------
 // "Subscribers" tab: Subscribed on | Name | Email | Status (subscribed / unsubscribed) | Updated
 
-// Column F "Tags" holds interests/audience segments: jam, leadership, professional, education, general (comma separated).
-const TAG_LIST_ = ["jam", "leadership", "professional", "education", "general"];
+// Column F "Tags" holds interests/audience segments: jam, leadership, professional, education, retailer, general and any group added in the admin app (comma separated).
+// Groups can also be added from the admin app, so any simple slug is accepted (the admin app checks it against the group list).
 function cleanTags_(v) {
   const arr = Array.isArray(v) ? v : String(v || "").split(/[,;]+/);
   const out = [];
-  arr.forEach(function (t) { t = String(t || "").trim().toLowerCase(); if (TAG_LIST_.indexOf(t) > -1 && out.indexOf(t) < 0) out.push(t); });
+  arr.forEach(function (t) { t = String(t || "").trim().toLowerCase(); if (/^[a-z0-9-]{1,30}$/.test(t) && out.indexOf(t) < 0) out.push(t); });
   return out;
 }
 function mergeTags_(existing, add) { return cleanTags_(cleanTags_(existing).concat(cleanTags_(add))).join(","); }

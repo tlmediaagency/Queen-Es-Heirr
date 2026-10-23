@@ -6,8 +6,16 @@ const SERIF = "Georgia,'Times New Roman',serif", SANS = "Helvetica,Arial,sans-se
 const EMAIL_RE = /^[^@\s]+@[^@\s]+\.[^@\s]+$/;
 const HTTPS_RE = /^https:\/\/[^\s"'<>]{4,500}$/;
 const CHUNK = 40;
-export const TAGS = [["jam", "Jams & pickled goods"], ["leadership", "Leadership materials"], ["professional", "Professionals"], ["education", "Schools & organizations"], ["general", "General news"]];
-export const cleanTags = (v) => { const out = []; (Array.isArray(v) ? v : String(v || "").split(/[,;]+/)).forEach((t) => { t = String(t || "").trim().toLowerCase(); if (TAGS.some((x) => x[0] === t) && !out.includes(t)) out.push(t); }); return out; };
+export const TAGS = [["jam", "Jams & pickled goods"], ["leadership", "Leadership materials"], ["professional", "Professionals"], ["education", "Schools & organizations"], ["retailer", "Retailers"], ["general", "General news"]];
+// Groups you add in the admin app live in KV "taggroups" as [{id,label}]; LIVE is the built-in list plus those.
+let LIVE = TAGS.slice();
+async function loadGroups(env) {
+  let custom = [];
+  try { const a = JSON.parse((await env.ADMIN_KV.get("taggroups")) || "[]"); if (Array.isArray(a)) custom = a.filter((g) => g && /^[a-z0-9-]{1,30}$/.test(g.id) && g.label); } catch {}
+  LIVE = TAGS.concat(custom.filter((g) => !TAGS.some((t) => t[0] === g.id)).map((g) => [g.id, String(g.label).slice(0, 40)]));
+  return { custom, all: LIVE };
+}
+export const cleanTags = (v) => { const out = []; (Array.isArray(v) ? v : String(v || "").split(/[,;]+/)).forEach((t) => { t = String(t || "").trim().toLowerCase(); if (LIVE.some((x) => x[0] === t) && !out.includes(t)) out.push(t); }); return out; };
 const CAT_TAG = { "Jams": "jam", "Pickled goods": "jam", "Books": "leadership", "Curriculum & Resources": "leadership" };
 // Interests guessed from what someone bought.
 export function tagsFromSession(s) {
@@ -126,9 +134,36 @@ async function context(env, deps, f, settings) {
 
 // Returns a Response for a marketing route, or null when the route isn't one of ours.
 export async function marketingRoute(route, method, body, env, me, deps, j) {
-  const isMine = /^(subscribers|subscriber|subscribers-import|subscribers-from-stripe|marketing-settings|campaign-[a-z]+|campaigns)$/.test(route);
+  const isMine = /^(subscribers|subscriber|subscribers-import|subscribers-from-stripe|marketing-settings|campaign-[a-z]+|campaigns|groups|group-save|group-delete)$/.test(route);
   if (!isMine) return null;
   try {
+    const G = await loadGroups(env);
+    if (route === "groups" && method === "GET") return j({ groups: G.all.map((t) => ({ id: t[0], label: t[1], builtin: TAGS.some((x) => x[0] === t[0]) })) });
+    if (route === "group-save" && method === "POST") {
+      const label = one(body.label, 40);
+      if (!label) return j({ error: "Give the group a name." }, 400);
+      const custom = G.custom.slice();
+      let id = one(body.id, 30);
+      if (id && TAGS.some((t) => t[0] === id)) return j({ error: "Built-in groups can't be renamed." }, 400);
+      if (id) { const g = custom.find((x) => x.id === id); if (!g) return j({ error: "That group no longer exists." }, 404); g.label = label; }
+      else {
+        if (G.all.some((t) => t[1].toLowerCase() === label.toLowerCase())) return j({ error: "A group with that name already exists." }, 400);
+        if (custom.length >= 20) return j({ error: "That is the maximum number of custom groups." }, 400);
+        id = label.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 30) || "group";
+        let base = id, k = 2; while (G.all.some((t) => t[0] === id)) id = base.slice(0, 27) + "-" + k++;
+        custom.push({ id, label });
+      }
+      await env.ADMIN_KV.put("taggroups", JSON.stringify(custom));
+      const G2 = await loadGroups(env);
+      return j({ ok: true, groups: G2.all.map((t) => ({ id: t[0], label: t[1], builtin: TAGS.some((x) => x[0] === t[0]) })) });
+    }
+    if (route === "group-delete" && method === "POST") {
+      const custom = G.custom.filter((x) => x.id !== body.id);
+      if (custom.length === G.custom.length) return j({ error: "Only groups you added can be deleted." }, 400);
+      await env.ADMIN_KV.put("taggroups", JSON.stringify(custom));
+      const G2 = await loadGroups(env);
+      return j({ ok: true, groups: G2.all.map((t) => ({ id: t[0], label: t[1], builtin: TAGS.some((x) => x[0] === t[0]) })) });
+    }
     if (route === "marketing-settings" && method === "GET") return j({ address: (await readSettings(env)).address || "" });
     if (route === "marketing-settings" && method === "POST") {
       const address = String(body.address || "").replace(/\r/g, "").split("\n").map((l) => l.trim()).filter(Boolean).slice(0, 4).join("\n").slice(0, 300);

@@ -705,7 +705,11 @@ function viewWsVendors(n) {
 }
 /* MARKETING: MAILING LIST */
 var SUB_PAGE = 100;
-var TAGS = [["jam", "Jams & pickled goods"], ["leadership", "Leadership materials"], ["professional", "Professionals"], ["education", "Schools & organizations"], ["general", "General news"]];
+var TAGS = [["jam", "Jams & pickled goods"], ["leadership", "Leadership materials"], ["professional", "Professionals"], ["education", "Schools & organizations"], ["retailer", "Retailers"], ["general", "General news"]];
+var GROUP_META = [];
+function loadGroups() {
+  return api("GET", "groups").then(function (d) { GROUP_META = d.groups; TAGS.length = 0; d.groups.forEach(function (g) { TAGS.push([g.id, g.label]); }); }).catch(function () {});
+}
 function tagName(t) { var x = TAGS.filter(function (y) { return y[0] === t; })[0]; return x ? x[1] : t; }
 function tagPicker(selected) {
   var boxes = TAGS.map(function (t) { return { t: t[0], c: h("input", { type: "checkbox", checked: (selected || []).indexOf(t[0]) > -1 }) }; });
@@ -714,11 +718,32 @@ function tagPicker(selected) {
 }
 function viewSubscribers(n) {
   loading(n);
-  api("GET", "subscribers").then(function (d) {
+  loadGroups().then(function () { return api("GET", "subscribers"); }).then(function (d) {
     clear(n);
     var all = d.subscribers || [], q = "", flt = "subscribed", shown = SUB_PAGE;
     function count(s) { return all.filter(function (x) { return x.status === s; }).length; }
     var stats = h("p", { "class": "muted" });
+    function groupsCard() {
+      var msg = h("p", { "class": "msg", role: "status" }), list = h("div");
+      var name = h("input", { placeholder: "New group name, like Church partners", maxlength: 40, "aria-label": "New group name" });
+      function sync(r) { GROUP_META = r.groups; TAGS.length = 0; r.groups.forEach(function (g) { TAGS.push([g.id, g.label]); }); }
+      function draw() {
+        clear(list);
+        GROUP_META.forEach(function (g) {
+          var row = [h("span", { text: g.label + (g.builtin ? " (built in)" : ""), style: "flex:1" })];
+          if (!g.builtin) {
+            row.push(h("button", { "class": "btn small", type: "button", text: "Rename", onclick: function () { var v = prompt("New name for this group", g.label); if (v) api("POST", "group-save", { id: g.id, label: v }).then(function (r) { sync(r); draw(); msg.className = "msg ok"; msg.textContent = "Renamed."; }).catch(function (er) { msg.className = "msg err"; msg.textContent = er.message; }); } }));
+            row.push(h("button", { "class": "btn small", type: "button", text: "Delete", onclick: function () { if (confirm("Delete the group " + g.label + "? People keep their other groups.")) api("POST", "group-delete", { id: g.id }).then(function (r) { sync(r); draw(); }).catch(function (er) { msg.className = "msg err"; msg.textContent = er.message; }); } }));
+          }
+          list.appendChild(h("div", { style: "display:flex;gap:8px;align-items:center;margin:4px 0" }, row));
+        });
+      }
+      draw();
+      return h("details", { "class": "card" }, [h("summary", { text: "Manage groups" }), h("p", { "class": "muted", text: "Groups let you send an email to only some of your list. Add your own, then tick them on a person or pick them when you send a campaign." }), list,
+        h("div", { style: "display:flex;gap:8px;flex-wrap:wrap;margin-top:8px" }, [name, h("button", { "class": "btn small primary", type: "button", text: "Add group", onclick: function () {
+          api("POST", "group-save", { label: name.value }).then(function (r) { sync(r); name.value = ""; draw(); msg.className = "msg ok"; msg.textContent = "Added. It now shows up on every person and in campaigns."; }).catch(function (er) { msg.className = "msg err"; msg.textContent = er.message; }); } })]), msg]);
+    }
+    n.appendChild(groupsCard());
     function drawStats() {
       stats.textContent = count("subscribed") + " subscribed · " + count("unsubscribed") + " unsubscribed · " + all.length + " total. You can send " + d.quota + " more emails today.";
     }
@@ -832,7 +857,8 @@ var CAMP_TEMPLATES = [
   ["class", "Class announcement", { subject: "New class dates are up", preheader: "Seats are limited.", headline: "Learn With Queen E's", body: "New class dates are open for booking, and seats are limited.\n\nBring a friend, learn something delicious, and take your creations home.", buttonLabel: "Book a Seat", buttonUrl: "https://queenesheirr.com/classes/", includeEvents: false, includeClasses: true }],
   ["thanks", "Thank you", { subject: "Thank you from Queen E's Heirr", preheader: "We are grateful for you.", headline: "Thank You", body: "Thank you for supporting Queen E's Heirr. Every jar, class, and kind word means so much to our family.\n\nWe are grateful for you.", buttonLabel: "", buttonUrl: "", includeEvents: false, includeClasses: false }]
 ];
-function viewCampaigns(n) {
+function viewCampaigns(n) { loading(n); loadGroups().then(function () { viewCampaignsInner(n); }); }
+function viewCampaignsInner(n) {
   clear(n);
   var D = ssGet(CAMP_KEY) || { subject: "", preheader: "", headline: "", body: "", imageUrl: "", buttonLabel: "", buttonUrl: "", greet: true, includeEvents: false, includeClasses: false };
   var sending = false, root = h("div"); n.appendChild(root);
