@@ -268,14 +268,15 @@ export async function wholesaleAdminRoute(route, method, body, env, me, deps, j)
       if (body.op === "delete") { vendors = vendors.filter((v) => v.email !== email); await writeList(env, "wsvendors", vendors); return j({ ok: true, vendors }); }
       const business = one(body.business, 100);
       if (!business) return j({ error: "Add the business name." }, 400);
-      const rec = { email, business, contact: one(body.contact, 100), phone: one(body.phone, 40), active: body.active !== false, added: Date.now() };
+      const rec = { email, business, contact: one(body.contact, 100), phone: one(body.phone, 40), active: body.active !== false, kind: body.kind === "use" ? "use" : "resale", cert: body.cert === true, added: Date.now() };
       const i = vendors.findIndex((v) => v.email === email);
       if (i >= 0) vendors[i] = { ...vendors[i], ...rec, added: vendors[i].added }; else { if (vendors.length >= 200) return j({ error: "That is the maximum number of vendors." }, 400); vendors.push(rec); }
       await writeList(env, "wsvendors", vendors);
       return j({ ok: true, vendors });
     }
     if (route === "ws-orders" && method === "GET") {
-      const orders = (await readList(env, "wsorders")).sort((a, b) => b.created - a.created).map((o) => ({ ...o, total: total(o.lines) }));
+      const vs = await readList(env, "wsvendors");
+      const orders = (await readList(env, "wsorders")).sort((a, b) => b.created - a.created).map((o) => { const v = vs.find((x) => x.email === o.vendor) || {}; return { ...o, total: total(o.lines), kind: v.kind === "use" ? "use" : "resale", cert: v.cert === true }; });
       const catalog = (await loadCatalog(env)).filter((p) => !p.digital && !p.buyUrl).map((p) => ({ id: p.id, name: p.name, category: p.category, sizes: p.sizes.map((s) => ({ label: s.label, cents: wholesaleCents(s.cents) })) }));
       return j({ orders, catalog, today: todayCentral() });
     }

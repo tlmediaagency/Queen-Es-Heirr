@@ -661,6 +661,7 @@ function viewWsOrders(n) {
       [h("div", { style: "display:flex;justify-content:space-between;gap:8px;flex-wrap:wrap" }, [h("strong", { text: o.business }), h("span", { "class": "pill" + (o.status === "requested" ? " event" : ""), text: WS_STATUS[o.status] + (o.paid ? " · Paid" : "") })]),
         h("p", { "class": "muted", text: [o.contact, o.vendor, o.phone].filter(Boolean).join(" · ") + " · requested " + new Date(o.created).toLocaleDateString() }),
         o.note ? h("p", { text: "Their note: " + o.note }) : null,
+        h("p", { "class": "muted", style: (o.kind === "use" || !o.cert) ? "color:#9b1c1c;font-weight:600" : "", text: o.kind === "use" ? "Uses the product in their business (restaurant/service). Sales tax may apply, so check with your accountant. This portal does not add tax." : (o.cert ? "Resells in their store. Resale certificate on file, no tax." : "Resells in their store, but NO resale certificate on file yet. Get one before treating this as tax-free.") }),
         o.pay ? h("p", { "class": "muted", text: "Vendor chose: " + (o.pay === "card" ? "pay by card online" : "pay at drop-off") }) : null,
         linesBox, totalEl,
         editable ? h("label", null, ["Drop-off date", date]) : (o.dropoff ? h("p", { text: "Drop-off: " + o.dropoff }) : null),
@@ -679,11 +680,12 @@ function viewWsVendors(n) {
     clear(n);
     var vendors = d.vendors;
     n.appendChild(h("p", { "class": "muted", text: "Only vendors listed here can sign in to the wholesale portal (with a code emailed to them). Add a store after you've approved them." }));
-    var f = { business: h("input", { placeholder: "Business name" }), contact: h("input", { placeholder: "Contact name" }), email: h("input", { type: "email", placeholder: "Email (their sign-in)" }), phone: h("input", { type: "tel", placeholder: "Phone" }) };
+    var f = { business: h("input", { placeholder: "Business name" }), contact: h("input", { placeholder: "Contact name" }), email: h("input", { type: "email", placeholder: "Email (their sign-in)" }), phone: h("input", { type: "tel", placeholder: "Phone" }),
+      kind: h("select", { "aria-label": "Type" }, [h("option", { value: "resale", text: "Resells it in their store" }), h("option", { value: "use", text: "Uses it in their restaurant or service" })]), cert: h("input", { type: "checkbox" }) };
     var msg = h("p", { "class": "msg", role: "status" }), list = h("div");
-    n.appendChild(h("div", { "class": "card" }, [h("h3", { text: "Add or update a vendor" }), f.business, f.contact, f.email, f.phone,
+    n.appendChild(h("div", { "class": "card" }, [h("h3", { text: "Add or update a vendor" }), f.business, f.contact, f.email, f.phone, h("label", null, ["Type of buyer", f.kind]), h("label", { "class": "chk" }, [f.cert, "Resale certificate on file"]),
       h("button", { "class": "btn small primary", text: "Save vendor", onclick: function () {
-        api("POST", "ws-vendor", { business: f.business.value, contact: f.contact.value, email: f.email.value, phone: f.phone.value }).then(function (r) { vendors = r.vendors; Object.keys(f).forEach(function (k) { f[k].value = ""; }); msg.className = "msg ok"; msg.textContent = "Saved."; draw(); }).catch(function (er) { msg.className = "msg err"; msg.textContent = er.message; });
+        api("POST", "ws-vendor", { business: f.business.value, contact: f.contact.value, email: f.email.value, phone: f.phone.value, kind: f.kind.value, cert: f.cert.checked }).then(function (r) { vendors = r.vendors; Object.keys(f).forEach(function (k) { if (k === "cert") f[k].checked = false; else if (k !== "kind") f[k].value = ""; }); msg.className = "msg ok"; msg.textContent = "Saved."; draw(); }).catch(function (er) { msg.className = "msg err"; msg.textContent = er.message; });
       } }), msg]));
     n.appendChild(list);
     function draw() {
@@ -693,7 +695,8 @@ function viewWsVendors(n) {
         function save(patch) { api("POST", "ws-vendor", Object.assign({}, v, patch)).then(function (r) { vendors = r.vendors; draw(); }).catch(function (er) { toast(er.message); }); }
         list.appendChild(h("div", { "class": "card" }, [h("div", { style: "display:flex;justify-content:space-between;gap:8px;flex-wrap:wrap" }, [h("strong", { text: v.business }), h("span", { "class": "pill", text: v.active === false ? "Paused" : "Active" })]),
           h("p", { "class": "muted", text: [v.contact, v.email, v.phone].filter(Boolean).join(" · ") }),
-          h("p", null, [h("button", { "class": "btn small", text: v.active === false ? "Turn on" : "Pause", onclick: function () { save({ active: v.active === false }); } }), " ",
+          h("p", { "class": "muted", style: (v.kind === "use" || !v.cert) ? "color:#9b1c1c" : "", text: (v.kind === "use" ? "Uses it in their business" : "Resells in store") + " · " + (v.cert ? "Resale certificate on file" : "No resale certificate on file") }),
+          h("p", null, [h("button", { "class": "btn small", text: "Edit", onclick: function () { f.business.value = v.business; f.contact.value = v.contact || ""; f.email.value = v.email; f.phone.value = v.phone || ""; f.kind.value = v.kind || "resale"; f.cert.checked = v.cert === true; window.scrollTo(0, 0); } }), " ", h("button", { "class": "btn small", text: v.active === false ? "Turn on" : "Pause", onclick: function () { save({ active: v.active === false }); } }), " ",
             h("button", { "class": "btn small", text: "Remove", onclick: function () { if (confirm("Remove " + v.business + "?")) api("POST", "ws-vendor", { email: v.email, op: "delete" }).then(function (r) { vendors = r.vendors; draw(); }).catch(function (er) { toast(er.message); }); } })])]));
       });
     }
