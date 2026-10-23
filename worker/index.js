@@ -1,3 +1,4 @@
+/*! Copyright (c) 2026 Queen E's Heirr. All rights reserved. Built by TL Media, https://www.tlmediallc.net */
 // Queen E's checkout Worker.
 // Stripe is the source of truth for products, prices and availability.
 //   GET  /products  -> catalog read from Stripe (cached ~60s)

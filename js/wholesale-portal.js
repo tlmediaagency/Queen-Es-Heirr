@@ -45,10 +45,18 @@
     var form = h("form", { "class": "ws-card stack" }, [h("label", null, ["Your email", email]), h("button", { "class": "btn", type: "submit", text: "Email me a code" }), m]);
     form.addEventListener("submit", function (e) {
       e.preventDefault(); EMAIL = email.value.trim().toLowerCase(); say(m, "Sending...");
-      api("POST", "/ws/login", { email: EMAIL }).then(function () { try { sessionStorage.setItem("qe_ws_email", EMAIL); } catch (x) {} codeStep(); }).catch(function (er) { say(m, er.message, true); });
+      api("POST", "/ws/login", { email: EMAIL }).then(function (r) { try { sessionStorage.setItem("qe_ws_email", EMAIL); } catch (x) {} if (r.vendor === false) notVendor(); else codeStep(); }).catch(function (er) { say(m, er.message, true); });
     });
     root.appendChild(form);
     root.appendChild(h("p", { "class": "muted center", text: "Not a vendor yet? Request a quote on the Wholesale page and we'll get you set up." }));
+  }
+  function notVendor() {
+    clear(root);
+    root.appendChild(h("div", { "class": "ws-card", role: "status" }, [
+      h("h2", { text: "We don't see " + EMAIL + " as an approved vendor yet" }),
+      h("p", { text: "The Wholesale Portal is for approved Queen E's vendors. To become one, request a wholesale quote on the Wholesale page and we'll get you set up. We've also let our team know you stopped by, so someone may reach out." }),
+      h("div", { "class": "ws-actions" }, [h("a", { "class": "btn", href: "/wholesale/", text: "Go to the Wholesale page" }), h("button", { "class": "btn ghost", type: "button", text: "Try a different email", onclick: login })]),
+      h("p", { "class": "muted", text: "Already a vendor? Check that you're using the email we have on file, or write info@queenesheirr.com." })]));
   }
   function codeStep() {
     clear(root);

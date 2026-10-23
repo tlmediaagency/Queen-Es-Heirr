@@ -172,7 +172,19 @@ export async function wholesalePublic(request, env, url, c, deps) {
           try { await sendMail(env, email, { subject: `Your wholesale portal code: ${code}`, html: frame("Your sign-in code", inner, site), text: `Your Queen E's Heirr wholesale portal code is ${code}. It works for 10 minutes. If you didn't ask for it, ignore this email.` }); } catch (e) { console.log("ws code email failed", String(e)); }
         }
       }
-      return json({ ok: true }, 200, c.headers); // same answer for everyone
+      if (!vendor && EMAIL_RE.test(email)) {
+        // Not an approved vendor: tell the team about a possible new vendor (once a day per address, capped per day).
+        const day = new Date().toISOString().slice(0, 10);
+        const seen = await env.ADMIN_KV.get("wslead:" + email), cap = parseInt((await env.ADMIN_KV.get("rl:wslead:" + day)) || "0", 10);
+        if (!seen && cap < 25) {
+          await env.ADMIN_KV.put("wslead:" + email, "1", { expirationTtl: 86400 });
+          await env.ADMIN_KV.put("rl:wslead:" + day, String(cap + 1), { expirationTtl: 90000 });
+          const inner = P(`Someone tried to sign in to the Wholesale Portal but is not an approved vendor:`) + P(`<strong>${esc(email)}</strong>`) +
+            P("They were told to request wholesale access on the Wholesale page. If they are a real prospect, reach out to them. To let them in, add them under Wholesale > Vendors in the admin app.");
+          try { await sendMail(env, env.WS_LEADS_EMAIL || "info@queenesheirr.com", { subject: `Possible wholesale vendor: ${email}`, html: frame("Possible new wholesale vendor", inner, site), text: `Someone tried to sign in to the Wholesale Portal but is not an approved vendor: ${email}\nReach out if they look like a real prospect. To let them in, add them under Wholesale > Vendors in the admin app.` }); } catch (e) { console.log("ws lead email failed", String(e)); }
+        }
+      }
+      return json({ ok: true, vendor: !!vendor }, 200, c.headers);
     }
     if (path === "/ws/verify" && request.method === "POST") {
       const email = String(body.email || "").trim().toLowerCase(), code = String(body.code || "").replace(/\D/g, "").slice(0, 6);

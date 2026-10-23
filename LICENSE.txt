@@ -1,0 +1,7 @@
+Copyright (c) 2026 Queen E's Heirr. All rights reserved.
+
+The Queen E's Heirr website, admin app, text, recipes, photographs, logos and brand names are the property of Queen E's Heirr. No part may be copied, reused or redistributed without written permission.
+
+Site and app produced by TL Media, https://www.tlmediallc.net
+
+Third-party open-source libraries bundled with the worker (for example pdf-lib and tslib) remain under their own licenses.
