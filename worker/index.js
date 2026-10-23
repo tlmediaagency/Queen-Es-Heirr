@@ -225,6 +225,7 @@ async function handleCheckout(request, env, c) {
       if (chosen && chosen.stale) return json({ error: "Your bag or shipping prices changed. Please choose your shipping option again." }, 400, c.headers);
     }
     params.set("shipping_address_collection[allowed_countries][0]", "US");
+    params.set("custom_text[shipping_address][message]", "Orders are made in small batches and take about 5 business days to prepare before they ship. USPS delivery time is in addition.");
     params.set("shipping_options[0][shipping_rate_data][type]", "fixed_amount");
     params.set("shipping_options[0][shipping_rate_data][display_name]", chosen ? chosen.service : "Flat-rate shipping");
     params.set("shipping_options[0][shipping_rate_data][fixed_amount][amount]", String(chosen ? chosen.cents : parseInt(env.SHIPPING_CENTS || "1000", 10)));

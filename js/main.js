@@ -151,7 +151,7 @@
     if (fset) fset.hidden = allDigital;
     syncShipBox(allDigital);
     if (fnote && allDigital) fnote.textContent = "Digital items: no shipping. Any sales tax is added at secure checkout, and we email your access details.";
-    else if (fnote && fnote.textContent.indexOf("Digital items") === 0) fnote.textContent = "Shipping and any sales tax are added at secure checkout.";
+    else if (fnote && fnote.textContent.indexOf("Digital items") === 0) fnote.textContent = "Orders are made in small batches and take about 5 business days to prepare, plus USPS delivery time. Any sales tax is added at secure checkout.";
   }
 
   function change(id, size, delta) {
@@ -604,8 +604,8 @@
       if (note) note.textContent = fulfillment() === "event"
         ? "No shipping charge. Pick up your order at the event you choose. Any sales tax is added at secure checkout."
         : fulfillment() === "pickup"
-        ? "No shipping charge. We will email you to arrange pickup. Any sales tax is added at secure checkout."
-        : "Choose your shipping option above. Any sales tax is added at secure checkout.";
+        ? "No shipping charge. Orders take about 5 business days to prepare, then we will email you to arrange pickup. Any sales tax is added at secure checkout."
+        : "Choose your shipping option above. Orders take about 5 business days to prepare, plus the delivery time shown. Any sales tax is added at secure checkout.";
     });
   });
   var zipIn = document.querySelector("[data-ship-zip]"), getBtn = document.querySelector("[data-ship-get]"), optBox = document.querySelector("[data-ship-options]");
@@ -623,7 +623,7 @@
             var lab = el("label", { "class": "ship-opt" }), inp = el("input", { type: "radio", name: "shipopt" });
             inp.addEventListener("change", function () { shipQ.chosen = o; setMsg(""); });
             lab.appendChild(inp);
-            lab.appendChild(document.createTextNode(" " + o.service + " \u2014 " + money(o.cents) + (o.days ? " (about " + o.days + (o.days === 1 ? " day)" : " days)") : "")));
+            lab.appendChild(document.createTextNode(" " + o.service + " \u2014 " + money(o.cents) + (o.days ? " (about " + o.days + (o.days === 1 ? " day" : " days") + " in transit)" : "")));
             optBox.appendChild(lab);
             if (d.options.length === 1) { inp.checked = true; shipQ.chosen = o; }
           });
