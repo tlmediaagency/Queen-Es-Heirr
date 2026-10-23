@@ -128,10 +128,15 @@
   <div data-cart-lines></div>
   <p>Subtotal <strong data-cart-subtotal>$0.00</strong></p>
   <fieldset class="fulfill"><legend>How Would You Like to Get Your Order?</legend>
-    <label><input type="radio" name="fulfillment" value="ship" checked> Ship to me (flat rate $10)</label>
+    <label><input type="radio" name="fulfillment" value="ship" checked> Ship to me (USPS, priced by ZIP code)</label>
     <label><input type="radio" name="fulfillment" value="pickup"> Local pickup (free, we email you to arrange)</label>
     <label data-event-option hidden><input type="radio" name="fulfillment" value="event"> Pick up at an upcoming event (free)</label>
     <select data-event-select hidden aria-label="Choose an event"></select></fieldset>
+  <div class="ship-quote" data-ship-quote>
+    <label class="field">ZIP code for shipping<input inputmode="numeric" maxlength="5" autocomplete="postal-code" data-ship-zip placeholder="75001"></label>
+    <button class="btn small" type="button" data-ship-get>See shipping prices</button>
+    <div data-ship-options aria-live="polite"></div>
+  </div>
   <p class="cart-note" data-fulfill-note>Shipping and any sales tax are added at secure checkout.</p>
   <p class="muted" role="status" aria-live="polite" data-cart-msg></p>
   <label class="cart-optin"><input type="checkbox" data-optin> Email me news, new flavors and class dates. Unsubscribe any time.</label>

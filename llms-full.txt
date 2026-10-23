@@ -67,7 +67,7 @@ Q: How long do jars keep?
 A: Unopened, store them cool and dark for up to 18 months. After opening, refrigerate and enjoy within 4 to 6 weeks.
 
 Q: Do you ship?
-A: Jars ship across the United States for a flat rate shown at checkout. You can also pick up locally, collect an order at an upcoming event, or find jars in store at Bayou Stuf in Lacombe, Louisiana.
+A: Jars ship across the United States at USPS rates calculated from your ZIP code in the bag. You can also pick up locally, collect an order at an upcoming event, or find jars in store at Bayou Stuf in Lacombe, Louisiana.
 
 Q: Can I book a jam making or etiquette class?
 A: Yes. Queen E's hosts hands-on jam making and STEM labs and combined jam making and etiquette classes, and takes private group requests. See the Classes page for upcoming dates and to book and pay online.
@@ -110,4 +110,4 @@ A: Use the Wholesale page to choose the jars you would like. Wholesale pricing i
 - Tart n Tangy Pickles (Pickled goods): Regular (12 oz) $10.00, Large (16 oz) $15.00. Bold spices and heat alongside classic dill.
 - Wilderness / Wild n Free (Pickled goods): Large (16 oz) $18.00. 16 oz, 9 major ingredients, holistically packed and formulated.
 
-Shipping is a flat rate shown at checkout (US only). Prices and availability change; the shop page is the source of truth.
+Shipping is priced by USPS from your ZIP code in the bag (US only). Prices and availability change; the shop page is the source of truth.

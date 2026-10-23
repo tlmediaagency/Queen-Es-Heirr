@@ -327,3 +327,8 @@ a.btn[href] { text-decoration: none; }
 .post-body blockquote { border-left: 4px solid var(--gold, #d4af37); margin: 1.5rem 0; padding: .25rem 1.25rem; font-style: italic; }
 .post-body hr { border: 0; border-top: 1px solid var(--linen, #e5dbd1); margin: 2rem 0; }
 .post-foot { margin-top: 2.5rem; display: flex; gap: .75rem; flex-wrap: wrap; }
+
+.ship-quote { display: grid; gap: .5rem; margin: .5rem 0; }
+.ship-quote .field input { width: 100%; }
+.ship-opt { display: flex; gap: .4rem; align-items: center; font-size: .92rem; padding: .35rem 0; }
+.ship-opt input { width: 1.1rem; height: 1.1rem; flex: none; }

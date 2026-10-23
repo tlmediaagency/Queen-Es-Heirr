@@ -287,6 +287,8 @@ function shipPrepare(o, box, done) {
     var out = h("div"), msg = h("p", { "class": "msg", role: "status" }), qr = h("input", { type: "checkbox" });
     var sd = h("input", { type: "date" }), nt = h("input", { type: "checkbox", checked: true });
     box.appendChild(h("div", { "class": "card" }, [
+      h("p", { "class": "muted", text: "Customer paid " + money(d.order.shippingPaid || 0) + " for shipping" + (d.order.shipService ? " (" + d.order.shipService + ")" : "") + "." }),
+      d.order.zipChanged ? h("p", { "class": "msg err", text: "The customer quoted shipping to a different ZIP than the address they entered. Compare the label price to what they paid." }) : null,
       h("label", null, ["Box", pre]),
       h("div", { "class": "row" }, [h("label", null, ["Length in", L]), h("label", null, ["Width in", W]), h("label", null, ["Height in", H]), h("label", null, ["Weight oz", oz])]),
       h("p", { "class": "muted", text: "Weight is the items plus packing material. Change it if the scale says otherwise. 16 oz = 1 lb." }),
@@ -371,13 +373,14 @@ function viewShipSetup(n) {
       h("p", { "class": "muted", text: "USPS requires a return address on every label, and customers will see it. To keep her home address private, enter a PO Box or business mailbox here. Her home address above is still used for pickups and for pricing. Leave this blank to print the home address." }),
       h("label", null, ["Name on label", R.company]), h("label", null, ["Street or PO Box", R.street1]), h("label", null, ["Apt / suite", R.street2]),
       h("div", { "class": "row" }, [h("label", null, ["City", R.city]), h("label", null, ["State (2 letters)", R.state]), h("label", null, ["ZIP", R.zip])])]);
-    var presets = s.presets.map(function (p) { return { id: p.id, template: p.template || "", name: h("input", { value: p.name }), l: h("input", { value: p.length }), w: h("input", { value: p.width }), h: h("input", { value: p.height }) }; });
-    var boxCard = h("div", { "class": "card" }, [h("h3", { text: "Box sizes (inches)" })].concat(presets.map(function (p) { return p.template ? h("div", { "class": "row" }, [h("label", null, ["Name (USPS box)", p.name])]) : h("div", { "class": "row" }, [h("label", null, ["Name", p.name]), h("label", null, ["L", p.l]), h("label", null, ["W", p.w]), h("label", null, ["H", p.h])]); })));
+    var presets = s.presets.map(function (p) { return { id: p.id, template: p.template || "", maxOz: h("input", { value: p.maxOz || "", inputmode: "decimal" }), name: h("input", { value: p.name }), l: h("input", { value: p.length }), w: h("input", { value: p.width }), h: h("input", { value: p.height }) }; });
+    var boxCard = h("div", { "class": "card" }, [h("h3", { text: "Box sizes (inches)" })].concat(presets.map(function (p) { return p.template ? h("div", { "class": "row" }, [h("label", null, ["Name (USPS box)", p.name])]) : h("div", { "class": "row" }, [h("label", null, ["Name", p.name]), h("label", null, ["L", p.l]), h("label", null, ["W", p.w]), h("label", null, ["H", p.h]), h("label", null, ["Website auto-box up to oz", p.maxOz])]); })).concat([h("p", { "class": "muted", text: "For the website's live shipping prices, the app picks the smallest box whose \"up to oz\" is at least the bag's weight. Leave blank to never auto-pick that box." })]));
     var WK = ["Jams", "Pickled goods", "Books", "Curriculum & Resources"], WI = {};
     WK.forEach(function (k) { WI[k] = h("input", { value: s.weights[k], inputmode: "decimal" }); });
     var pack = h("input", { value: s.packagingOz, inputmode: "decimal" });
+    var markup = h("input", { value: ((s.markupCents || 0) / 100).toFixed(2), inputmode: "decimal" });
     var wCard = h("div", { "class": "card" }, [h("h3", { text: "Typical weights (ounces)" }), h("p", { "class": "muted", text: "Used to guess the package weight. You can set an exact weight on any product, and always change it before buying a label." })]
-      .concat(WK.map(function (k) { return h("label", null, [k + " (each)", WI[k]]); }), [h("label", null, ["Box + padding", pack])]));
+      .concat(WK.map(function (k) { return h("label", null, [k + " (each)", WI[k]]); }), [h("label", null, ["Box + padding", pack]), h("label", null, ["Extra added to every website shipping price, in dollars (handling)", markup])]));
     var e1 = h("input", { type: "checkbox", checked: s.emailShipped }), e2 = h("input", { type: "checkbox", checked: s.emailDelivered });
     var eCard = h("div", { "class": "card" }, [h("h3", { text: "Customer emails" }),
       h("label", { "class": "chk" }, [e1, "Email tracking when a label is made"]), h("label", { "class": "chk" }, [e2, "Email when USPS shows it was delivered"])]);
@@ -388,7 +391,7 @@ function viewShipSetup(n) {
       var from = {}; Object.keys(F).forEach(function (k) { from[k] = F[k].value; });
       var weights = {}; WK.forEach(function (k) { weights[k] = WI[k].value; });
       var ret = {}; Object.keys(R).forEach(function (k) { ret[k] = R[k].value; });
-      api("POST", "ship-settings", { settings: { from: from, ret: ret, presets: presets.map(function (p) { return { id: p.id, template: p.template, name: p.name.value, length: p.l.value, width: p.w.value, height: p.h.value }; }), weights: weights, packagingOz: pack.value, emailShipped: e1.checked, emailDelivered: e2.checked } })
+      api("POST", "ship-settings", { settings: { from: from, ret: ret, presets: presets.map(function (p) { return { id: p.id, template: p.template, name: p.name.value, length: p.l.value, width: p.w.value, height: p.h.value, maxOz: p.maxOz.value }; }), markup: markup.value, weights: weights, packagingOz: pack.value, emailShipped: e1.checked, emailDelivered: e2.checked } })
         .then(function () { toast("Saved"); msg.className = "msg ok"; msg.textContent = "Saved."; }).catch(function (er) { msg.className = "msg err"; msg.textContent = er.message; });
     } }), msg]));
     n.appendChild(h("div", { "class": "card" }, [h("h3", { text: "Delivery updates from Shippo" }),

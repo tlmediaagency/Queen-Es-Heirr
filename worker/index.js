@@ -11,7 +11,7 @@ import { CATALOG } from "./catalog.js";
 import { stdSize, CATEGORIES } from "./sizes.js";
 import { SEED } from "./seed-data.js";
 import { handleAdmin, readEvents, upcoming, serveImage, monthlyReport, eventReports } from "./admin.js";
-import { shippoWebhook } from "./shipping.js";
+import { shippoWebhook, quoteOptions, verifyQuote } from "./shipping.js";
 import { addOptIn } from "./marketing.js";
 import { blogPublic } from "./blog.js";
 import { publicClasses, classCheckout, recordBooking } from "./classes.js";
@@ -91,6 +91,7 @@ async function loadCatalog(env) {
       image: (p.images && p.images[0]) || "",
       featured: (p.metadata && p.metadata.featured) === "true",
       digital: (p.metadata && p.metadata.digital) === "true",
+      weightOz: (p.metadata && p.metadata.weight_oz) || "",
       buyUrl: /^https:\/\/[^\s]+$/.test((p.metadata && p.metadata.buy_url) || "") ? p.metadata.buy_url : "",
       restocked: Number((p.metadata && p.metadata.restocked) || 0),
       sort: Number((p.metadata && p.metadata.sort) || 1000),
@@ -119,6 +120,25 @@ async function handleProducts(request, env, c, ctx) {
     ctx.waitUntil(cache.put(key, toCache));
   }
   return new Response(body, { status: 200, headers: { "Content-Type": "application/json", ...c.headers } });
+}
+
+// Live USPS prices for the bag (public). Rate-limited per visitor; falls back to the flat rate if Shippo is unavailable.
+async function handleShipQuote(request, env, c) {
+  let payload;
+  try { payload = await request.json(); } catch { return json({ error: "Invalid request" }, 400, c.headers); }
+  const items = payload && payload.items;
+  if (!Array.isArray(items) || !items.length || items.length > MAX_LINES) return json({ error: "Your bag is empty" }, 400, c.headers);
+  try {
+    const ip = request.headers.get("CF-Connecting-IP") || "x", k = `rl:shipq:${ip}:${Math.floor(Date.now() / 3600000)}`;
+    const n = parseInt((await env.ADMIN_KV.get(k)) || "0", 10);
+    if (n >= 40) return json({ error: "Too many price checks. Please try again in a little while." }, 429, c.headers);
+    await env.ADMIN_KV.put(k, String(n + 1), { expirationTtl: 3700 });
+  } catch { /* storage hiccup: do not block shoppers */ }
+  const catalog = await loadCatalog(env);
+  const clean = items.map((it) => ({ id: it && it.id, qty: Number.isInteger(it && it.qty) && it.qty > 0 && it.qty <= MAX_QTY ? it.qty : 1 })).filter((it) => catalog.some((p) => p.id === it.id));
+  if (!clean.length) return json({ error: "An item in your bag is no longer available" }, 400, c.headers);
+  const r = await quoteOptions(env, catalog, clean, String(payload.zip || "").trim(), parseInt(env.SHIPPING_CENTS || "1000", 10));
+  return json(r, r.error ? 400 : 200, c.headers);
 }
 
 async function handleCheckout(request, env, c) {
@@ -199,10 +219,16 @@ async function handleCheckout(request, env, c) {
     params.set("billing_address_collection", "required");
     params.set("custom_text[submit][message]", ev ? `Pickup at ${ev.name} on ${ev.date}${ev.location ? " (" + ev.location + ")" : ""}. We will email you the details.` : "Local pickup: we will email you to arrange a pickup time and place.");
   } else {
+    let chosen = null;
+    if (payload.ship && typeof payload.ship === "object") {
+      chosen = await verifyQuote(env, catalog, items, payload.ship, String(payload.shipZip || ""));
+      if (chosen && chosen.stale) return json({ error: "Your bag or shipping prices changed. Please choose your shipping option again." }, 400, c.headers);
+    }
     params.set("shipping_address_collection[allowed_countries][0]", "US");
     params.set("shipping_options[0][shipping_rate_data][type]", "fixed_amount");
-    params.set("shipping_options[0][shipping_rate_data][display_name]", "Flat-rate shipping");
-    params.set("shipping_options[0][shipping_rate_data][fixed_amount][amount]", String(parseInt(env.SHIPPING_CENTS || "1000", 10)));
+    params.set("shipping_options[0][shipping_rate_data][display_name]", chosen ? chosen.service : "Flat-rate shipping");
+    params.set("shipping_options[0][shipping_rate_data][fixed_amount][amount]", String(chosen ? chosen.cents : parseInt(env.SHIPPING_CENTS || "1000", 10)));
+    if (chosen && chosen.token !== "flat") { params.set("metadata[ship_service]", chosen.service); params.set("metadata[ship_zip]", String(payload.shipZip).slice(0, 5)); }
     params.set("shipping_options[0][shipping_rate_data][fixed_amount][currency]", "usd");
     if (env.TAX_ENABLED === "true") params.set("shipping_options[0][shipping_rate_data][tax_behavior]", "exclusive");
   }
@@ -600,6 +626,10 @@ export default {
     if (url.pathname === "/class-request" && request.method === "POST") {
       if (!c.ok) return json({ error: "Origin not allowed" }, 403, c.headers);
       return handleClassRequest(request, env, c);
+    }
+    if (url.pathname === "/ship-quote" && request.method === "POST") {
+      if (!c.ok) return json({ error: "Origin not allowed" }, 403, c.headers);
+      return handleShipQuote(request, env, c);
     }
     if (url.pathname === "/wholesale-request" && request.method === "POST") {
       if (!c.ok) return json({ error: "Origin not allowed" }, 403, c.headers);

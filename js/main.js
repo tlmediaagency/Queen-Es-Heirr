@@ -105,8 +105,20 @@
 
   function setMsg(t) { if (msgEl) msgEl.textContent = t || ""; }
 
+  var shipQ = { sig: "", zip: "", opts: [], chosen: null };
+  function shipBox() { return document.querySelector("[data-ship-quote]"); }
+  function resetShip() {
+    shipQ.opts = []; shipQ.chosen = null;
+    var o = document.querySelector("[data-ship-options]"); if (o) o.textContent = "";
+  }
+  function syncShipBox(allDigital) {
+    var b = shipBox(); if (!b) return;
+    var r = document.querySelector('input[name="fulfillment"]:checked');
+    b.hidden = !!allDigital || (r && r.value !== "ship");
+  }
   function render() {
     var lines = loadCart();
+    var sig = JSON.stringify(lines); if (sig !== shipQ.sig) { shipQ.sig = sig; resetShip(); }
     var n = lines.reduce(function (a, l) { return a + l.qty; }, 0);
     if (countEl) countEl.textContent = String(n);
     if (!linesEl || !subEl) return;
@@ -137,6 +149,7 @@
     var allDigital = lines.length > 0 && lines.every(function (l) { return findProduct(l.id).digital; });
     var fset = document.querySelector(".fulfill"), fnote = document.querySelector("[data-fulfill-note]");
     if (fset) fset.hidden = allDigital;
+    syncShipBox(allDigital);
     if (fnote && allDigital) fnote.textContent = "Digital items: no shipping. Any sales tax is added at secure checkout, and we email your access details.";
     else if (fnote && fnote.textContent.indexOf("Digital items") === 0) fnote.textContent = "Shipping and any sales tax are added at secure checkout.";
   }
@@ -587,14 +600,36 @@
   document.querySelectorAll('input[name="fulfillment"]').forEach(function (r) {
     r.addEventListener("change", function () {
       var note = document.querySelector("[data-fulfill-note]");
-      syncEventSelect();
+      syncEventSelect(); syncShipBox(false);
       if (note) note.textContent = fulfillment() === "event"
         ? "No shipping charge. Pick up your order at the event you choose. Any sales tax is added at secure checkout."
         : fulfillment() === "pickup"
         ? "No shipping charge. We will email you to arrange pickup. Any sales tax is added at secure checkout."
-        : "Shipping and any sales tax are added at secure checkout.";
+        : "Choose your shipping option above. Any sales tax is added at secure checkout.";
     });
   });
+  var zipIn = document.querySelector("[data-ship-zip]"), getBtn = document.querySelector("[data-ship-get]"), optBox = document.querySelector("[data-ship-options]");
+  if (zipIn && getBtn && optBox && CFG.CHECKOUT_URL) {
+    getBtn.addEventListener("click", function () {
+      var zip = zipIn.value.replace(/\D/g, "").slice(0, 5);
+      if (zip.length !== 5) { setMsg("Please enter a 5-digit ZIP code."); return; }
+      var lines = loadCart(); if (!lines.length) return;
+      getBtn.disabled = true; setMsg("Checking USPS prices...");
+      fetch(workerUrl("/ship-quote"), { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ zip: zip, items: lines }) })
+        .then(function (r) { return r.json().then(function (d) { if (!r.ok) throw new Error(d.error || "Could not get prices"); return d; }); })
+        .then(function (d) {
+          setMsg(""); shipQ.zip = zip; shipQ.opts = d.options; shipQ.chosen = null; optBox.textContent = "";
+          d.options.forEach(function (o, i) {
+            var lab = el("label", { "class": "ship-opt" }), inp = el("input", { type: "radio", name: "shipopt" });
+            inp.addEventListener("change", function () { shipQ.chosen = o; setMsg(""); });
+            lab.appendChild(inp);
+            lab.appendChild(document.createTextNode(" " + o.service + " \u2014 " + money(o.cents) + (o.days ? " (about " + o.days + (o.days === 1 ? " day)" : " days)") : "")));
+            optBox.appendChild(lab);
+            if (d.options.length === 1) { inp.checked = true; shipQ.chosen = o; }
+          });
+        }).catch(function (err) { setMsg(err.message); }).then(function () { getBtn.disabled = false; });
+    });
+  }
   if (checkoutBtn) {
     checkoutBtn.addEventListener("click", function () {
       var lines = loadCart();
@@ -604,19 +639,21 @@
         mailtoOrder(lines);
         return;
       }
+      var needShip = fulfillment() === "ship" && !lines.every(function (l) { var pr = findProduct(l.id); return pr && pr.digital; });
+      if (needShip && shipBox() && !shipQ.chosen) { setMsg("Enter your ZIP code, tap See shipping prices, and choose an option first."); return; }
       checkoutBtn.disabled = true;
       setMsg("Taking you to secure checkout...");
       fetch(CFG.CHECKOUT_URL, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ items: lines, fulfillment: fulfillment(), eventId: fulfillment() === "event" && eventSel ? eventSel.value : undefined, optin: !!(document.querySelector("[data-optin]") && document.querySelector("[data-optin]").checked) })
+        body: JSON.stringify({ items: lines, fulfillment: fulfillment(), eventId: fulfillment() === "event" && eventSel ? eventSel.value : undefined, ship: needShip && shipQ.chosen ? { token: shipQ.chosen.token, cents: shipQ.chosen.cents, exp: shipQ.chosen.exp, sig: shipQ.chosen.sig } : undefined, shipZip: needShip && shipQ.chosen ? shipQ.zip : undefined, optin: !!(document.querySelector("[data-optin]") && document.querySelector("[data-optin]").checked) })
       }).then(function (r) {
         return r.json().then(function (d) { if (!r.ok) throw new Error(d.error || "Checkout failed"); return d; });
       }).then(function (d) {
         if (!d.url || d.url.indexOf("https://checkout.stripe.com/") !== 0) throw new Error("Unexpected checkout response");
         window.location.href = d.url;
       }).catch(function (err) {
-        checkoutBtn.disabled = false;
+        checkoutBtn.disabled = false; if (/shipping/i.test(err.message)) resetShip();
         setMsg("We couldn't start checkout: " + err.message + ". Please try again or email " + (CFG.CONTACT_EMAIL || "us") + ".");
       });
     });

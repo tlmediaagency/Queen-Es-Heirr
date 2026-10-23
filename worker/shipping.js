@@ -16,20 +16,21 @@ const LOC_TYPES = ["Front Door", "Back Door", "Side Door", "Knock on Door or Rin
 
 const esc = (v) => String(v == null ? "" : v).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
 const one = (v, n) => String(v == null ? "" : v).replace(/[\r\n]+/g, " ").trim().slice(0, n);
-const num = (v, lo, hi) => { const x = Number(v); return Number.isFinite(x) && x >= lo && x <= hi ? x : null; };
+const num = (v, lo, hi) => { if (v === "" || v == null) return null; const x = Number(v); return Number.isFinite(x) && x >= lo && x <= hi ? x : null; };
 
 export const DEFAULT_SHIP = {
   from: { name: "", company: "Queen E's Heirr", street1: "", street2: "", city: "", state: "", zip: "", phone: "", email: "info@queenesheirr.com" },
   presets: [
-    { id: "small", name: "Small box (1-2 jars)", length: 8, width: 6, height: 4 },
-    { id: "medium", name: "Medium box (3-4 jars)", length: 10, width: 8, height: 6 },
-    { id: "large", name: "Large box (6+ jars)", length: 12, width: 10, height: 8 },
+    { id: "small", name: "Small box (1-2 jars)", length: 8, width: 6, height: 4, maxOz: 32 },
+    { id: "medium", name: "Medium box (3-4 jars)", length: 10, width: 8, height: 6, maxOz: 64 },
+    { id: "large", name: "Large box (6+ jars)", length: 12, width: 10, height: 8, maxOz: 160 },
     { id: "book", name: "Book mailer", length: 10, width: 7, height: 1.5 },
     { id: "flat-s", name: "USPS Small Flat Rate Box", template: "USPS_SmallFlatRateBox", length: 0, width: 0, height: 0 },
     { id: "flat-m", name: "USPS Medium Flat Rate Box", template: "USPS_FlatRateMediumBox1", length: 0, width: 0, height: 0 },
     { id: "flat-l", name: "USPS Large Flat Rate Box", template: "USPS_LargeFlatRateBox", length: 0, width: 0, height: 0 },
   ],
   packagingOz: 6,
+  markupCents: 0,
   weights: DEFAULT_WEIGHTS,
   emailShipped: true,
   emailDelivered: true,
@@ -46,6 +47,7 @@ function cleanAddr(f) {
 export async function readShipSettings(env) {
   let s = {};
   try { s = JSON.parse((await env.ADMIN_KV.get("shipping")) || "{}"); } catch { s = {}; }
+  if (Array.isArray(s.presets)) s.presets = s.presets.map((x) => (x.maxOz == null && !x.template ? { ...x, maxOz: (DEFAULT_SHIP.presets.find((d) => d.id === x.id) || {}).maxOz || 0 } : x));
   if (Array.isArray(s.presets) && !s.presets.some((x) => x.template)) s.presets = s.presets.concat(DEFAULT_SHIP.presets.filter((x) => x.template));
   return { ...DEFAULT_SHIP, ret: { ...(DEFAULT_SHIP.ret || {}) }, ...s, from: { ...DEFAULT_SHIP.from, ...(s.from || {}) }, weights: { ...DEFAULT_WEIGHTS, ...(s.weights || {}) } };
 }
@@ -61,14 +63,14 @@ export function cleanShipSettings(b) {
     const L = num(p.length, 1, 60), W = num(p.width, 1, 60), H = num(p.height, 0.1, 60);
     const name = one(p.name, 40);
     if (!name || L == null || W == null || H == null) throw new Error("Each box needs a name and its length, width and height in inches.");
-    return { id: /^[a-z0-9-]{2,20}$/.test(p.id || "") ? p.id : "box" + (i + 1), name, length: L, width: W, height: H };
+    return { id: /^[a-z0-9-]{2,20}$/.test(p.id || "") ? p.id : "box" + (i + 1), name, length: L, width: W, height: H, maxOz: num(p.maxOz, 0, 1120) || 0 };
   });
   if (!presets.length) throw new Error("Keep at least one box size.");
   const weights = {};
   for (const [k, def] of Object.entries(DEFAULT_WEIGHTS)) { const w = num((b.weights || {})[k], 0, 1600); weights[k] = w == null ? def : w; }
   const ret = cleanAddr(b.ret);
   if (ret.street1 && !(ret.city && ret.state && ret.zip)) throw new Error("The return address needs a city, state and ZIP.");
-  return { from, ret, presets, packagingOz: num(b.packagingOz, 0, 400) ?? 6, weights, emailShipped: b.emailShipped !== false, emailDelivered: b.emailDelivered !== false };
+  return { from, ret, presets, packagingOz: num(b.packagingOz, 0, 400) ?? 6, markupCents: Math.round((num(b.markup, 0, 50) ?? (b.markupCents / 100 || 0)) * 100) || 0, weights, emailShipped: b.emailShipped !== false, emailDelivered: b.emailDelivered !== false };
 }
 
 // ---- Shippo ------------------------------------------------------------------------------------
@@ -111,7 +113,7 @@ async function loadOrder(env, deps, id) {
     shippingPaid: (s.total_details && s.total_details.amount_shipping) || (s.shipping_cost && s.shipping_cost.amount_total) || 0,
     name: (sd && sd.name) || (s.customer_details && s.customer_details.name) || "", email: (s.customer_details && s.customer_details.email) || "", phone: (s.customer_details && s.customer_details.phone) || "",
     address: a ? { street1: a.line1 || "", street2: a.line2 || "", city: a.city || "", state: a.state || "", zip: a.postal_code || "", country: a.country || "US" } : null,
-    items,
+    items, quotedZip: (s.metadata && s.metadata.ship_zip) || "", shipService: (s.metadata && s.metadata.ship_service) || "",
   };
 }
 
@@ -234,7 +236,7 @@ export async function shippingRoute(route, method, body, env, me, deps, j, origi
     }
     if (route === "ship-prepare" && method === "POST") {
       const o = await loadOrder(env, deps, body.id);
-      return j({ order: { id: o.id, name: o.name, email: o.email, phone: o.phone, address: o.address, items: o.items, shippingPaid: o.shippingPaid }, weightOz: estWeight(o, st), presets: st.presets, mode: mode(env), ready: !!(st.from.street1 && st.from.zip && st.from.phone) });
+      return j({ order: { id: o.id, name: o.name, email: o.email, phone: o.phone, address: o.address, items: o.items, shippingPaid: o.shippingPaid, shipService: o.shipService, zipChanged: !!(o.quotedZip && o.address && o.address.zip && o.address.zip.slice(0, 5) !== o.quotedZip) }, weightOz: estWeight(o, st), presets: st.presets, mode: mode(env), ready: !!(st.from.street1 && st.from.zip && st.from.phone) });
     }
     if (route === "ship-rates" && method === "POST") {
       if (!(st.from.street1 && st.from.city && st.from.state && st.from.zip && st.from.phone)) return j({ error: "Add your ship-from address and phone in Shipping Setup first." }, 400);
@@ -390,4 +392,75 @@ export async function shippoWebhook(request, env, ctx, deps) {
     } catch (e) { console.log("shippo webhook follow-up failed", String(e)); }
   })());
   return ok({ ok: true });
+}
+
+
+// ---- live shipping prices for the website bag ---------------------------------------------------------
+const SERVICE_NAMES = { usps_ground_advantage: "USPS Ground Advantage", usps_priority: "USPS Priority Mail", usps_priority_express: "USPS Priority Mail Express", flat: "Flat-rate shipping" };
+const QUOTE_TTL = 30 * 60 * 1000;
+const sign = (env, payload) => hmacHex(env.SESSION_SECRET || "x", "quote|" + payload).then((h) => h.slice(0, 32));
+
+// Weight of the physical items in a (validated) cart, in ounces, including packing.
+export function cartWeight(catalog, items, st) {
+  let oz = 0, physical = false;
+  for (const it of items) {
+    const p = catalog.find((x) => x.id === (it && it.id));
+    if (!p || p.digital) continue;
+    physical = true;
+    oz += (num(p.weightOz, 0, 1600) ?? st.weights[p.category] ?? 12) * (it.qty || 1);
+  }
+  return physical ? Math.max(1, Math.round(oz + st.packagingOz)) : 0;
+}
+
+async function zipPlace(env, zip) {
+  const key = "zip:" + zip;
+  try { const c = await env.ADMIN_KV.get(key); if (c) return JSON.parse(c); } catch { /* look it up */ }
+  try {
+    const r = await fetch("https://api.zippopotam.us/us/" + zip, { signal: AbortSignal.timeout(2500) });
+    if (!r.ok) return null;
+    const d = await r.json(); const pl = d.places && d.places[0];
+    if (!pl) return null;
+    const out = { city: pl["place name"], state: pl["state abbreviation"] };
+    await env.ADMIN_KV.put(key, JSON.stringify(out), { expirationTtl: 60 * 60 * 24 * 30 });
+    return out;
+  } catch { return null; }
+}
+
+export async function quoteOptions(env, catalog, items, zip, flatCents) {
+  const st = await readShipSettings(env);
+  const w = cartWeight(catalog, items, st);
+  if (!w) return { error: "Nothing in your bag needs shipping." };
+  if (!/^\d{5}$/.test(zip || "")) return { error: "Please enter a 5-digit ZIP code." };
+  const exp = Date.now() + QUOTE_TTL;
+  const wrap = async (token, cents, days) => ({ token, service: SERVICE_NAMES[token] || token, cents, days: days || null, exp, sig: await sign(env, `${zip}|${w}|${token}|${cents}|${exp}`) });
+  const fallback = async (note) => ({ zip, weightOz: w, fallback: true, note, options: [await wrap("flat", flatCents, null)] });
+  const ready = env.SHIPPO_API_KEY && st.from.street1 && st.from.city && st.from.state && st.from.zip && st.from.phone;
+  if (!ready || w > 1100) return fallback("");
+  try {
+    const place = await zipPlace(env, zip);
+    if (!place) return { error: "We could not find that ZIP code. Please check it." };
+    const box = st.presets.filter((p) => !p.template && p.maxOz > 0).sort((a, b) => a.maxOz - b.maxOz);
+    const pre = box.find((p) => w <= p.maxOz) || box[box.length - 1] || st.presets.find((p) => !p.template);
+    const sh = await shippo(env, "POST", "/shipments/", {
+      address_from: addrOf(st.from), async: false,
+      address_to: { name: "Customer", street1: "100 Main St", city: place.city, state: place.state, zip, country: "US" },
+      parcels: [{ length: String(pre.length), width: String(pre.width), height: String(pre.height), distance_unit: "in", weight: String(w), mass_unit: "oz" }],
+    });
+    const rates = (sh.rates || []).filter((r) => String(r.provider).toUpperCase() === "USPS" && SERVICE_NAMES[r.servicelevel && r.servicelevel.token] && r.servicelevel.token !== "flat");
+    const best = {};
+    for (const r of rates) { const t = r.servicelevel.token, c = Math.ceil(Number(r.amount) * 100); if (c > 0 && (!best[t] || c < best[t].c)) best[t] = { c, d: r.estimated_days }; }
+    const order = ["usps_ground_advantage", "usps_priority", "usps_priority_express"].filter((t) => best[t]);
+    if (!order.length) return fallback("");
+    return { zip, weightOz: w, city: place.city, state: place.state, options: await Promise.all(order.map((t) => wrap(t, best[t].c + st.markupCents, best[t].d))) };
+  } catch (e) { console.log("quote failed", String(e)); return fallback(""); }
+}
+
+export async function verifyQuote(env, catalog, items, q, zip) {
+  if (!q || typeof q !== "object" || !SERVICE_NAMES[q.token]) return null;
+  const st = await readShipSettings(env);
+  const w = cartWeight(catalog, items, st);
+  const cents = Number(q.cents), exp = Number(q.exp);
+  if (!w || !Number.isInteger(cents) || cents < 0 || cents > 100000 || !(exp > Date.now())) return { stale: true };
+  if (q.sig !== (await sign(env, `${zip}|${w}|${q.token}|${cents}|${exp}`))) return { stale: true };
+  return { token: q.token, service: SERVICE_NAMES[q.token], cents };
 }
