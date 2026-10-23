@@ -5,6 +5,7 @@ import { adminClasses, cleanClasses, adminBookings, readClasses, readBookings, p
 import { marketingRoute } from "./marketing.js";
 import { shippingRoute } from "./shipping.js";
 import { blogRoute } from "./blog.js";
+import { eventOrdersRoute } from "./eventorders.js";
 import { stdSize, CATEGORIES } from "./sizes.js";
 import { ICON_192, ICON_512 } from "./admin-icons.js";
 
@@ -270,6 +271,8 @@ export async function handleAdmin(request, env, url, d) {
     if (sh) return sh;
     const bl = await blogRoute(route, request.method, body, env, me, j, url.origin);
     if (bl) return bl;
+    const eo = await eventOrdersRoute(route, request.method, body, env, me, { stripeGet }, j);
+    if (eo) return eo;
     if (route === "products" && request.method === "GET") {
       const [pa, ph, pr] = await Promise.all([
         stripeGet(env, "/products?active=true&limit=100"),
@@ -424,7 +427,7 @@ export async function handleAdmin(request, env, url, d) {
       for (const e of list) {
         const name = String(e.name || "").trim().slice(0, 100), date = String(e.date || ""), orderBy = String(e.orderBy || "");
         if (!name || !/^\d{4}-\d{2}-\d{2}$/.test(date) || (orderBy && !/^\d{4}-\d{2}-\d{2}$/.test(orderBy))) return j({ error: "Each event needs a name and a date" }, 400);
-        clean.push({ id: /^[a-z0-9-]{3,40}$/.test(e.id || "") ? e.id : slug(name).slice(0, 30) + "-" + date, name, date, location: String(e.location || "").trim().slice(0, 200), orderBy, show: e.show !== false });
+        clean.push({ id: /^[a-z0-9-]{3,40}$/.test(e.id || "") ? e.id : slug(name).slice(0, 30) + "-" + date, name, date, location: String(e.location || "").trim().slice(0, 200), time: String(e.time || "").trim().slice(0, 40), orderBy, show: e.show !== false });
       }
       await env.ADMIN_KV.put("events", JSON.stringify(clean));
       return j({ ok: true, events: clean });

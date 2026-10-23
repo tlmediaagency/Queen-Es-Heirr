@@ -39,6 +39,7 @@ input,select,textarea{font:400 .95rem Inter;border:1px solid var(--linen);backgr
 .chk{display:flex;gap:8px;align-items:center;font:400 .9rem Inter;text-transform:none;letter-spacing:0}.chk input{width:auto}
 .sizes .row{padding:10px 0;border-top:1px solid var(--linen)}
 .hide{display:none}
+@media print{header,nav,.noprint,.toast,button,.btn{display:none!important}body{background:#fff}.card{break-inside:avoid;box-shadow:none}}
 .tools{display:flex;flex-wrap:wrap;align-items:end}.tools label{flex:1 1 130px;min-width:130px}.tools .btn{min-height:42px}
 .totals{display:flex;flex-wrap:wrap;gap:10px;margin:10px 0}.totals .card{margin:0;padding:10px 16px;flex:1 1 150px}.totals b{display:block;font:700 1.3rem 'Playfair Display',serif;color:var(--forest)}
 table.rep{width:100%;border-collapse:collapse;font-size:.92rem;margin:8px 0 16px}table.rep th,table.rep td{padding:8px 6px;border-bottom:1px solid var(--linen);text-align:right}table.rep th:first-child,table.rep td:first-child{text-align:left}table.rep th{font:600 .68rem Inter;letter-spacing:.08em;text-transform:uppercase;color:var(--muted)}
@@ -204,7 +205,7 @@ function renderLogin(step) {
 
 var PAYLABEL = { cash: "Cash", cashapp: "Cash App", venmo: "Venmo", tap: "Tap to Pay" };
 var GROUPS = [
-  ["Orders & Reports", [["orders", "Orders"], ["requests", "Requests"], ["ledger", "Ledger"], ["reports", "Reports"]]],
+  ["Orders & Reports", [["orders", "Orders"], ["requests", "Requests"], ["ledger", "Ledger"], ["reports", "Reports"], ["eventpickups", "Event Pickups"]]],
   ["Products", [["products", "Products"]]],
   ["Shipping", [["toship", "To Ship"], ["shipped", "Shipped"], ["shipsetup", "Shipping Setup"]]],
   ["Events", [["events", "Events"]]],
@@ -246,7 +247,7 @@ function start() {
     }));
   }
   shell(subnav ? [nav, subnav, body] : [nav, body]);
-  ({ orders: viewOrders, products: viewProducts, requests: viewRequests, classes: viewClasses, bookings: viewBookings, events: viewEvents, ledger: viewLedger, reports: viewReports, sale: viewSale, subscribers: viewSubscribers, campaigns: viewCampaigns, toship: viewToShip, shipped: viewShipped, shipsetup: viewShipSetup, blog: viewBlog })[current](body);
+  ({ orders: viewOrders, products: viewProducts, requests: viewRequests, classes: viewClasses, bookings: viewBookings, events: viewEvents, ledger: viewLedger, reports: viewReports, sale: viewSale, eventpickups: viewEventPickups, subscribers: viewSubscribers, campaigns: viewCampaigns, toship: viewToShip, shipped: viewShipped, shipsetup: viewShipSetup, blog: viewBlog })[current](body);
   keepAwake(current === "sale");
 }
 
@@ -497,6 +498,64 @@ function blogEditor(n, p, today) {
         api("POST", "blog-delete", { id: p.id }).then(function () { toast("Deleted"); viewBlog(n); }).catch(function (er) { toast(er.message); });
       } })]), msg, actions]));
   drawActions(); prev();
+}
+
+/* EVENT PICKUPS */
+function viewEventPickups(n) {
+  loading(n);
+  api("GET", "ev-events").then(function (d) {
+    clear(n);
+    if (!d.events.length) { n.appendChild(h("p", { "class": "muted", text: "No events yet. Add one under Events, and online pickup orders will show up here." })); return; }
+    var sel = h("select", { "aria-label": "Event" }, d.events.map(function (e) { return h("option", { value: e.id, text: e.name + " - " + e.date + (e.past ? " (past)" : "") }); }));
+    var out = h("div");
+    n.appendChild(h("div", { "class": "noprint" }, [h("p", { "class": "muted", text: "Pick an event to see who ordered ahead for pickup. Mark people as picked up at the event. Afterwards you can email everyone who didn't come." }), h("label", null, ["Event", sel])]));
+    n.appendChild(out);
+    function load() {
+      loading(out);
+      api("POST", "ev-orders", { eventId: sel.value }).then(function (r) { clear(out); draw(r); }).catch(function (er) { failed(out, er); });
+    }
+    function draw(r) {
+      var left = r.orders.filter(function (o) { return !o.pickedUp; }), picked = r.orders.length - left.length;
+      out.appendChild(h("h2", { text: r.event.name }));
+      out.appendChild(h("p", { "class": "muted", text: [r.event.date, r.event.time, r.event.location].filter(Boolean).join(" · ") + " · " + r.orders.length + " order" + (r.orders.length === 1 ? "" : "s") + ", " + picked + " picked up" }));
+      var msg = h("p", { "class": "msg noprint", role: "status" });
+      function bulk(kind, label, confirmText) {
+        return h("button", { "class": "btn small", text: label, onclick: function (e) {
+          if (!confirm(confirmText)) return; var b = e.currentTarget; b.disabled = true; msg.className = "msg"; msg.textContent = "Sending...";
+          api("POST", "ev-bulk", { eventId: sel.value, kind: kind }).then(function (x) { msg.className = "msg ok"; msg.textContent = "Sent " + x.sent + (x.failed ? ", " + x.failed + " failed" : "") + (x.remaining ? ". " + x.remaining + " more are waiting, press the button again." : "."); load(); })
+            .catch(function (er) { b.disabled = false; msg.className = "msg err"; msg.textContent = er.message; });
+        } });
+      }
+      out.appendChild(h("div", { "class": "noprint", style: "display:flex;gap:8px;flex-wrap:wrap;margin:8px 0" }, [
+        h("button", { "class": "btn small primary", text: "Print pick list", onclick: function () { window.print(); } }),
+        bulk("reminder", "Email a reminder to everyone not picked up", "Email a reminder to everyone who hasn't picked up yet and hasn't already had one?"),
+        bulk("missed", "Send “sorry we missed you”", "Send “sorry we missed you” to everyone NOT marked picked up? Mark the people who did pick up first.")]));
+      out.appendChild(msg);
+      if (r.tally.length) out.appendChild(h("div", { "class": "card" }, [h("h3", { text: "Bring to the event" })].concat(r.tally.map(function (t) { return h("div", { text: t.qty + " x " + t.name }); }))));
+      if (!r.orders.length) out.appendChild(h("p", { "class": "muted", text: "No pickup orders for this event yet." }));
+      r.orders.forEach(function (o) {
+        var tags = [];
+        if (o.notified.confirm) tags.push("confirmed");
+        if (o.notified.reminder) tags.push("reminded");
+        if (o.notified.missed) tags.push("missed-you sent");
+        function mark(done) { api("POST", "order-status", { id: o.id, status: done ? "fulfilled" : "ready" }).then(function () { load(); }).catch(function (er) { toast(er.message); }); }
+        function send(kind) { api("POST", "ev-notify", { eventId: sel.value, id: o.id, kind: kind }).then(function () { toast("Sent"); load(); }).catch(function (er) { toast(er.message); }); }
+        out.appendChild(h("div", { "class": "card" }, [
+          h("div", { style: "display:flex;justify-content:space-between;gap:8px;flex-wrap:wrap" }, [h("strong", { text: o.name || o.email }), h("span", { "class": "pill" + (o.pickedUp ? "" : " event"), text: o.pickedUp ? "Picked up" : "Waiting" })]),
+          h("ul", null, o.items.map(function (i) { return h("li", { text: i.qty + " x " + i.name }); })),
+          h("p", { "class": "muted", text: [o.email, o.phone].filter(Boolean).join(" · ") + (tags.length ? " · " + tags.join(", ") : "") }),
+          h("p", { "class": "noprint" }, [
+            h("button", { "class": "btn small" + (o.pickedUp ? "" : " primary"), text: o.pickedUp ? "Undo picked up" : "Mark picked up", onclick: function () { mark(!o.pickedUp); } }), " ",
+            !o.pickedUp ? h("button", { "class": "btn small", text: "Send reminder", onclick: function () { send("reminder"); } }) : null, " ",
+            !o.pickedUp ? h("button", { "class": "btn small", text: "Sorry we missed you", onclick: function () { send("missed"); } }) : null, " ",
+            h("button", { "class": "btn small", text: "Resend confirmation", onclick: function () { send("confirm"); } })])]));
+      });
+    }
+    sel.addEventListener("change", load);
+    var up = d.events.filter(function (e) { return !e.past; }).slice(-1)[0];
+    if (up) sel.value = up.id;
+    load();
+  }).catch(function (er) { failed(n, er); });
 }
 /* MARKETING: MAILING LIST */
 var SUB_PAGE = 100;
@@ -1575,7 +1634,7 @@ function viewEvents(n) {
         var i = events.indexOf(e);
         var f = function (k, type, label) { var inp = h("input", { type: type, value: e[k] || "" }); inp.addEventListener("input", function () { e[k] = inp.value; }); return h("label", null, [label, inp]); };
         var show = h("input", { type: "checkbox", checked: e.show !== false }); show.addEventListener("change", function () { e.show = show.checked; });
-        list.appendChild(h("div", { "class": "card" }, [h("div", { "class": "row" }, [f("name", "text", "Event name"), f("date", "date", "Event date"), f("location", "text", "Place"), f("orderBy", "date", "Order by (last day)")]),
+        list.appendChild(h("div", { "class": "card" }, [h("div", { "class": "row" }, [f("name", "text", "Event name"), f("date", "date", "Event date"), f("location", "text", "Place"), f("time", "text", "Hours (optional)"), f("orderBy", "date", "Order by (last day)")]),
           h("div", { style: "display:flex;justify-content:space-between;margin-top:10px;gap:8px;flex-wrap:wrap" }, [h("label", { "class": "chk" }, [show, "Show in cart"]),
             h("button", { "class": "btn small danger", text: "Delete", onclick: function () { events.splice(i, 1); draw(); } })])]));
       });
@@ -1585,7 +1644,7 @@ function viewEvents(n) {
     n.appendChild(etools.el);
     n.appendChild(list);
     n.appendChild(h("div", { "class": "row" }, [
-      h("button", { "class": "btn", text: "+ Add event", onclick: function () { events.push({ name: "", date: "", location: "", orderBy: "", show: true }); draw(); } }),
+      h("button", { "class": "btn", text: "+ Add event", onclick: function () { events.push({ name: "", date: "", location: "", time: "", orderBy: "", show: true }); draw(); } }),
       h("button", { "class": "btn primary", text: "Save events", onclick: function () {
         msg.className = "msg"; msg.textContent = "Saving...";
         api("PUT", "events", { events: events }).then(function (r) { events = r.events; draw(); msg.className = "msg ok"; msg.textContent = "Saved. The shop is updated."; }).catch(function (er) { msg.className = "msg err"; msg.textContent = er.message; });

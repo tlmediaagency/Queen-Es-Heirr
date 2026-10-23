@@ -14,6 +14,7 @@ import { handleAdmin, readEvents, upcoming, serveImage, monthlyReport, eventRepo
 import { shippoWebhook, quoteOptions, verifyQuote } from "./shipping.js";
 import { addOptIn } from "./marketing.js";
 import { blogPublic } from "./blog.js";
+import { onEventOrderPaid, eventReminders } from "./eventorders.js";
 import { publicClasses, classCheckout, recordBooking } from "./classes.js";
 
 const API = "https://api.stripe.com/v1";
@@ -209,7 +210,7 @@ async function handleCheckout(request, env, c) {
   params.set("cancel_url", `${site}/shop/`);
   params.set("phone_number_collection[enabled]", "true");
   params.set("metadata[fulfillment]", allDigital ? "digital" : ev ? "event" : pickup ? "pickup" : "ship");
-  if (ev) params.set("metadata[event]", `${ev.name} (${ev.date})`.slice(0, 200));
+  if (ev) { params.set("metadata[event]", `${ev.name} (${ev.date})`.slice(0, 200)); params.set("metadata[event_id]", String(ev.id).slice(0, 60)); }
   if (payload.optin === true) params.set("metadata[optin]", "1");
   if (allDigital) {
     params.set("billing_address_collection", "required");
@@ -553,6 +554,9 @@ async function handleStripeWebhook(request, env) {
     console.log("webhook error", String(e));
     return new Response("error", { status: 500 }); // Stripe will retry
   }
+  if (session.metadata && session.metadata.fulfillment === "event") {
+    try { await onEventOrderPaid(env, stripeGet, session.id); } catch (e) { console.log("event order email failed", String(e)); }
+  }
   if (session.metadata && session.metadata.optin === "1") {
     try {
       const full = await stripeGet(env, `/checkout/sessions/${session.id}?expand[]=line_items.data.price.product`);
@@ -586,6 +590,7 @@ export default {
     const chiDay = Number(new Intl.DateTimeFormat("en-US", { timeZone: "America/Chicago", day: "numeric" }).format(new Date()));
     const hour = Number(new Intl.DateTimeFormat("en-US", { timeZone: "America/Chicago", hour: "numeric", hour12: false }).format(new Date())) % 24;
     ctx.waitUntil((async () => {
+      try { console.log("event reminders", await eventReminders(env, stripeGet)); } catch (e) { console.log("event reminders failed", String(e)); }
       try { console.log("event reports", await eventReports(env, stripeGet)); } catch (e) { console.log("event reports failed", String(e)); }
       if (chiDay === 1 && hour === 7) { try { console.log("monthly report", await monthlyReport(env, stripeGet)); } catch (e) { console.log("monthly report failed", String(e)); } }
     })());
