@@ -15,6 +15,7 @@ import { handleAdmin, readEvents, upcoming, serveImage, monthlyReport, eventRepo
 import { shippoWebhook, quoteOptions, verifyQuote } from "./shipping.js";
 import { addOptIn } from "./marketing.js";
 import { blogPublic } from "./blog.js";
+import { servicesPublic } from "./services.js";
 import { wholesalePublic, wsPaid } from "./wholesale.js";
 import { onEventOrderPaid, eventReminders } from "./eventorders.js";
 import { publicClasses, classCheckout, recordBooking } from "./classes.js";
@@ -620,6 +621,7 @@ export default {
       const r = await blogPublic(url, env, c.headers, json);
       if (r) return r;
     }
+    if (url.pathname === "/services" && request.method === "GET") return servicesPublic(env, c.headers, json);
     if (url.pathname.startsWith("/ws/")) {
       const r = await wholesalePublic(request, env, url, c, { json, loadCatalog, stdSize, stripePost });
       if (r) return r;

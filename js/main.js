@@ -720,4 +720,28 @@
   });
 
   render();
+
+  // Training programs and starting prices are managed in the admin app. Built-in HTML stays if the Worker can't be reached.
+  (function () {
+    var boxes = document.querySelectorAll("[data-services]");
+    if (!boxes.length) return;
+    fetch(workerUrl("/services")).then(function (r) { return r.json(); }).then(function (d) {
+      if (!d.services || !d.services.length) return;
+      boxes.forEach(function (box) {
+        var aud = box.getAttribute("data-services");
+        var rows = d.services.filter(function (s) { return s.audience === aud; });
+        if (!rows.length) return;
+        while (box.firstChild) box.removeChild(box.firstChild);
+        rows.forEach(function (s) {
+          var card = el("article", { "class": "card pad" });
+          card.appendChild(el("h3", {}, s.title));
+          var p = el("p", { "class": "muted" }, (s.blurb ? s.blurb + " " : ""));
+          var price = "$" + (s.cents / 100).toLocaleString("en-US", { minimumFractionDigits: s.cents % 100 ? 2 : 0 });
+          p.appendChild(el("strong", {}, "Starting at " + price));
+          if (s.travel) p.appendChild(document.createTextNode(" + cost of travel as applicable"));
+          card.appendChild(p); box.appendChild(card);
+        });
+      });
+    }).catch(function () {});
+  })();
 })();

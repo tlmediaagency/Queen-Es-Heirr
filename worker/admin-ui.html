@@ -211,6 +211,7 @@ var GROUPS = [
   ["Wholesale", [["wsorders", "Refill Orders"], ["wsvendors", "Vendors"]]],
   ["Events", [["events", "Events"]]],
   ["Classes & Bookings", [["classes", "Classes"], ["bookings", "Bookings"]]],
+  ["Programs", [["services", "Program Pricing"]]],
   ["Marketing", [["subscribers", "Mailing List"], ["campaigns", "Email Campaigns"], ["blog", "Blog Posts"]]]
 ];
 function groupOf(key) { return GROUPS.filter(function (g) { return g[1].some(function (v) { return v[0] === key; }); })[0] || null; }
@@ -247,7 +248,7 @@ function start() {
     }));
   }
   shell(subnav ? [nav, subnav, body] : [nav, body]);
-  ({ orders: viewOrders, products: viewProducts, requests: viewRequests, classes: viewClasses, bookings: viewBookings, events: viewEvents, ledger: viewLedger, reports: viewReports, sale: viewSale, eventpickups: viewEventPickups, subscribers: viewSubscribers, campaigns: viewCampaigns, toship: viewToShip, shipped: viewShipped, shipsetup: viewShipSetup, blog: viewBlog, wsorders: viewWsOrders, wsvendors: viewWsVendors })[current](body);
+  ({ orders: viewOrders, products: viewProducts, requests: viewRequests, classes: viewClasses, bookings: viewBookings, events: viewEvents, ledger: viewLedger, reports: viewReports, sale: viewSale, eventpickups: viewEventPickups, subscribers: viewSubscribers, campaigns: viewCampaigns, toship: viewToShip, shipped: viewShipped, shipsetup: viewShipSetup, services: viewServices, blog: viewBlog, wsorders: viewWsOrders, wsvendors: viewWsVendors })[current](body);
   keepAwake(current === "sale");
 }
 
@@ -434,6 +435,39 @@ function viewShipSetup(n) {
 /* BLOG (Queen Talk) */
 var SITE_URL = "https://queenesheirr.com";
 function postStatus(p) { return p.status !== "published" ? "Draft" : p.live ? "Published" : "Scheduled " + p.date; }
+function viewServices(n) {
+  loading(n);
+  api("GET", "services").then(function (d) {
+    clear(n);
+    var list = d.services, box = h("div");
+    n.appendChild(h("p", { "class": "muted", text: "These show on the Etiquette & Leadership page as \"Starting at\" prices. Final pricing is given with each quote. Changes appear on the site within about a minute." }));
+    function draw() {
+      clear(box);
+      list.forEach(function (s, i) {
+        var f = function (k, label, extra) { var inp = h("input", Object.assign({ type: "text", value: s[k] == null ? "" : s[k] }, extra || {})); inp.addEventListener("input", function () { s[k] = inp.value; }); return h("label", null, [label, inp]); };
+        var price = h("input", { type: "number", min: 0, step: "1", value: s.cents != null ? Math.round(s.cents) / 100 : "" });
+        price.addEventListener("input", function () { s.cents = Math.round((parseFloat(price.value) || 0) * 100); });
+        var aud = h("select", null, [["students", "For Students"], ["professionals", "For Professionals"]].map(function (a) { return h("option", { value: a[0], text: a[1], selected: a[0] === s.audience }); }));
+        aud.addEventListener("change", function () { s.audience = aud.value; });
+        var trav = h("input", { type: "checkbox", checked: s.travel !== false }); trav.addEventListener("change", function () { s.travel = trav.checked; });
+        var act = h("input", { type: "checkbox", checked: s.active !== false }); act.addEventListener("change", function () { s.active = act.checked; });
+        box.appendChild(h("div", { "class": "card" }, [
+          h("div", { "class": "row" }, [f("title", "Program name"), h("label", null, ["Section", aud]), h("label", null, ["Starting price ($)", price])]),
+          h("div", { "class": "row", style: "margin-top:10px" }, [f("blurb", "Short description")]),
+          h("div", { style: "display:flex;justify-content:space-between;align-items:center;margin-top:10px;gap:8px;flex-wrap:wrap" }, [
+            h("label", { "class": "chk" }, [act, "Show on site"]), h("label", { "class": "chk" }, [trav, "Add \"+ cost of travel as applicable\""]),
+            h("span", null, [h("button", { "class": "btn small", text: "↑", onclick: function () { if (i > 0) { list.splice(i - 1, 0, list.splice(i, 1)[0]); draw(); } } }), " ",
+              h("button", { "class": "btn small", text: "↓", onclick: function () { if (i < list.length - 1) { list.splice(i + 1, 0, list.splice(i, 1)[0]); draw(); } } }), " ",
+              h("button", { "class": "btn small danger", text: "Delete", onclick: function () { if (window.confirm("Delete this program?")) { list.splice(i, 1); draw(); } } })])])]));
+      });
+    }
+    draw(); n.appendChild(box);
+    n.appendChild(h("p", null, [h("button", { "class": "btn", text: "Add a program", onclick: function () { list.push({ audience: "students", title: "", blurb: "", cents: 0, travel: true, active: true }); draw(); } }), " ",
+      h("button", { "class": "btn primary", text: "Save changes", onclick: function () {
+        api("POST", "services-save", { services: list }).then(function (r) { list.length = 0; r.services.forEach(function (x) { list.push(x); }); draw(); toast("Saved"); }).catch(function (er) { toast(er.message); });
+      } })]));
+  }).catch(function (er) { failed(n, er); });
+}
 function viewBlog(n) {
   loading(n);
   api("GET", "blog-posts").then(function (d) { clear(n); blogList(n, d.posts, d.today); }).catch(function (er) { failed(n, er); });

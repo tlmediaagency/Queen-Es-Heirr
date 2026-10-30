@@ -5,6 +5,7 @@ import { adminClasses, cleanClasses, adminBookings, readClasses, readBookings, p
 import { marketingRoute } from "./marketing.js";
 import { shippingRoute } from "./shipping.js";
 import { blogRoute } from "./blog.js";
+import { servicesRoute } from "./services.js";
 import { wholesaleAdminRoute } from "./wholesale.js";
 import { eventOrdersRoute } from "./eventorders.js";
 import { stdSize, CATEGORIES } from "./sizes.js";
@@ -270,6 +271,8 @@ export async function handleAdmin(request, env, url, d) {
     if (mk) return mk;
     const sh = await shippingRoute(route, request.method, body, env, me, { stripeGet }, j, url.origin);
     if (sh) return sh;
+    const sv = await servicesRoute(route, request.method, body, env, me, j);
+    if (sv) return sv;
     const bl = await blogRoute(route, request.method, body, env, me, j, url.origin);
     if (bl) return bl;
     const eo = await eventOrdersRoute(route, request.method, body, env, me, { stripeGet }, j);
