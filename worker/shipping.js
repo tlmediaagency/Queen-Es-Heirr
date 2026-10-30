@@ -236,6 +236,19 @@ export async function shippingRoute(route, method, body, env, me, deps, j, origi
       for (const id of ids.slice(0, 80)) { const r = await readRec(env, id); if (r && !r.voided) out.push(r); }
       return j({ shipments: out });
     }
+    if (route === "ship-clear" && method === "POST") {
+      // Wipes the saved label records (used to throw away practice labels after switching to the live Shippo key).
+      if (body.confirm !== true) return j({ error: "Please confirm." }, 400);
+      let ids = []; try { ids = JSON.parse((await env.ADMIN_KV.get("shiplist")) || "[]"); } catch { ids = []; }
+      let n = 0;
+      for (const id of ids.slice(0, 300)) {
+        const r = await readRec(env, id);
+        if (r && r.trackingNumber) await env.ADMIN_KV.delete("shiptrack:" + r.trackingNumber);
+        await env.ADMIN_KV.delete("ship:" + id); n++;
+      }
+      await env.ADMIN_KV.put("shiplist", "[]");
+      return j({ ok: true, cleared: n });
+    }
     if (route === "ship-prepare" && method === "POST") {
       const o = await loadOrder(env, deps, body.id);
       return j({ order: { id: o.id, name: o.name, email: o.email, phone: o.phone, address: o.address, items: o.items, shippingPaid: o.shippingPaid, shipService: o.shipService, zipChanged: !!(o.quotedZip && o.address && o.address.zip && o.address.zip.slice(0, 5) !== o.quotedZip) }, weightOz: estWeight(o, st), presets: st.presets, mode: mode(env), ready: !!(st.from.street1 && st.from.zip && st.from.phone) });

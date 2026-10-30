@@ -410,6 +410,12 @@ function viewShipSetup(n) {
     var msg = h("p", { "class": "msg", role: "status" });
     var wh = h("input", { value: d.webhookUrl, readonly: "readonly", onclick: function (e) { e.target.select(); } });
     n.appendChild(fromCard); n.appendChild(retCard); n.appendChild(boxCard); n.appendChild(wCard); n.appendChild(eCard);
+    var clrMsg = h("p", { "class": "msg", role: "status" });
+    n.appendChild(h("div", { "class": "card" }, [h("h3", { text: "Clear practice labels" }), h("p", { "class": "muted", text: "Removes every label from the Shipped list here. Use this once, right after switching to your live Shippo key and before your first real label. It does not cancel anything in Shippo." }),
+      h("button", { "class": "btn small", type: "button", text: "Clear practice labels", onclick: function () {
+        if (!confirm("Remove ALL labels from the Shipped list? Only do this if every one of them is a practice label.")) return;
+        api("POST", "ship-clear", { confirm: true }).then(function (r) { clrMsg.className = "msg ok"; clrMsg.textContent = "Cleared " + r.cleared + " practice label" + (r.cleared === 1 ? "" : "s") + "."; }).catch(function (er) { clrMsg.className = "msg err"; clrMsg.textContent = er.message; });
+      } }), clrMsg]));
     n.appendChild(h("p", null, [h("button", { "class": "btn primary", text: "Save shipping setup", onclick: function () {
       var from = {}; Object.keys(F).forEach(function (k) { from[k] = F[k].value; });
       var weights = {}; WK.forEach(function (k) { weights[k] = WI[k].value; });
