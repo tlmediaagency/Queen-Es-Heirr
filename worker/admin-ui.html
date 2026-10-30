@@ -434,7 +434,8 @@ function viewBlog(n) {
 }
 function blogList(n, posts, today) {
   n.appendChild(h("p", { "class": "muted", text: "Posts show on your website under Queen Talk. Drafts stay private until you publish. Pick a future date to schedule one." }));
-  n.appendChild(h("p", null, [h("button", { "class": "btn primary", text: "Write a new post", onclick: function () { clear(n); blogEditor(n, null, today); } })]));
+  n.appendChild(h("p", null, [h("button", { "class": "btn primary", text: "Write a new post", onclick: function () { clear(n); blogEditor(n, null, today); } }), " ",
+    h("button", { "class": "btn", text: "Import posts", onclick: function () { clear(n); blogImport(n, today); } })]));
   if (!posts.length) n.appendChild(h("p", { "class": "muted", text: "No posts yet." }));
   posts.forEach(function (p) {
     var live = p.status === "published" && p.live;
@@ -444,6 +445,70 @@ function blogList(n, posts, today) {
       h("p", null, [h("button", { "class": "btn small primary", text: "Edit", onclick: function () { clear(n); blogEditor(n, p, today); } }), " ",
         live ? h("a", { "class": "btn small", href: SITE_URL + "/stories/post/?s=" + p.slug, target: "_blank", rel: "noopener noreferrer", text: "View on site" }) : null])]));
   });
+}
+function blogImport(n, today) {
+  n.appendChild(h("p", null, [h("button", { "class": "btn small", text: "← All posts", onclick: function () { viewBlog(n); } })]));
+  var box = h("div", { "class": "card", style: "display:grid;gap:12px" });
+  var file = h("input", { type: "file", accept: ".json,application/json,text/plain", "aria-label": "Choose the posts file" });
+  var paste = h("textarea", { rows: "4", placeholder: "Or paste the posts text here", "aria-label": "Pasted posts" });
+  var msg = h("p", { "class": "msg", role: "status" }), list = h("div");
+  var items = [];
+  box.appendChild(h("p", { "class": "muted", text: "Choose the file of ready-written posts. Then tick the ones you want, set when each should go out, and add them. They show up as drafts (private) or scheduled posts that publish themselves on the date." }));
+  box.appendChild(h("label", null, ["Posts file", file])); box.appendChild(paste);
+  box.appendChild(h("button", { "class": "btn small primary", text: "Load posts", onclick: function () { load(paste.value); } }));
+  box.appendChild(msg);
+  n.appendChild(box); n.appendChild(list);
+  file.addEventListener("change", function () { var f = file.files && file.files[0]; if (!f) return; var rd = new FileReader(); rd.onload = function () { paste.value = String(rd.result); load(paste.value); }; rd.readAsText(f); });
+  function load(text) {
+    var arr; try { arr = JSON.parse(text); } catch (e) { say("That doesn't look like a posts file.", true); return; }
+    if (!Array.isArray(arr) || !arr.length) { say("No posts found in that file.", true); return; }
+    items = arr.slice(0, 30).map(function (p) { return { p: p, on: true, date: today }; });
+    say(items.length + " posts loaded.", false); draw();
+  }
+  function say(t, err) { msg.className = "msg" + (err ? " err" : " ok"); msg.textContent = t; }
+  function draw() {
+    clear(list);
+    var start = h("input", { type: "date", value: today, "aria-label": "First post date" });
+    var per = h("select", { "aria-label": "Posts per week" }, [["3", "3 a week (Mon, Wed, Fri)"], ["4", "4 a week (Mon, Tue, Thu, Sat)"], ["2", "2 a week (Tue, Fri)"]].map(function (o) { return h("option", { value: o[0], text: o[1] }); }));
+    var mode = h("select", { "aria-label": "Add as" }, [["scheduled", "Scheduled (publishes on its date)"], ["draft", "Drafts (private, I'll publish myself)"]].map(function (o) { return h("option", { value: o[0], text: o[1] }); }));
+    var DAYS = { "3": [1, 3, 5], "4": [1, 2, 4, 6], "2": [2, 5] };
+    function spread() {
+      var days = DAYS[per.value], d = new Date(start.value + "T12:00:00Z"); if (isNaN(d)) return;
+      items.forEach(function (it) {
+        if (!it.on) return;
+        while (days.indexOf(d.getUTCDay()) < 0) d.setUTCDate(d.getUTCDate() + 1);
+        it.date = d.toISOString().slice(0, 10); d.setUTCDate(d.getUTCDate() + 1);
+      });
+      draw2();
+    }
+    list.appendChild(h("div", { "class": "card", style: "display:grid;gap:10px" }, [h("h3", { text: "Pick and schedule" }),
+      h("div", { "class": "row" }, [h("label", null, ["Start on", start]), h("label", null, ["How often", per])]),
+      h("p", null, [h("button", { "class": "btn small", type: "button", text: "Spread the ticked posts across these days", onclick: spread })]),
+      h("label", null, ["Add them as", mode])]));
+    var rows = h("div"); list.appendChild(rows);
+    function draw2() {
+      clear(rows);
+      items.forEach(function (it, i) {
+        var cb = h("input", { type: "checkbox", checked: it.on, "aria-label": "Include " + it.p.title }); cb.addEventListener("change", function () { it.on = cb.checked; });
+        var dt = h("input", { type: "date", value: it.date, "aria-label": "Date for " + it.p.title }); dt.addEventListener("input", function () { it.date = dt.value; });
+        var det = h("details", null, [h("summary", { text: "Read it" }), h("p", { "class": "muted", text: it.p.excerpt || "" }), h("pre", { style: "white-space:pre-wrap;font:inherit", text: it.p.body || "" })]);
+        rows.appendChild(h("div", { "class": "card" }, [h("div", { style: "display:flex;gap:10px;align-items:center;flex-wrap:wrap" }, [cb, h("strong", { text: it.p.title, style: "flex:1;min-width:180px" }), h("span", { "class": "pill", text: it.p.category || "" }), dt]), det]));
+      });
+    }
+    draw2();
+    var go = h("button", { "class": "btn primary", type: "button", text: "Add the ticked posts" });
+    go.addEventListener("click", function () {
+      var pick = items.filter(function (x) { return x.on; });
+      if (!pick.length) { say("Tick at least one post.", true); return; }
+      if (mode.value === "scheduled" && pick.some(function (x) { return !x.date; })) { say("Every ticked post needs a date.", true); return; }
+      if (!confirm("Add " + pick.length + " post" + (pick.length === 1 ? "" : "s") + (mode.value === "scheduled" ? " as scheduled posts? They will go live on their dates." : " as drafts?"))) return;
+      go.disabled = true; say("Adding...", false);
+      api("POST", "blog-import", { posts: pick.map(function (x) { return { title: x.p.title, category: x.p.category, excerpt: x.p.excerpt, body: x.p.body, author: x.p.author, date: x.date || today, status: mode.value === "scheduled" ? "published" : "draft" }; }) })
+        .then(function (r) { toast("Added " + r.made.length + " posts"); viewBlog(n); })
+        .catch(function (er) { go.disabled = false; say(er.message, true); });
+    });
+    list.appendChild(go);
+  }
 }
 function blogEditor(n, p, today) {
   var isNew = !p; p = p || { title: "", slug: "", category: "", author: "Queen E's Heirr", date: today, status: "draft", image: "", excerpt: "", body: "" };

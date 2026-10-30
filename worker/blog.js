@@ -117,6 +117,22 @@ export async function blogRoute(route, method, body, env, me, j, origin) {
       await writePosts(env, posts);
       return j({ ok: true, post: { ...(existing || p), live: live(existing || p) } });
     }
+    if (route === "blog-import" && method === "POST") {
+      // A batch of ready-written posts (from a file). Each one is saved as a draft, or as published with a date (future dates schedule it).
+      const incoming = (Array.isArray(body.posts) ? body.posts : []).slice(0, 30);
+      if (!incoming.length) return j({ error: "There are no posts to add." }, 400);
+      const posts = await readPosts(env);
+      if (posts.length + incoming.length > MAX_POSTS) return j({ error: "That would go over the limit of " + MAX_POSTS + " posts." }, 400);
+      const made = [];
+      for (const raw of incoming) {
+        const b = { ...raw, slug: "", image: "", bodyHtml: typeof raw.bodyHtml === "string" && raw.bodyHtml ? raw.bodyHtml : webHtml(renderBody(raw.body, origin), origin) };
+        const p = cleanPost(b, origin, null, posts);
+        const rnd = new Uint8Array(6); crypto.getRandomValues(rnd); p.id = Array.from(rnd).map((x) => x.toString(16).padStart(2, "0")).join("");
+        posts.push(p); made.push({ id: p.id, title: p.title, date: p.date, status: p.status });
+      }
+      await writePosts(env, posts);
+      return j({ ok: true, made });
+    }
     if (route === "blog-delete" && method === "POST") {
       const posts = await readPosts(env);
       if (!ID_RE.test(body.id || "") || !posts.some((p) => p.id === body.id)) return j({ error: "That post no longer exists." }, 404);
