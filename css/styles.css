@@ -41,6 +41,7 @@ button, [role="button"] { cursor: pointer; }
 .brand span { display: block; font-size: 0.62rem; letter-spacing: 0.18em; text-transform: uppercase; color: var(--sage); font-weight: 600; }
 .nav { display: none; gap: 1rem; }
 .nav a {
+  white-space: nowrap;
   text-decoration: none;
   font-size: 0.7rem;
   font-weight: 600;
@@ -118,7 +119,7 @@ form.stack { display: grid; gap: 1rem; background: #fff; border: 1px solid var(-
   .hero { grid-template-columns: 1.2fr 0.8fr; }
   .foot { grid-template-columns: 1.4fr 1fr 1fr; }
 }
-@media (min-width: 1100px) {
+@media (min-width: 1240px) {
   .nav { display: flex; }
   .menu-btn { display: none; }
 }
@@ -348,3 +349,7 @@ a.btn[href] { text-decoration: none; }
 .legal { margin-top: 1.5rem; padding-top: 1rem; border-top: 1px solid rgba(255,255,255,.15); font-size: .85rem; }
 .legal p { margin: 0; color: var(--cream-deep); }
 .legal a { text-decoration: underline; }
+
+/* Queen Talk photos: show the whole picture instead of cropping it */
+[data-blog-list] .card img { aspect-ratio: auto; height: auto; max-height: 360px; object-fit: contain; background: var(--cream-deep); }
+.post-hero { height: auto; max-height: 520px; object-fit: contain; background: var(--cream-deep); }
