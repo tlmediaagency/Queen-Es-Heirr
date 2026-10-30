@@ -52,8 +52,10 @@ button, [role="button"] { cursor: pointer; }
   padding-bottom: 0.2rem;
 }
 .nav a[aria-current="page"] { color: var(--forest); border-color: var(--forest); }
-.nav { align-items: center; }
-.dd { position: relative; }
+.nav { align-items: flex-start; }
+.dd { position: relative; display: flex; }
+.dd > a { display: block; line-height: 1.4; }
+.nav > a { line-height: 1.4; }
 .dd > a::after { content: "\25BE"; margin-left: 0.3em; font-size: 0.8em; }
 .dd-menu {
   display: none; position: absolute; top: 100%; left: -0.75rem; min-width: 14rem; z-index: 60;
