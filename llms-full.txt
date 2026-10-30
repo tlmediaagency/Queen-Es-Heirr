@@ -15,6 +15,7 @@ Founder: LyKinda Thibodeaux. Website: https://queenesheirr.com (formerly queenej
 ## Shop
 - [The Shop](https://queenesheirr.com/shop/): jams (blueberry, strawberry, peach, raspberry, apple, blackberry, peppered, pineapple and mango flavors) and pickled goods (dill, sweet and savory, tart n tangy, candied jalapeños). Jars ship across the United States; checkout is by Stripe. Most flavors are seasonal.
 - [Wholesale](https://queenesheirr.com/wholesale/): retailers choose jars and receive a quote at discounted wholesale pricing. Approved vendors reorder at [/wholesale/portal/](https://queenesheirr.com/wholesale/portal/).
+- [About](https://queenesheirr.com/about/): the family story behind Queen E's Heirr and founder LyKinda Thibodeaux (QueenE's is pronounced "Queenie's"; it began as Queen Essie's in June 2022).
 - [Locations](https://queenesheirr.com/locations/): in-store at Bayou Stuf in Lacombe, Louisiana.
 
 ## Classes and training
