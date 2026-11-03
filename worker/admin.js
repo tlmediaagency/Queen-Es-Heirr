@@ -233,7 +233,7 @@ export async function handleAdmin(request, env, url, d) {
   const path = url.pathname;
   if (path === "/admin" || path === "/admin/") {
     return new Response(UI, { headers: {
-      "Content-Type": "text/html; charset=utf-8", "Cache-Control": "no-store", "X-Frame-Options": "DENY", "Referrer-Policy": "no-referrer",
+      "Content-Type": "text/html; charset=utf-8", "Cache-Control": "no-store", "X-Frame-Options": "DENY", "Referrer-Policy": "no-referrer", "X-Robots-Tag": "noindex, nofollow, noarchive",
       "Content-Security-Policy": "default-src 'none'; manifest-src 'self'; script-src 'unsafe-inline'; style-src 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self' data: https:; connect-src 'self'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'",
     } });
   }
@@ -242,7 +242,7 @@ export async function handleAdmin(request, env, url, d) {
     const page = `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="robots" content="noindex"><title>${cancelled ? "Payment cancelled" : "Thank you"}</title>
 <style>body{margin:0;min-height:100vh;display:grid;place-items:center;background:#fcfaf7;color:#0e2012;font:400 18px/1.5 Georgia,serif;text-align:center;padding:24px}main{max-width:460px}img{width:96px;height:96px;border-radius:50%}h1{color:#1b3b22;font-size:2.2rem;margin:.6em 0 .2em}p{color:#5c6b5a}a{display:inline-block;margin-top:18px;padding:14px 26px;border-radius:99px;background:#1b3b22;color:#f7f1d8;text-decoration:none;font:600 14px/1 sans-serif;letter-spacing:.1em;text-transform:uppercase}</style></head>
 <body><main><img src="/admin/icon-192.png" alt=""><h1>${cancelled ? "No payment was taken" : "Thank you!"}</h1><p>${cancelled ? "Nothing was charged. You can close this window and try again." : "Your payment went through and a receipt is on its way to your email. Enjoy your jars!"}</p><p>If this is a window on top of the sales screen, tap <b>Done</b> to go back.</p><a href="/admin">Back to the sale</a></main></body></html>`;
-    return new Response(page, { headers: { "Content-Type": "text/html; charset=utf-8", "Cache-Control": "no-store", "X-Frame-Options": "DENY", "Referrer-Policy": "no-referrer",
+    return new Response(page, { headers: { "Content-Type": "text/html; charset=utf-8", "Cache-Control": "no-store", "X-Frame-Options": "DENY", "Referrer-Policy": "no-referrer", "X-Robots-Tag": "noindex, nofollow, noarchive",
       "Content-Security-Policy": "default-src 'none'; style-src 'unsafe-inline'; img-src 'self'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'" } });
   }
   if (path === "/admin/manifest.webmanifest") {

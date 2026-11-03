@@ -607,6 +607,7 @@ export default {
     const url = new URL(request.url);
     const c = cors(env, request.headers.get("Origin") || "");
     if (request.method === "OPTIONS") return new Response(null, { status: 204, headers: c.headers });
+    if (url.pathname === "/robots.txt" && request.method === "GET") return new Response("User-agent: *\nDisallow: /admin\nDisallow: /ws/\nAllow: /blog\n", { headers: { "Content-Type": "text/plain; charset=utf-8", "Cache-Control": "public, max-age=3600" } });
     if (env.ADMIN_HOST && url.hostname === env.ADMIN_HOST && url.pathname === "/") return Response.redirect(`https://${env.ADMIN_HOST}/admin`, 302);
     if (!env.STRIPE_SECRET_KEY) return json({ error: "Not configured" }, 500, c.headers);
     if (url.pathname === "/admin" || url.pathname.startsWith("/admin/")) {
