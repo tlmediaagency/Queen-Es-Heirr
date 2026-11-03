@@ -20,3 +20,4 @@ User-agent: Applebot-Extended
 Allow: /
 
 Sitemap: https://queenesheirr.com/sitemap.xml
+Sitemap: https://queenes-checkout.summer-paper-e090.workers.dev/blog/sitemap.xml
