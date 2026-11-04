@@ -1,4 +1,5 @@
 import { sanitizeRich, richToText } from "./richtext.js";
+import { pingNewPosts } from "./indexnow.js";
 // Queen Talk blog: posts live in the ADMIN_KV key "blog" and are written in the admin app.
 // The website (queenesheirr.com/stories/) fetches them from the public routes below.
 // Post text is simple formatting (## headings, - lists, **bold**, [links](https://...), ![photo](url)); it is escaped and turned into safe HTML here.
@@ -145,11 +146,12 @@ export async function blogRoute(route, method, body, env, me, j, origin) {
 
 // ---- public --------------------------------------------------------------------------------------
 // GET /blog, /blog/<slug>, /blog/share/<slug>, /blog/sitemap.xml
-export async function blogPublic(url, env, headers, json) {
+export async function blogPublic(url, env, headers, json, ctx) {
   const path = url.pathname;
   const cache = { ...headers, "Cache-Control": "public, max-age=60" };
   if (path === "/blog") {
     const posts = (await readPosts(env)).filter(live).sort((a, b) => b.date.localeCompare(a.date));
+    if (ctx && ctx.waitUntil) ctx.waitUntil(pingNewPosts(env, posts).catch(() => {}));
     return json({ posts: posts.map(pub) }, 200, cache);
   }
   if (path === "/blog/sitemap.xml") {

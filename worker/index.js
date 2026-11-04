@@ -619,7 +619,7 @@ export default {
     const pm = url.pathname.match(/^\/pay\/(cs_[A-Za-z0-9_]+)$/);
     if (pm && request.method === "GET") return payRedirect(env, pm[1]);
     if ((url.pathname === "/blog" || url.pathname.startsWith("/blog/")) && request.method === "GET") {
-      const r = await blogPublic(url, env, c.headers, json);
+      const r = await blogPublic(url, env, c.headers, json, ctx);
       if (r) return r;
     }
     if (url.pathname === "/services" && request.method === "GET") return servicesPublic(env, c.headers, json);
