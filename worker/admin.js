@@ -8,6 +8,7 @@ import { blogRoute } from "./blog.js";
 import { servicesRoute } from "./services.js";
 import { wholesaleAdminRoute } from "./wholesale.js";
 import { eventOrdersRoute } from "./eventorders.js";
+import { deliveryRoute } from "./delivery.js";
 import { stdSize, CATEGORIES } from "./sizes.js";
 import { ICON_192, ICON_512 } from "./admin-icons.js";
 
@@ -275,6 +276,8 @@ export async function handleAdmin(request, env, url, d) {
     if (sv) return sv;
     const bl = await blogRoute(route, request.method, body, env, me, j, url.origin);
     if (bl) return bl;
+    const dv = await deliveryRoute(route, request.method, body, env, me, { stripeGet }, j);
+    if (dv) return dv;
     const eo = await eventOrdersRoute(route, request.method, body, env, me, { stripeGet }, j);
     if (eo) return eo;
     const wa = await wholesaleAdminRoute(route, request.method, body, env, me, { loadCatalog, stdSize }, j);
@@ -559,7 +562,7 @@ export async function handleAdmin(request, env, url, d) {
           name: (s.customer_details && s.customer_details.name) || "", email: (s.customer_details && s.customer_details.email) || "",
           phone: (s.customer_details && s.customer_details.phone) || "",
           refundUrl: typeof s.payment_intent === "string" && s.payment_intent ? `https://dashboard.stripe.com/${/^(sk|rk)_test_/.test(env.STRIPE_SECRET_KEY || "") ? "test/" : ""}payments/${s.payment_intent}` : "",
-          fulfillment: (s.metadata && s.metadata.fulfillment) || "ship", event: (s.metadata && s.metadata.event) || "",
+          fulfillment: (s.metadata && s.metadata.fulfillment) || "ship", event: (s.metadata && s.metadata.event) || "", deliveryTo: (s.metadata && s.metadata.delivery_addr) ? [s.metadata.delivery_addr, s.metadata.delivery_city].filter(Boolean).join(", ") : "",
           address: ship && ship.address ? [ship.address.line1, ship.address.line2, ship.address.city, ship.address.state, ship.address.postal_code].filter(Boolean).join(", ") : "",
           items: ((s.line_items && s.line_items.data) || []).map((l) => ({ name: l.description, qty: l.quantity })),
         };

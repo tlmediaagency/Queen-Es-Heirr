@@ -367,3 +367,8 @@ a.btn[href] { text-decoration: none; }
 /* Queen Talk photos: show the whole picture instead of cropping it */
 [data-blog-list] .card img { aspect-ratio: auto; height: auto; max-height: 360px; object-fit: contain; background: var(--cream-deep); }
 .post-hero { height: auto; max-height: 520px; object-fit: contain; background: var(--cream-deep); }
+
+.ship-delivery { margin: 0.5rem 0 0.75rem; padding: 0.75rem; border: 1px solid var(--linen); border-radius: 12px; background: #fff; }
+.ship-delivery[hidden] { display: none; }
+.ship-delivery .field { display: block; margin-bottom: 0.5rem; }
+.ship-delivery input, .ship-delivery select { width: 100%; }

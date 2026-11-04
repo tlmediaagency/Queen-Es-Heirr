@@ -618,14 +618,35 @@
       fetch(workerUrl("/ship-quote"), { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ zip: zip, items: lines }) })
         .then(function (r) { return r.json().then(function (d) { if (!r.ok) throw new Error(d.error || "Could not get prices"); return d; }); })
         .then(function (d) {
-          setMsg(""); shipQ.zip = zip; shipQ.opts = d.options; shipQ.chosen = null; optBox.textContent = "";
+          setMsg(""); shipQ.zip = zip; shipQ.opts = d.options || []; shipQ.chosen = null; optBox.textContent = "";
+          var hasDel = !!(d.delivery && d.delivery.available), delForm = null;
+          if (hasDel) {
+            delForm = el("div", { "class": "ship-delivery", hidden: "" });
+            var mk = function (name, label, req, ph) { var i = el("input", { type: "text", name: name, placeholder: ph || "", autocomplete: name === "street" ? "address-line1" : name === "unit" ? "address-line2" : "off" }); if (req) i.required = true; var l = el("label", { "class": "field" }, label); l.appendChild(i); delForm.appendChild(l); return i; };
+            var citySel = el("select", { name: "city" }); d.delivery.towns.forEach(function (t) { citySel.appendChild(el("option", { value: t }, t)); });
+            var cl = el("label", { "class": "field" }, "Town"); cl.appendChild(citySel);
+            shipQ.del = { street: mk("street", "Street address", true), unit: mk("unit", "Apt / unit (optional)", false), city: citySel, note: null };
+            delForm.appendChild(cl);
+            shipQ.del.note = mk("note", "Delivery notes (gate code, where to leave it)", false);
+            delForm.appendChild(el("p", { "class": "muted" }, "ZIP code " + zip + ". We will contact you to arrange a delivery time. Paid by card at checkout."));
+          }
+          if (hasDel) {
+            var dlab = el("label", { "class": "ship-opt" }), dinp = el("input", { type: "radio", name: "shipopt" });
+            dinp.addEventListener("change", function () {
+              shipQ.chosen = { local: true }; setMsg(""); delForm.hidden = false;
+              var note = document.querySelector("[data-fulfill-note]"); if (note) note.textContent = "Free local delivery. We will contact you to arrange a delivery time. Any sales tax is added at secure checkout.";
+            });
+            dlab.appendChild(dinp); dlab.appendChild(document.createTextNode(" Free local delivery \u2014 $0.00 (we will contact you to arrange a time)"));
+            optBox.appendChild(dlab);
+          }
+          if (delForm) optBox.appendChild(delForm);
           d.options.forEach(function (o, i) {
             var lab = el("label", { "class": "ship-opt" }), inp = el("input", { type: "radio", name: "shipopt" });
-            inp.addEventListener("change", function () { shipQ.chosen = o; setMsg(""); });
+            inp.addEventListener("change", function () { shipQ.chosen = o; setMsg(""); if (delForm) delForm.hidden = true; });
             lab.appendChild(inp);
             lab.appendChild(document.createTextNode(" " + o.service + " \u2014 " + money(o.cents) + (o.days ? " (about " + o.days + (o.days === 1 ? " day" : " days") + " in transit)" : "")));
             optBox.appendChild(lab);
-            if (d.options.length === 1) { inp.checked = true; shipQ.chosen = o; }
+            if (d.options.length === 1 && !hasDel) { inp.checked = true; shipQ.chosen = o; }
           });
         }).catch(function (err) { setMsg(err.message); }).then(function () { getBtn.disabled = false; });
     });
@@ -641,12 +662,19 @@
       }
       var needShip = fulfillment() === "ship" && !lines.every(function (l) { var pr = findProduct(l.id); return pr && pr.digital; });
       if (needShip && shipBox() && !shipQ.chosen) { setMsg("Enter your ZIP code, tap See shipping prices, and choose an option first."); return; }
+      var isLocal = needShip && shipQ.chosen && shipQ.chosen.local && shipQ.del;
+      var delivery;
+      if (isLocal) {
+        var st = shipQ.del.street.value.trim();
+        if (st.length < 4 || !/\d/.test(st)) { setMsg("Please enter your street address for delivery."); shipQ.del.street.focus(); return; }
+        delivery = { street: st, unit: shipQ.del.unit.value.trim(), city: shipQ.del.city.value, zip: shipQ.zip, note: shipQ.del.note.value.trim() };
+      }
       checkoutBtn.disabled = true;
       setMsg("Taking you to secure checkout...");
       fetch(CFG.CHECKOUT_URL, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ items: lines, fulfillment: fulfillment(), eventId: fulfillment() === "event" && eventSel ? eventSel.value : undefined, ship: needShip && shipQ.chosen ? { token: shipQ.chosen.token, cents: shipQ.chosen.cents, exp: shipQ.chosen.exp, sig: shipQ.chosen.sig } : undefined, shipZip: needShip && shipQ.chosen ? shipQ.zip : undefined, optin: !!(document.querySelector("[data-optin]") && document.querySelector("[data-optin]").checked) })
+        body: JSON.stringify({ items: lines, fulfillment: isLocal ? "delivery" : fulfillment(), delivery: delivery, eventId: fulfillment() === "event" && eventSel ? eventSel.value : undefined, ship: needShip && shipQ.chosen && !isLocal ? { token: shipQ.chosen.token, cents: shipQ.chosen.cents, exp: shipQ.chosen.exp, sig: shipQ.chosen.sig } : undefined, shipZip: needShip && shipQ.chosen && !isLocal ? shipQ.zip : undefined, optin: !!(document.querySelector("[data-optin]") && document.querySelector("[data-optin]").checked) })
       }).then(function (r) {
         return r.json().then(function (d) { if (!r.ok) throw new Error(d.error || "Checkout failed"); return d; });
       }).then(function (d) {

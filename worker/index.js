@@ -18,6 +18,7 @@ import { blogPublic } from "./blog.js";
 import { servicesPublic } from "./services.js";
 import { wholesalePublic, wsPaid } from "./wholesale.js";
 import { onEventOrderPaid, eventReminders } from "./eventorders.js";
+import { deliveryFor, checkDelivery, onDeliveryOrderPaid } from "./delivery.js";
 import { publicClasses, classCheckout, recordBooking } from "./classes.js";
 
 const API = "https://api.stripe.com/v1";
@@ -142,7 +143,9 @@ async function handleShipQuote(request, env, c) {
   const clean = items.map((it) => ({ id: it && it.id, qty: Number.isInteger(it && it.qty) && it.qty > 0 && it.qty <= MAX_QTY ? it.qty : 1 })).filter((it) => catalog.some((p) => p.id === it.id));
   if (!clean.length) return json({ error: "An item in your bag is no longer available" }, 400, c.headers);
   const r = await quoteOptions(env, catalog, clean, String(payload.zip || "").trim(), parseInt(env.SHIPPING_CENTS || "1000", 10));
-  return json(r, r.error ? 400 : 200, c.headers);
+  const delivery = await deliveryFor(env, payload.zip).catch(() => ({ available: false }));
+  if (r.error && delivery.available) return json({ options: [], delivery }, 200, c.headers);
+  return json(r.error ? r : { ...r, delivery }, r.error ? 400 : 200, c.headers);
 }
 
 async function handleCheckout(request, env, c) {
@@ -172,6 +175,7 @@ async function handleCheckout(request, env, c) {
   // Prices come ONLY from Stripe (or the built-in list); client-sent prices are ignored.
   const params = new URLSearchParams();
   const wanted = new Map();
+  let subtotalCents = 0;
   let i = 0;
   for (const it of items) {
     const product = catalog.find((p) => p.id === (it && it.id));
@@ -197,11 +201,18 @@ async function handleCheckout(request, env, c) {
       params.set(`line_items[${i}][price_data][product_data][name]`, `${product.name} (${size.label})`);
     }
     params.set(`line_items[${i}][quantity]`, String(qty));
+    subtotalCents += size.cents * qty;
     i++;
   }
   // An order made only of digital items needs no shipping address or fee.
   const allDigital = items.length > 0 && items.every((it) => { const pr = catalog.find((p) => p.id === (it && it.id)); return pr && pr.digital; });
   const pickup = !allDigital && (payload.fulfillment === "pickup" || payload.fulfillment === "event");
+  let delivery = null;
+  if (!allDigital && payload.fulfillment === "delivery") {
+    const chk = await checkDelivery(env, payload.delivery, subtotalCents);
+    if (chk.error) return json({ error: chk.error }, 400, c.headers);
+    delivery = chk.address;
+  }
   let ev = null;
   if (!allDigital && payload.fulfillment === "event") {
     ev = upcoming(await readEvents(env)).find((e) => e.id === payload.eventId);
@@ -212,12 +223,19 @@ async function handleCheckout(request, env, c) {
   params.set("success_url", `${site}/order-confirmed/?session_id={CHECKOUT_SESSION_ID}`);
   params.set("cancel_url", `${site}/shop/`);
   params.set("phone_number_collection[enabled]", "true");
-  params.set("metadata[fulfillment]", allDigital ? "digital" : ev ? "event" : pickup ? "pickup" : "ship");
+  params.set("metadata[fulfillment]", allDigital ? "digital" : delivery ? "delivery" : ev ? "event" : pickup ? "pickup" : "ship");
   if (ev) { params.set("metadata[event]", `${ev.name} (${ev.date})`.slice(0, 200)); params.set("metadata[event_id]", String(ev.id).slice(0, 60)); }
   if (payload.optin === true) params.set("metadata[optin]", "1");
   if (allDigital) {
     params.set("billing_address_collection", "required");
     params.set("custom_text[submit][message]", "Digital item: nothing ships. We will email your download or access details to the address you enter here.");
+  } else if (delivery) {
+    // Free local delivery: no shipping address or fee. The address was checked above and is kept on the order.
+    params.set("billing_address_collection", "required");
+    params.set("metadata[delivery_addr]", [delivery.street, delivery.unit].filter(Boolean).join(" ").slice(0, 200));
+    params.set("metadata[delivery_city]", delivery.town); params.set("metadata[delivery_zip]", delivery.zip);
+    if (delivery.note) params.set("metadata[delivery_note]", delivery.note);
+    params.set("custom_text[submit][message]", "Free local delivery to " + [delivery.street, delivery.unit].filter(Boolean).join(" ") + ", " + delivery.town + ". We will contact you to arrange a delivery time.");
   } else if (pickup) {
     // No shipping address or fee. Customers are contacted by email to arrange pickup.
     params.set("billing_address_collection", "required");
@@ -560,6 +578,9 @@ async function handleStripeWebhook(request, env) {
   } catch (e) {
     console.log("webhook error", String(e));
     return new Response("error", { status: 500 }); // Stripe will retry
+  }
+  if (session.metadata && session.metadata.fulfillment === "delivery") {
+    try { await onDeliveryOrderPaid(env, stripeGet, session.id); } catch (e) { console.log("delivery order email failed", String(e)); }
   }
   if (session.metadata && session.metadata.fulfillment === "event") {
     try { await onEventOrderPaid(env, stripeGet, session.id); } catch (e) { console.log("event order email failed", String(e)); }

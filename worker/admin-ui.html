@@ -207,7 +207,7 @@ var PAYLABEL = { cash: "Cash", cashapp: "Cash App", venmo: "Venmo", tap: "Tap to
 var GROUPS = [
   ["Orders & Reports", [["orders", "Orders"], ["requests", "Requests"], ["ledger", "Ledger"], ["reports", "Reports"], ["eventpickups", "Event Pickups"]]],
   ["Products", [["products", "Products"]]],
-  ["Shipping", [["toship", "To Ship"], ["shipped", "Shipped"], ["shipsetup", "Shipping Setup"]]],
+  ["Shipping", [["toship", "To Ship"], ["shipped", "Shipped"], ["shipsetup", "Shipping Setup"], ["todeliver", "To Deliver"]]],
   ["Wholesale", [["wsorders", "Refill Orders"], ["wsvendors", "Vendors"]]],
   ["Events", [["events", "Events"]]],
   ["Classes & Bookings", [["classes", "Classes"], ["bookings", "Bookings"]]],
@@ -248,7 +248,7 @@ function start() {
     }));
   }
   shell(subnav ? [nav, subnav, body] : [nav, body]);
-  ({ orders: viewOrders, products: viewProducts, requests: viewRequests, classes: viewClasses, bookings: viewBookings, events: viewEvents, ledger: viewLedger, reports: viewReports, sale: viewSale, eventpickups: viewEventPickups, subscribers: viewSubscribers, campaigns: viewCampaigns, toship: viewToShip, shipped: viewShipped, shipsetup: viewShipSetup, services: viewServices, blog: viewBlog, wsorders: viewWsOrders, wsvendors: viewWsVendors })[current](body);
+  ({ orders: viewOrders, products: viewProducts, requests: viewRequests, classes: viewClasses, bookings: viewBookings, events: viewEvents, ledger: viewLedger, reports: viewReports, sale: viewSale, eventpickups: viewEventPickups, subscribers: viewSubscribers, campaigns: viewCampaigns, toship: viewToShip, shipped: viewShipped, shipsetup: viewShipSetup, services: viewServices, todeliver: viewToDeliver, blog: viewBlog, wsorders: viewWsOrders, wsvendors: viewWsVendors })[current](body);
   keepAwake(current === "sale");
 }
 
@@ -435,6 +435,42 @@ function viewShipSetup(n) {
 /* BLOG (Queen Talk) */
 var SITE_URL = "https://queenesheirr.com";
 function postStatus(p) { return p.status !== "published" ? "Draft" : p.live ? "Published" : "Scheduled " + p.date; }
+function viewToDeliver(n) {
+  loading(n);
+  Promise.all([api("GET", "delivery-queue"), api("GET", "delivery-settings")]).then(function (r) {
+    clear(n);
+    var q = r[0], cfg = r[1];
+    var on = h("input", { type: "checkbox", checked: cfg.on }), min = h("input", { type: "number", min: 0, step: "1", value: (cfg.minCents || 0) / 100, style: "width:90px" });
+    n.appendChild(h("div", { "class": "card" }, [
+      h("strong", { text: "Free local delivery" }),
+      h("p", { "class": "muted", text: "Offered on the website when the customer's ZIP code is in " + cfg.towns.join(", ") + ". Customers pay by card at checkout, then you contact them to arrange a time." }),
+      h("div", { "class": "row" }, [h("label", { "class": "chk" }, [on, "Delivery is on"]), h("label", null, ["Minimum order ($, 0 for none)", min])]),
+      h("p", null, [h("button", { "class": "btn small primary", text: "Save", onclick: function () {
+        api("POST", "delivery-settings", { on: on.checked, minDollars: parseFloat(min.value) || 0 }).then(function () { toast("Saved"); }).catch(function (e) { toast(e.message); });
+      } })])]));
+    function card(o, done) {
+      var maps = "https://www.google.com/maps/search/?api=1&query=" + encodeURIComponent(o.address);
+      var kids = [
+        h("div", { style: "display:flex;justify-content:space-between;gap:8px;flex-wrap:wrap" }, [h("strong", { text: o.name || "Customer" }), h("span", { "class": "pill" + (done ? " void" : ""), text: done ? "Delivered" : "To deliver" })]),
+        h("p", null, [o.address + " "]),
+        o.note ? h("p", { "class": "muted", text: "Note: " + o.note }) : null,
+        h("p", { "class": "muted", text: o.items.map(function (i) { return i.qty + " x " + i.name; }).join(" · ") }),
+        h("p", null, [
+          o.phone ? h("a", { "class": "btn small", href: "tel:" + o.phone, text: "Call " + o.phone }) : null, " ",
+          o.phone ? h("a", { "class": "btn small", href: "sms:" + o.phone, text: "Text" }) : null, " ",
+          o.email ? h("a", { "class": "btn small", href: "mailto:" + o.email, text: "Email" }) : null, " ",
+          h("a", { "class": "btn small", href: maps, target: "_blank", rel: "noopener noreferrer", text: "Map" }), " ",
+          h("button", { "class": "btn small" + (done ? "" : " primary"), text: done ? "Undo" : "Mark delivered", onclick: function () {
+            api("POST", "delivery-done", { id: o.id, undo: done }).then(function () { viewToDeliver(n); }).catch(function (e) { toast(e.message); });
+          } })])];
+      return h("div", { "class": "card" }, kids);
+    }
+    n.appendChild(h("h3", { text: "To deliver (" + q.waiting.length + ")" }));
+    if (!q.waiting.length) n.appendChild(h("p", { "class": "muted", text: "No delivery orders waiting." }));
+    q.waiting.forEach(function (o) { n.appendChild(card(o, false)); });
+    if (q.done.length) { n.appendChild(h("h3", { text: "Recently delivered" })); q.done.forEach(function (o) { n.appendChild(card(o, true)); }); }
+  }).catch(function (er) { failed(n, er); });
+}
 function viewServices(n) {
   loading(n);
   api("GET", "services").then(function (d) {
@@ -1190,7 +1226,7 @@ function viewOrders(n) {
     clear(n);
     var filter = "open";
     var list = h("div");
-    var orderType = function (o) { return o.fulfillment === "inperson" ? (o.cash ? "In person - " + (PAYLABEL[o.method] || "Cash") : "In person - Card") : o.fulfillment === "event" ? "Event pickup" : o.fulfillment === "pickup" ? "Pickup" : o.fulfillment === "digital" ? "Digital" : "Ship"; };
+    var orderType = function (o) { return o.fulfillment === "inperson" ? (o.cash ? "In person - " + (PAYLABEL[o.method] || "Cash") : "In person - Card") : o.fulfillment === "event" ? "Event pickup" : o.fulfillment === "pickup" ? "Pickup" : o.fulfillment === "delivery" ? "Local delivery" : o.fulfillment === "digital" ? "Digital" : "Ship"; };
     var OCFG = { get: { date: function (o) { return o.created; }, amount: function (o) { return o.total; }, name: function (o) { return (o.name || o.email || "").toLowerCase(); } },
       dateOf: function (o) { return chiDate(o.created); }, typeOf: orderType };
     var tools = listTools({ sorts: [["date", "Date"], ["amount", "Amount"], ["name", "Name"]], types: ["Ship", "Digital", "Pickup", "Event pickup", "In person - Card", "In person - Cash", "In person - Cash App", "In person - Venmo", "In person - Tap to Pay"], dateOf: true }, function () { draw(); });
@@ -1203,7 +1239,7 @@ function viewOrders(n) {
         var sel = h("select", { "aria-label": "Order status", onchange: function () {
           api("POST", "order-status", { id: o.id, status: sel.value }).then(function () { o.status = sel.value; toast("Saved"); }).catch(function (er) { toast(er.message); });
         } }, STATUS.map(function (s) { return h("option", { value: s[0], selected: s[0] === o.status, text: s[1] }); }));
-        var how = o.fulfillment === "inperson" ? h("span", { "class": "pill event", text: (o.cash ? "In person \u00b7 " + (PAYLABEL[o.method] || "Cash") : "In person") + (o.event ? " \u00b7 " + o.event : "") }) : o.fulfillment === "event" ? h("span", { "class": "pill event", text: "Event: " + o.event }) : o.fulfillment === "pickup" ? h("span", { "class": "pill pickup", text: "Pickup" }) : o.fulfillment === "digital" ? h("span", { "class": "pill pickup", text: "Digital (nothing to ship)" }) : h("span", { "class": "pill", text: "Ship" });
+        var how = o.fulfillment === "inperson" ? h("span", { "class": "pill event", text: (o.cash ? "In person \u00b7 " + (PAYLABEL[o.method] || "Cash") : "In person") + (o.event ? " \u00b7 " + o.event : "") }) : o.fulfillment === "event" ? h("span", { "class": "pill event", text: "Event: " + o.event }) : o.fulfillment === "pickup" ? h("span", { "class": "pill pickup", text: "Pickup" }) : o.fulfillment === "delivery" ? h("span", { "class": "pill pickup", text: "Local delivery" + (o.deliveryTo ? " \u00b7 " + o.deliveryTo : "") }) : o.fulfillment === "digital" ? h("span", { "class": "pill pickup", text: "Digital (nothing to ship)" }) : h("span", { "class": "pill", text: "Ship" });
         list.appendChild(h("div", { "class": "card" }, [
           h("div", { style: "display:flex;justify-content:space-between;gap:8px;flex-wrap:wrap" }, [
             h("strong", { text: o.name || o.email }), h("span", { "class": "muted", text: new Date(o.created).toLocaleString() + " · " + money(o.total) })]),
