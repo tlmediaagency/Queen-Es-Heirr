@@ -7,7 +7,8 @@ const FOREST = "#1b3b22", GOLD = "#d4af37", CREAM = "#fcfaf7", INK = "#0e2012", 
 const SERIF = "Georgia,'Times New Roman',serif", SANS = "Helvetica,Arial,sans-serif";
 
 export const TOWNS = ["Mandeville", "Slidell", "Covington", "Madisonville", "Abita Springs", "Lacombe"];
-const ZIPS = new Set(["70448", "70470", "70471", "70458", "70459", "70460", "70461", "70433", "70434", "70435", "70447", "70420", "70445"]);
+const TOWN_ZIPS = { "Mandeville": ["70448", "70470", "70471"], "Slidell": ["70458", "70459", "70460", "70461"], "Covington": ["70433", "70434", "70435"], "Madisonville": ["70447"], "Abita Springs": ["70420"], "Lacombe": ["70445"] };
+const ZIP_TOWN = {}; for (const t of TOWNS) for (const z of TOWN_ZIPS[t]) ZIP_TOWN[z] = t;
 
 const esc = (v) => String(v == null ? "" : v).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
 const one = (v, n) => String(v == null ? "" : v).replace(/[\r\n]+/g, " ").trim().slice(0, n);
@@ -17,15 +18,17 @@ export async function readDelivery(env) {
   let s = {};
   try { s = JSON.parse((await env.ADMIN_KV.get("delivery")) || "{}"); } catch { s = {}; }
   const minCents = Number.isFinite(s.minCents) && s.minCents >= 0 && s.minCents <= 100000 ? Math.round(s.minCents) : 0;
-  return { on: s.on !== false, minCents };
+  const off = Array.isArray(s.off) ? s.off.filter((t) => TOWNS.includes(t)) : [];
+  return { on: s.on !== false, minCents, off, towns: TOWNS.filter((t) => !off.includes(t)) };
 }
 
 // For the cart: is delivery offered for this ZIP right now?
 export async function deliveryFor(env, zip) {
   const s = await readDelivery(env);
   const z = String(zip || "").replace(/\D/g, "").slice(0, 5);
-  if (!s.on || !ZIPS.has(z)) return { available: false };
-  return { available: true, towns: TOWNS, minCents: s.minCents };
+  const t = ZIP_TOWN[z];
+  if (!s.on || !t || s.off.includes(t)) return { available: false };
+  return { available: true, towns: [t], minCents: s.minCents };
 }
 
 // On checkout: returns { ok, address } or { error }.
@@ -36,7 +39,7 @@ export async function checkDelivery(env, d, subtotalCents) {
   const street = one(d.street, 100), unit = one(d.unit, 30), note = one(d.note, 200), zip = String(d.zip || "").replace(/\D/g, "").slice(0, 5);
   const town = TOWNS.find((t) => t.toLowerCase() === String(d.city || "").trim().toLowerCase());
   if (street.length < 4 || !/\d/.test(street)) return { error: "Please enter your street address for delivery." };
-  if (!town || !ZIPS.has(zip)) return { error: "Free delivery is only available in " + TOWNS.join(", ") + ". Please choose shipping or pickup." };
+  if (!town || ZIP_TOWN[zip] !== town || s.off.includes(town)) return { error: "Free delivery isn't available to that address" + (s.towns.length ? " (we deliver to " + s.towns.join(", ") + ")" : "") + ". Please choose shipping or pickup." };
   if (subtotalCents < s.minCents) return { error: "Delivery orders start at " + money(s.minCents) + "." };
   return { ok: true, address: { street, unit, town, zip, note } };
 }
@@ -95,10 +98,11 @@ export async function onDeliveryOrderPaid(env, stripeGet, sessionId) {
 export async function deliveryRoute(route, method, body, env, me, deps, j) {
   if (!/^delivery-[a-z]+$/.test(route)) return null;
   try {
-    if (route === "delivery-settings" && method === "GET") return j({ ...(await readDelivery(env)), towns: TOWNS });
+    if (route === "delivery-settings" && method === "GET") return j({ ...(await readDelivery(env)), allTowns: TOWNS });
     if (route === "delivery-settings" && method === "POST") {
       const minCents = Math.max(0, Math.min(100000, Math.round((Number(body.minDollars) || 0) * 100)));
-      await env.ADMIN_KV.put("delivery", JSON.stringify({ on: body.on !== false, minCents }));
+      const off = Array.isArray(body.off) ? body.off.filter((t) => TOWNS.includes(t)) : [];
+      await env.ADMIN_KV.put("delivery", JSON.stringify({ on: body.on !== false, minCents, off }));
       return j({ ok: true, ...(await readDelivery(env)) });
     }
     if (route === "delivery-queue" && method === "GET") {

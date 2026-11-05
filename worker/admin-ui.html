@@ -441,12 +441,14 @@ function viewToDeliver(n) {
     clear(n);
     var q = r[0], cfg = r[1];
     var on = h("input", { type: "checkbox", checked: cfg.on }), min = h("input", { type: "number", min: 0, step: "1", value: (cfg.minCents || 0) / 100, style: "width:90px" });
+    var townBoxes = cfg.allTowns.map(function (t) { return { t: t, box: h("input", { type: "checkbox", checked: cfg.off.indexOf(t) < 0 }) }; });
     n.appendChild(h("div", { "class": "card" }, [
       h("strong", { text: "Free local delivery" }),
-      h("p", { "class": "muted", text: "Offered on the website when the customer's ZIP code is in " + cfg.towns.join(", ") + ". Customers pay by card at checkout, then you contact them to arrange a time." }),
+      h("p", { "class": "muted", text: "Offered on the website when the customer's ZIP code is in a town checked below. Uncheck a town to stop delivering there, and check it again whenever you are ready. Customers pay by card at checkout, then you contact them to arrange a time." }),
+      h("div", { "class": "row" }, townBoxes.map(function (x) { return h("label", { "class": "chk" }, [x.box, x.t]); })),
       h("div", { "class": "row" }, [h("label", { "class": "chk" }, [on, "Delivery is on"]), h("label", null, ["Minimum order ($, 0 for none)", min])]),
       h("p", null, [h("button", { "class": "btn small primary", text: "Save", onclick: function () {
-        api("POST", "delivery-settings", { on: on.checked, minDollars: parseFloat(min.value) || 0 }).then(function () { toast("Saved"); }).catch(function (e) { toast(e.message); });
+        api("POST", "delivery-settings", { on: on.checked, minDollars: parseFloat(min.value) || 0, off: townBoxes.filter(function (x) { return !x.box.checked; }).map(function (x) { return x.t; }) }).then(function () { toast("Saved"); }).catch(function (e) { toast(e.message); });
       } })])]));
     function card(o, done) {
       var maps = "https://www.google.com/maps/search/?api=1&query=" + encodeURIComponent(o.address);
