@@ -372,3 +372,17 @@ a.btn[href] { text-decoration: none; }
 .ship-delivery[hidden] { display: none; }
 .ship-delivery .field { display: block; margin-bottom: 0.5rem; }
 .ship-delivery input, .ship-delivery select { width: 100%; }
+
+/* Promo code and discounts in the bag */
+.promo { margin: .25rem 0 1rem; }
+.promo-row { display: flex; gap: .5rem; align-items: stretch; }
+.promo-row input { flex: 1; min-width: 0; text-transform: uppercase; letter-spacing: .06em; }
+.promo-line { margin: 0 0 .5rem; font-weight: 700; color: var(--forest, #1b3b22); }
+.promo-msg { margin: .4rem 0 0; font-size: .85rem; min-height: 1.1em; }
+.promo-more { margin: .25rem 0 0; font-size: .85rem; }
+/* Deals page */
+.deal-grid { display: grid; gap: 1rem; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); margin-top: 1.5rem; }
+.deal { background: #fff; border: 1px solid var(--linen, #e5dbd1); border-radius: 18px; padding: 1.4rem; }
+.deal h3 { margin: 0 0 .4rem; }
+.deal .code { display: inline-block; margin: .5rem 0; padding: .35rem .8rem; border: 2px dashed var(--gold, #d4af37); border-radius: 10px; font-weight: 700; letter-spacing: .12em; }
+.deal .copy { margin-left: .5rem; }

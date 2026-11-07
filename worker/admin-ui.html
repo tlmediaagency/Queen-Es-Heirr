@@ -212,7 +212,7 @@ var GROUPS = [
   ["Events", [["events", "Events"]]],
   ["Classes & Bookings", [["classes", "Classes"], ["bookings", "Bookings"]]],
   ["Programs", [["services", "Program Pricing"]]],
-  ["Marketing", [["subscribers", "Mailing List"], ["campaigns", "Email Campaigns"], ["blog", "Blog Posts"]]]
+  ["Marketing", [["discounts", "Discounts"], ["subscribers", "Mailing List"], ["campaigns", "Email Campaigns"], ["blog", "Blog Posts"]]]
 ];
 function groupOf(key) { return GROUPS.filter(function (g) { return g[1].some(function (v) { return v[0] === key; }); })[0] || null; }
 var current = "orders";
@@ -248,7 +248,7 @@ function start() {
     }));
   }
   shell(subnav ? [nav, subnav, body] : [nav, body]);
-  ({ orders: viewOrders, products: viewProducts, requests: viewRequests, classes: viewClasses, bookings: viewBookings, events: viewEvents, ledger: viewLedger, reports: viewReports, sale: viewSale, eventpickups: viewEventPickups, subscribers: viewSubscribers, campaigns: viewCampaigns, toship: viewToShip, shipped: viewShipped, shipsetup: viewShipSetup, services: viewServices, todeliver: viewToDeliver, blog: viewBlog, wsorders: viewWsOrders, wsvendors: viewWsVendors })[current](body);
+  ({ orders: viewOrders, products: viewProducts, requests: viewRequests, classes: viewClasses, bookings: viewBookings, events: viewEvents, ledger: viewLedger, reports: viewReports, sale: viewSale, eventpickups: viewEventPickups, subscribers: viewSubscribers, campaigns: viewCampaigns, toship: viewToShip, shipped: viewShipped, shipsetup: viewShipSetup, services: viewServices, discounts: viewDiscounts, todeliver: viewToDeliver, blog: viewBlog, wsorders: viewWsOrders, wsvendors: viewWsVendors })[current](body);
   keepAwake(current === "sale");
 }
 
@@ -503,6 +503,68 @@ function viewServices(n) {
     n.appendChild(h("p", null, [h("button", { "class": "btn", text: "Add a program", onclick: function () { list.push({ audience: "students", title: "", blurb: "", cents: 0, travel: true, active: true }); draw(); } }), " ",
       h("button", { "class": "btn primary", text: "Save changes", onclick: function () {
         api("POST", "services-save", { services: list }).then(function (r) { list.length = 0; r.services.forEach(function (x) { list.push(x); }); draw(); toast("Saved"); }).catch(function (er) { toast(er.message); });
+      } })]));
+  }).catch(function (er) { failed(n, er); });
+}
+function viewDiscounts(n) {
+  loading(n);
+  api("GET", "discounts").then(function (d) {
+    clear(n);
+    var list = d.discounts, products = d.products || [], box = h("div");
+    function money(c) { return "$" + (c % 100 ? (c / 100).toFixed(2) : String(c / 100)); }
+    function nameOf(id) { var p = products.filter(function (x) { return x.id === id; })[0]; return p ? p.name : id; }
+    function summary(x) {
+      var what = x.kind === "percent" ? (x.percent || 0) + "% off" : x.kind === "amount" ? money(x.cents || 0) + " off" : "Buy " + (x.buy || 0) + ", get " + (x.get || 0) + " free";
+      var where = x.scope === "items" ? " on " + ((x.itemIds || []).map(nameOf).join(", ") || "(choose products)") : x.kind === "bogo" ? " on any items" : " your whole order";
+      var how = x.code ? "Customers enter code " + x.code.toUpperCase() : "Applied automatically";
+      return what + where + (x.minCents ? ", orders of " + money(x.minCents) + " or more" : "") + ". " + how + ".";
+    }
+    n.appendChild(h("p", { "class": "muted", text: "Set up sales and promo codes. Each discount is either automatic (applies by itself) or needs a code the customer types in the bag. When several could apply, the customer gets the one that saves them the most; discounts do not stack. Shipping and tax are never discounted. Codes marked \"Show on Deals page\" are listed at queenesheirr.com/deals. Remember to tap Save changes." }));
+    function draw() {
+      clear(box);
+      if (!list.length) box.appendChild(h("p", { "class": "muted", text: "No discounts yet. Tap Add a discount." }));
+      list.forEach(function (x, i) {
+        var txt = function (k, label, extra) { var inp = h("input", Object.assign({ type: "text", value: x[k] == null ? "" : x[k] }, extra || {})); inp.addEventListener("input", function () { x[k] = inp.value; sum.textContent = summary(x); }); return h("label", null, [label, inp]); };
+        var num = function (k, label, extra, toStored, fromStored) { var inp = h("input", Object.assign({ type: "number", min: 0, step: "1", value: x[k] != null ? fromStored(x[k]) : "" }, extra || {})); inp.addEventListener("input", function () { x[k] = toStored(parseFloat(inp.value) || 0); sum.textContent = summary(x); }); return h("label", null, [label, inp]); };
+        var id1 = function (v) { return v; }, toC = function (v) { return Math.round(v * 100); }, fromC = function (v) { return Math.round(v) / 100; };
+        var sum = h("p", { "class": "muted", style: "margin:10px 0 0", text: summary(x) });
+        var kind = h("select", null, [["percent", "Percent off (like 20% off)"], ["amount", "Dollars off (like $5 off)"], ["bogo", "Buy X, get Y free"]].map(function (k) { return h("option", { value: k[0], text: k[1], selected: k[0] === x.kind }); }));
+        kind.addEventListener("change", function () { x.kind = kind.value; if (x.kind === "percent" && !x.percent) x.percent = 10; if (x.kind === "amount" && !x.cents) x.cents = 500; if (x.kind === "bogo" && !x.buy) { x.buy = 2; x.get = 1; } draw(); });
+        var val = x.kind === "percent" ? num("percent", "Percent off", { max: 100 }, Math.round, id1) : x.kind === "amount" ? num("cents", "Dollars off ($)", { step: "0.01" }, toC, fromC)
+          : h("div", { "class": "row" }, [num("buy", "Customer buys", { min: 1 }, Math.round, id1), num("get", "Gets this many free", { min: 1 }, Math.round, id1)]);
+        var scope = h("select", null, [["all", x.kind === "bogo" ? "Any items in the bag" : "The whole order"], ["items", "Only certain products"]].map(function (k) { return h("option", { value: k[0], text: k[1], selected: k[0] === x.scope }); }));
+        scope.addEventListener("change", function () { x.scope = scope.value; if (x.scope === "items" && !x.itemIds) x.itemIds = []; draw(); });
+        var how = h("select", null, [["auto", "Automatic (no code needed)"], ["code", "Needs a promo code"]].map(function (k) { return h("option", { value: k[0], text: k[1], selected: k[0] === (x.code ? "code" : "auto") }); }));
+        how.addEventListener("change", function () { if (how.value === "code") { x.code = x.code || "SAVE"; } else { x.code = ""; x.show = false; } draw(); });
+        var pick = null;
+        if (x.scope === "items") {
+          x.itemIds = x.itemIds || [];
+          pick = h("div", { style: "max-height:180px;overflow:auto;border:1px solid var(--line,#ddd);border-radius:10px;padding:8px;margin-top:10px" }, products.map(function (p) {
+            var cb = h("input", { type: "checkbox", checked: x.itemIds.indexOf(p.id) >= 0 });
+            cb.addEventListener("change", function () { var at = x.itemIds.indexOf(p.id); if (cb.checked && at < 0) x.itemIds.push(p.id); if (!cb.checked && at >= 0) x.itemIds.splice(at, 1); sum.textContent = summary(x); });
+            return h("label", { "class": "chk", style: "display:block" }, [cb, " " + p.name]);
+          }));
+        }
+        var act = h("input", { type: "checkbox", checked: x.active !== false }); act.addEventListener("change", function () { x.active = act.checked; });
+        var show = h("input", { type: "checkbox", checked: !!x.show }); show.addEventListener("change", function () { x.show = show.checked; });
+        var date = function (k, label) { var inp = h("input", { type: "date", value: x[k] || "" }); inp.addEventListener("input", function () { x[k] = inp.value; }); return h("label", null, [label, inp]); };
+        var codeInp = x.code ? h("label", null, ["Promo code", (function () { var inp = h("input", { type: "text", value: x.code, autocapitalize: "characters", placeholder: "JAMFEST" }); inp.addEventListener("input", function () { x.code = inp.value; sum.textContent = summary(x); }); return inp; })()]) : null;
+        box.appendChild(h("div", { "class": "card" }, [
+          h("div", { "class": "row" }, [txt("name", "Name (customers see this)", { placeholder: "Jam Fest: buy 2 get 1 free" }), h("label", null, ["Type", kind])]),
+          h("div", { "class": "row", style: "margin-top:10px" }, [val, h("label", null, ["Applies to", scope])]),
+          pick,
+          h("div", { "class": "row", style: "margin-top:10px" }, [h("label", null, ["How customers get it", how]), codeInp, num("minCents", "Minimum order ($, 0 for none)", { step: "0.01" }, toC, fromC)]),
+          h("div", { "class": "row", style: "margin-top:10px" }, [date("start", "Starts (optional)"), date("end", "Ends (optional, last day)"), txt("note", "Short note on the Deals page (optional)")]),
+          sum,
+          h("div", { style: "display:flex;justify-content:space-between;align-items:center;margin-top:10px;gap:8px;flex-wrap:wrap" }, [
+            h("label", { "class": "chk" }, [act, "On"]), x.code ? h("label", { "class": "chk" }, [show, "Show this code on the Deals page"]) : h("span", { "class": "muted", text: "Automatic deals always show on the Deals page." }),
+            h("button", { "class": "btn small danger", text: "Delete", onclick: function () { if (window.confirm("Delete this discount?")) { list.splice(i, 1); draw(); } } })])]));
+      });
+    }
+    draw(); n.appendChild(box);
+    n.appendChild(h("p", null, [h("button", { "class": "btn", text: "Add a discount", onclick: function () { list.push({ name: "", kind: "percent", percent: 10, scope: "all", itemIds: [], code: "", show: false, minCents: 0, start: "", end: "", note: "", active: true }); draw(); } }), " ",
+      h("button", { "class": "btn primary", text: "Save changes", onclick: function () {
+        api("POST", "discounts-save", { discounts: list }).then(function (r) { list.length = 0; r.discounts.forEach(function (z) { list.push(z); }); draw(); toast("Saved"); }).catch(function (er) { toast(er.message); });
       } })]));
   }).catch(function (er) { failed(n, er); });
 }

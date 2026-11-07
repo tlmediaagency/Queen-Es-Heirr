@@ -16,6 +16,7 @@ import { shippoWebhook, quoteOptions, verifyQuote } from "./shipping.js";
 import { addOptIn } from "./marketing.js";
 import { blogPublic } from "./blog.js";
 import { servicesPublic } from "./services.js";
+import { readDiscounts, bestDiscount, capDiscount, publicDiscounts } from "./discounts.js";
 import { wholesalePublic, wsPaid } from "./wholesale.js";
 import { onEventOrderPaid, eventReminders } from "./eventorders.js";
 import { deliveryFor, checkDelivery, onDeliveryOrderPaid } from "./delivery.js";
@@ -148,6 +149,41 @@ async function handleShipQuote(request, env, c) {
   return json(r.error ? r : { ...r, delivery }, r.error ? 400 : 200, c.headers);
 }
 
+// Catalog from Stripe, or the built-in price list until products exist there.
+function builtinCatalog() {
+  return Object.keys(CATALOG).map((id) => ({
+    id, name: CATALOG[id].name,
+    sizes: Object.keys(CATALOG[id].sizes).map((label) => ({ label, cents: CATALOG[id].sizes[label], soldOut: CATALOG[id].soldOut.includes(label) })),
+  }));
+}
+
+// Price the bag and find the best discount (no stock checks; the cart shows the result, checkout re-checks everything).
+async function handleDiscountPreview(request, env, c) {
+  let payload;
+  try { payload = await request.json(); } catch { return json({ error: "Invalid request" }, 400, c.headers); }
+  const items = payload && payload.items;
+  if (!Array.isArray(items) || !items.length || items.length > MAX_LINES) return json({ cents: 0 }, 200, c.headers);
+  try {   // per-visitor limit: keeps people from guessing promo codes and from hammering Stripe
+    const ip = request.headers.get("CF-Connecting-IP") || "x", hr = Math.floor(Date.now() / 3600000);
+    const k = `rl:disc:${ip}:${hr}${payload.code ? ":code" : ""}`;
+    const n = parseInt((await env.ADMIN_KV.get(k)) || "0", 10);
+    if (n >= (payload.code ? 20 : 200)) return json({ error: "Too many tries. Please wait a little while and try again." }, 200, c.headers);
+    await env.ADMIN_KV.put(k, String(n + 1), { expirationTtl: 3700 });
+  } catch { /* storage hiccup: do not block shoppers */ }
+  let catalog = await loadCatalog(env).catch(() => []);
+  if (!catalog.length) catalog = builtinCatalog();
+  const lines = [];
+  for (const it of items) {
+    const product = catalog.find((p) => p.id === (it && it.id));
+    const size = product && product.sizes.find((s) => s.label === stdSize(product.category, it.size));
+    if (size && Number.isInteger(it.qty) && it.qty > 0 && it.qty <= MAX_QTY) lines.push({ id: product.id, cents: size.cents, qty: it.qty });
+  }
+  const r = bestDiscount(await readDiscounts(env), lines, payload.code);
+  if (r.error) return json({ error: r.error }, 200, c.headers);
+  const sub = lines.reduce((t, l) => t + l.cents * l.qty, 0);
+  return json({ cents: capDiscount(r.cents || 0, sub), name: r.name || "", code: r.code || "", note: r.note || "" }, 200, c.headers);
+}
+
 async function handleCheckout(request, env, c) {
   let payload;
   try { payload = await request.json(); } catch { return json({ error: "Invalid request" }, 400, c.headers); }
@@ -161,21 +197,12 @@ async function handleCheckout(request, env, c) {
     return json({ error: "Could not start checkout" }, 502, c.headers);
   }
   // Until products exist in Stripe, fall back to the built-in price list (catalog.js).
-  if (!catalog.length) {
-    catalog = Object.keys(CATALOG).map((id) => ({
-      id,
-      name: CATALOG[id].name,
-      sizes: Object.keys(CATALOG[id].sizes).map((label) => ({
-        label,
-        cents: CATALOG[id].sizes[label],
-        soldOut: CATALOG[id].soldOut.includes(label),
-      })),
-    }));
-  }
+  if (!catalog.length) catalog = builtinCatalog();
   // Prices come ONLY from Stripe (or the built-in list); client-sent prices are ignored.
   const params = new URLSearchParams();
   const wanted = new Map();
   let subtotalCents = 0;
+  const priced = [];
   let i = 0;
   for (const it of items) {
     const product = catalog.find((p) => p.id === (it && it.id));
@@ -202,6 +229,7 @@ async function handleCheckout(request, env, c) {
     }
     params.set(`line_items[${i}][quantity]`, String(qty));
     subtotalCents += size.cents * qty;
+    priced.push({ id: product.id, cents: size.cents, qty });
     i++;
   }
   // An order made only of digital items needs no shipping address or fee.
@@ -254,6 +282,20 @@ async function handleCheckout(request, env, c) {
     if (chosen && chosen.token !== "flat") { params.set("metadata[ship_service]", chosen.service); params.set("metadata[ship_zip]", String(payload.shipZip).slice(0, 5)); }
     params.set("shipping_options[0][shipping_rate_data][fixed_amount][currency]", "usd");
     if (env.TAX_ENABLED === "true") params.set("shipping_options[0][shipping_rate_data][tax_behavior]", "exclusive");
+  }
+  // Discounts: recomputed here from catalog prices (never trusted from the page), then given to Stripe as a one-time coupon.
+  const disc = bestDiscount(await readDiscounts(env), priced, payload.code);
+  if (disc.error) return json({ error: disc.error }, 400, c.headers);
+  const discCents = capDiscount(disc.cents || 0, subtotalCents);
+  if (discCents > 0) {
+    const cp = new URLSearchParams({ amount_off: String(discCents), currency: "usd", duration: "once", max_redemptions: "1", name: String(disc.name).slice(0, 40) });
+    const cr = await fetch(`${API}/coupons`, { method: "POST", headers: { Authorization: `Bearer ${env.STRIPE_SECRET_KEY}`, "Content-Type": "application/x-www-form-urlencoded" }, body: cp });
+    const coupon = await cr.json();
+    if (!cr.ok || !coupon.id) { console.log("coupon error", cr.status, JSON.stringify(coupon.error || {})); return json({ error: "Could not apply your discount. Please try again." }, 502, c.headers); }
+    params.set("discounts[0][coupon]", coupon.id);
+    params.set("metadata[discount]", String(disc.name).slice(0, 80));
+    params.set("metadata[discount_cents]", String(discCents));
+    if (disc.code) params.set("metadata[promo_code]", disc.code);
   }
   // Sales tax: set the Worker variable TAX_ENABLED=true once Stripe Tax is configured in the dashboard.
   if (env.TAX_ENABLED === "true") params.set("automatic_tax[enabled]", "true");
@@ -644,6 +686,14 @@ export default {
       if (r) return r;
     }
     if (url.pathname === "/services" && request.method === "GET") return servicesPublic(env, c.headers, json);
+    if (url.pathname === "/discounts" && request.method === "GET") {
+      const names = {}; try { for (const p of await loadCatalog(env)) names[p.id] = p.name; } catch { /* ids show if names are unavailable */ }
+      return publicDiscounts(env, c.headers, json, (x) => names[x] || x);
+    }
+    if (url.pathname === "/discount-preview" && request.method === "POST") {
+      if (!c.ok) return json({ error: "Origin not allowed" }, 403, c.headers);
+      return handleDiscountPreview(request, env, c);
+    }
     if (url.pathname.startsWith("/ws/")) {
       const r = await wholesalePublic(request, env, url, c, { json, loadCatalog, stdSize, stripePost });
       if (r) return r;
