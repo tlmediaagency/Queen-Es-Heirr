@@ -384,8 +384,8 @@ export async function handleAdmin(request, env, url, d) {
       if (typeof body.featured === "boolean") q.set("metadata[featured]", String(body.featured));
       if (okImage(body.image, url.origin)) q.set("images[0]", body.image);
       if (![...q.keys()].length) return j({ error: "Nothing to change" }, 400);
-      await stripePost(env, `/products/${m[1]}`, q);
-      return j({ ok: true });
+      const saved = await stripePost(env, `/products/${m[1]}`, q);
+      return j({ ok: true, image: (saved && saved.images && saved.images[0]) || "" });
     }
     if (route === "renew" && request.method === "GET") {
       const p = b64uStr(JSON.stringify({ e: me.e, exp: Date.now() + SESSION_MS }));

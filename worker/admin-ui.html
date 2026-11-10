@@ -680,10 +680,13 @@ function blogEditor(n, p, today) {
   }
   title.addEventListener("input", queue);
   function save(goStatus) {
-    var payload = { id: p.id, title: title.value, slug: slug.value, category: cat.value, author: author.value, date: date.value, status: goStatus || status.value, image: cover.holder.url, excerpt: excerpt.value, bodyHtml: bodyHtml };
     msg.className = "msg"; msg.textContent = "Saving...";
+    return Promise.resolve(cover.holder.busy).then(function () {
+    if (cover.holder.failed) { msg.className = "msg err"; msg.textContent = "Not saved: " + cover.holder.failed; return null; }
+    var payload = { id: p.id, title: title.value, slug: slug.value, category: cat.value, author: author.value, date: date.value, status: goStatus || status.value, image: cover.holder.url, excerpt: excerpt.value, bodyHtml: bodyHtml };
     return api("POST", "blog-save", payload).then(function (r) { p = r.post; status.value = p.status; slug.value = p.slug; isNew = false; msg.className = "msg ok"; msg.textContent = p.status === "published" ? (p.live ? "Saved and live on your site." : "Saved. It will go live on " + p.date + ".") : "Saved as a draft."; toast("Saved"); drawActions(); return r; })
       .catch(function (er) { msg.className = "msg err"; msg.textContent = er.message; });
+    });
   }
   var actions = h("div");
   function drawActions() {
@@ -1259,34 +1262,59 @@ function plainToHtml(t) {
   return String(t || "").split(/\n{2,}/).map(function (p) { return p.trim(); }).filter(Boolean).map(function (p) { return "<p>" + p.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/\n/g, "<br>") + "</p>"; }).join("");
 }
 function photoPicker(current, readyMsg, label) {
-  var holder = { url: current || "" };
+  var holder = { url: current || "", busy: null, failed: "" };
   var preview = h("img", { alt: "", style: "max-width:140px;max-height:140px;border-radius:12px;border:1px solid var(--linen);" + (current ? "" : "display:none") });
   if (current) preview.src = current;
-  var status = h("span", { "class": "muted" });
+  var status = h("span", { "class": "muted", role: "status" });
   var file = h("input", { type: "file", accept: "image/*", "aria-label": "Choose a product photo" });
+  // Shrink the photo until it is small enough to upload (phone photos can be big), then send it.
+  function shrink(img) {
+    return new Promise(function (resolve, reject) {
+      var tries = [[1200, 0.85], [1000, 0.75], [800, 0.7], [640, 0.65]], at = 0;
+      (function next() {
+        var max = tries[at][0], sc = Math.min(1, max / Math.max(img.width, img.height));
+        var c = document.createElement("canvas"); c.width = Math.max(1, Math.round(img.width * sc)); c.height = Math.max(1, Math.round(img.height * sc));
+        var ctx = c.getContext("2d"); ctx.fillStyle = "#fff"; ctx.fillRect(0, 0, c.width, c.height); ctx.drawImage(img, 0, 0, c.width, c.height);
+        c.toBlob(function (blob) {
+          if (!blob) { reject(new Error("That photo could not be prepared. Try a JPG or PNG.")); return; }
+          if (blob.size * 1.4 > 880000 && at < tries.length - 1) { at++; next(); return; }
+          if (blob.size * 1.4 > 880000) { reject(new Error("That photo is still too large. Try a smaller one.")); return; }
+          resolve(blob);
+        }, "image/jpeg", tries[at][1]);
+      })();
+    });
+  }
   file.addEventListener("change", function () {
     var f = file.files && file.files[0]; if (!f) return;
-    status.textContent = "Uploading...";
-    var img = new Image(), objUrl = URL.createObjectURL(f);
-    img.onload = function () {
-      var max = 1200, sc = Math.min(1, max / Math.max(img.width, img.height));
-      var c = document.createElement("canvas"); c.width = Math.round(img.width * sc); c.height = Math.round(img.height * sc);
-      var ctx = c.getContext("2d"); ctx.fillStyle = "#fff"; ctx.fillRect(0, 0, c.width, c.height); ctx.drawImage(img, 0, 0, c.width, c.height);
-      URL.revokeObjectURL(objUrl);
-      c.toBlob(function (blob) {
-        var rd = new FileReader();
-        rd.onload = function () {
-          api("POST", "image", { data: String(rd.result).split(",")[1] }).then(function (d) {
-            holder.url = d.url; preview.src = URL.createObjectURL(blob); preview.style.display = ""; status.textContent = readyMsg || "Photo ready. Click Save to use it.";
-          }).catch(function (er) { status.textContent = er.message; });
-        };
-        rd.readAsDataURL(blob);
-      }, "image/jpeg", 0.85);
-    };
-    img.onerror = function () { status.textContent = "That file could not be read as a photo."; };
-    img.src = objUrl;
+    holder.failed = ""; status.className = "muted"; status.textContent = "Uploading the photo. Wait for Photo ready before you save...";
+    holder.busy = new Promise(function (resolve) {
+      var img = new Image(), objUrl = URL.createObjectURL(f);
+      function fail(msg) { holder.failed = msg; status.className = "msg err"; status.textContent = msg; resolve(); }
+      img.onload = function () {
+        URL.revokeObjectURL(objUrl);
+        shrink(img).then(function (blob) {
+          var rd = new FileReader();
+          rd.onload = function () {
+            api("POST", "image", { data: String(rd.result).split(",")[1] }).then(function (d) {
+              holder.url = d.url; preview.src = URL.createObjectURL(blob); preview.style.display = ""; status.className = "muted"; status.textContent = readyMsg || "Photo ready. Click Save to use it."; resolve();
+            }).catch(function (er) { fail("The photo did not upload: " + er.message); });
+          };
+          rd.onerror = function () { fail("That photo could not be read. Try another."); };
+          rd.readAsDataURL(blob);
+        }).catch(function (er) { fail(er.message); });
+      };
+      img.onerror = function () { URL.revokeObjectURL(objUrl); fail("That file could not be read as a photo. iPhone HEIC photos can fail on a computer: choose a JPG or PNG instead."); };
+      img.src = objUrl;
+    });
   });
   return { holder: holder, node: h("div", null, [h("label", null, [label || "Product photo", file]), h("div", { style: "margin-top:6px;display:flex;gap:10px;align-items:center" }, [preview, status])]) };
+}
+// Run save() only after any photo still uploading has finished; stop if the photo failed (so we never say Saved without it).
+function afterPhoto(pick, save) {
+  return Promise.resolve(pick.holder.busy).then(function () {
+    if (pick.holder.failed) { toast("Not saved: " + pick.holder.failed); return null; }
+    return save();
+  });
 }
 
 /* ORDERS */
@@ -1453,8 +1481,14 @@ function productCard(p, reload, move, idx, total) {
   var details = h("div", { "class": "hide" }, [
     h("label", null, ["Name", name]), h("label", null, ["Category", cat]), h("label", { "class": "chk" }, [dig, "Digital item (nothing ships, no shipping fee)"]), h("label", null, ["Description", desc]), h("label", null, ["Weight in ounces, packed (for shipping labels)", wt]), h("label", null, ["Outside buy link (optional)", buy]), h("p", { "class": "muted", text: "Add an Amazon link and the website shows a Buy on Amazon button instead of Add to Cart. The item stays here, so you can still sell it at events." }), pick.node,
     h("p"), h("button", { "class": "btn small primary", text: "Save details", onclick: function () {
-      var body = { name: name.value, description: desc.value, category: cat.value, digital: dig.checked, buyUrl: buy.value, weightOz: wt.value }; if (pick.holder.url && pick.holder.url !== p.image) body.image = pick.holder.url;
-      api("POST", "product/" + p.id, body).then(function () { toast("Saved"); reload(); }).catch(function (er) { toast(er.message); });
+      var body = { name: name.value, description: desc.value, category: cat.value, digital: dig.checked, buyUrl: buy.value, weightOz: wt.value }; afterPhoto(pick, function () {
+        if (pick.holder.url && pick.holder.url !== p.image) body.image = pick.holder.url;
+        return api("POST", "product/" + p.id, body).then(function (r) {
+          if (body.image && r.image !== body.image) toast("Saved, but the photo did not stick. Please try the photo again.");
+          else toast(body.image ? "Saved with the new photo" : "Saved");
+          reload();
+        });
+      }).catch(function (er) { toast(er.message); });
     } })]);
   card.appendChild(details);
   var sizes = h("div", { "class": "sizes" }, p.sizes.map(function (s) { return sizeRow(p, s, reload); }));
@@ -1477,7 +1511,9 @@ function addProductCard(reload) {
       return h("div", { "class": "row" }, [h("label", null, ["Size", r.l]), h("label", null, ["Price $", r.p]), h("label", null, ["Stock", r.s])]);
     })).concat([h("p"), h("button", { "class": "btn primary", text: "Add product", onclick: function () {
       var sizes = rows.filter(function (r) { return r.l.value.trim() || r.p.value.trim(); }).map(function (r) { return { label: r.l.value, price: r.p.value, stock: r.s.value.trim() === "" ? null : r.s.value.trim() }; });
-      api("POST", "product", { name: name.value, category: cat.value, digital: dig.checked, description: desc.value, image: pick.holder.url, sizes: sizes }).then(function () { toast("Product added"); reload(); }).catch(function (er) { toast(er.message); });
+      afterPhoto(pick, function () {
+        return api("POST", "product", { name: name.value, category: cat.value, digital: dig.checked, description: desc.value, image: pick.holder.url, sizes: sizes }).then(function () { toast("Product added"); reload(); });
+      }).catch(function (er) { toast(er.message); });
     } })]));
   return h("div", { "class": "card" }, [h("button", { "class": "btn primary", text: "+ Add a new product", onclick: function () { box.classList.toggle("hide"); } }), box]);
 }
