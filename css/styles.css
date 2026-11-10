@@ -389,3 +389,25 @@ a.btn[href] { text-decoration: none; }
 
 .promo-email { margin: .5rem 0 0; }
 .promo-email input { width: 100%; }
+
+/* J.U.D.A.H. book sections */
+.judah-about-grid { display: grid; gap: 2.5rem; align-items: center; grid-template-columns: minmax(0,.8fr) minmax(0,1.2fr); }
+.judah-about-grid.reverse { grid-template-columns: minmax(0,1.2fr) minmax(0,.8fr); }
+.judah-about-art img { display: block; margin: 0 auto; width: min(380px, 80%); height: auto; filter: drop-shadow(0 22px 28px rgba(0,0,0,.28)); }
+.judah-about-art.tall img { width: min(420px, 100%); border-radius: 18px; filter: none; box-shadow: 0 18px 40px rgba(0,0,0,.18); }
+.judah-about-text h2 { margin-top: .2rem; }
+.pillars { display: flex; flex-wrap: wrap; gap: .5rem .75rem; align-items: center; justify-content: center; margin: 1.25rem 0; padding: .9rem 1rem; border-radius: 12px; background: linear-gradient(90deg, #d4af37, #f3dc8a, #d4af37); color: #1b3b22; font-family: Georgia, "Times New Roman", serif; font-weight: 700; font-size: 1.1rem; }
+.pillars b { font-weight: 400; }
+.judah-band { display: grid; grid-template-columns: minmax(0,1.05fr) minmax(0,.95fr); margin: 1rem 0; background: var(--forest, #1b3b22); color: #fff; overflow: hidden; }
+.judah-band img { display: block; width: 100%; height: 100%; max-height: 520px; object-fit: cover; object-position: 50% 40%; }
+.judah-band-text { display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; padding: 2rem 1.5rem; }
+.judah-band .kicker { color: #f3dc8a; }
+@media (max-width: 760px) { .judah-band { grid-template-columns: 1fr; } .judah-band img { max-height: 380px; } }
+.judah-quote { margin: 0; font-family: Georgia, "Times New Roman", serif; font-weight: 700; font-size: clamp(1.5rem, 4.5vw, 2.6rem); line-height: 1.2; text-shadow: 0 2px 14px rgba(0,0,0,.55); }
+.judah-leaders { margin: 2rem 0 0; background: #fff; text-align: center; padding-bottom: 1.5rem; }
+.judah-leaders img { display: block; width: 100%; max-width: 1100px; height: auto; margin: 0 auto; }
+.judah-leaders .judah-quote { color: var(--forest, #1b3b22); text-shadow: none; margin-top: .75rem; font-size: clamp(1.2rem, 3.2vw, 1.8rem); }
+ul.check { list-style: none; padding: 0; margin: 1rem 0; display: grid; gap: .75rem; }
+ul.check li { padding-left: 1.8rem; position: relative; }
+ul.check li::before { content: "\2713"; position: absolute; left: 0; color: var(--gold, #b8941f); font-weight: 700; }
+@media (max-width: 760px) { .judah-about-grid, .judah-about-grid.reverse { grid-template-columns: 1fr; } .judah-about-grid.reverse .judah-about-art { order: -1; } }
