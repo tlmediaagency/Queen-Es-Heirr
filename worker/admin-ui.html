@@ -1303,7 +1303,7 @@ function photoPicker(current, readyMsg, label) {
           rd.readAsDataURL(blob);
         }).catch(function (er) { fail(er.message); });
       };
-      img.onerror = function () { URL.revokeObjectURL(objUrl); fail("That file could not be read as a photo. iPhone HEIC photos can fail on a computer: choose a JPG or PNG instead."); };
+      img.onerror = function () { URL.revokeObjectURL(objUrl); fail("That file could not be read as a photo. Try a JPG or PNG."); };
       img.src = objUrl;
     });
   });
