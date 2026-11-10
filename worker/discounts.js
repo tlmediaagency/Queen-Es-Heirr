@@ -1,14 +1,14 @@
-// Discounts: percent off, dollars off, and "buy X get Y free". Stored in ADMIN_KV key "discounts"; edited in the admin app.
+// Discounts: percent off, dollars off, "buy X get Y free", and free shipping. Stored in ADMIN_KV key "discounts"; edited in the admin app.
 // - Each discount applies to the whole order or to chosen products only.
 // - Each is either automatic (no code) or needs a promo code. A code can be listed on the website's Deals page or kept private.
 // - One discount per order: the one worth the most to the customer (the code they typed competes with the automatic ones).
 // - Optional limits: a total number of uses, and one use per customer (matched by email, which checkout then locks in).
 // - The Worker recomputes everything at checkout (prices come from the catalog), then hands Stripe a one-time coupon for the exact amount,
-//   so Stripe Tax and receipts stay correct. Shipping and tax are never discounted.
+//   so Stripe Tax and receipts stay correct. Only a free-shipping discount touches shipping (it zeroes the shipping charge); tax is never discounted.
 const one = (v, n) => String(v == null ? "" : v).replace(/[\r\n]+/g, " ").trim().slice(0, n);
 const money = (c) => "$" + (c % 100 ? (c / 100).toFixed(2) : String(c / 100));
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
-const KINDS = ["percent", "amount", "bogo"];
+const KINDS = ["percent", "amount", "bogo", "freeship"];
 
 export function codeKey(v) { return String(v == null ? "" : v).toUpperCase().replace(/[^A-Z0-9]/g, "").slice(0, 24); }
 
@@ -48,15 +48,17 @@ export function inWindow(d, today = todayCT()) { return d.active !== false && (!
 
 /** Plain-English summary, e.g. "Buy 2, get 1 free on Apple Jam, Pear Jam. Orders of $25 or more." */
 export function describe(d, nameOf = (x) => x) {
+  if (d.kind === "freeship") return "Free shipping" + (d.scope === "items" ? " when your bag has " + d.itemIds.map(nameOf).join(" or ") : "") + (d.minCents ? (d.scope === "items" ? ", on" : " on") + " orders of " + money(d.minCents) + " or more" : "") + ". Applies to shipped orders.";
   const what = d.kind === "percent" ? d.percent + "% off" : d.kind === "amount" ? money(d.cents) + " off" : `Buy ${d.buy}, get ${d.get} free`;
   const where = d.scope === "items" ? " on " + d.itemIds.map(nameOf).join(", ") : d.kind === "bogo" ? " on any items" : " your whole order";
   return what + where + (d.minCents ? ". Orders of " + money(d.minCents) + " or more" : "") + ".";
 }
 
 /** lines: [{ id, cents (unit price), qty }]. Returns the cents taken off for one discount rule. */
-export function amountFor(d, lines) {
+export function amountFor(d, lines, shipVal = 0) {
   const sub = lines.reduce((t, l) => t + l.cents * l.qty, 0);
   if (sub < (d.minCents || 0)) return 0;
+  if (d.kind === "freeship") return d.scope === "items" && !lines.some((l) => d.itemIds.includes(l.id)) ? 0 : shipVal;
   const el = d.scope === "items" ? lines.filter((l) => d.itemIds.includes(l.id)) : lines;
   const elSub = el.reduce((t, l) => t + l.cents * l.qty, 0);
   if (!elSub) return 0;
@@ -111,6 +113,8 @@ export async function recordUse(env, session) {
 export function bestDiscount(all, lines, codeRaw, today, ctx = {}) {
   const sub = lines.reduce((t, l) => t + l.cents * l.qty, 0);
   const use = ctx.use || {}, nowMs = ctx.now || Date.now(), ek = ctx.ek || "";
+  // Free shipping only helps a shipped order. shipVal = what shipping costs (their chosen option, else the flat estimate).
+  const shipVal = ctx.noShip ? 0 : Math.max(0, ctx.shipCents || 0);
   const live = all.filter((d) => inWindow(d, today));
   const typed = codeKey(codeRaw);
   // Why a rule can't be used right now (null = fine).
@@ -127,12 +131,13 @@ export function bestDiscount(all, lines, codeRaw, today, ctx = {}) {
     if (!coded) return { error: "That promo code isn't valid or has ended." };
     const why = blocked(coded); if (why) return { error: why };
   }
-  const pack = (d, c, extra) => ({ cents: c, name: d.name, id: d.id, ...(d.code ? { code: d.code } : {}), ...(d.onePerCustomer && !ek ? { needEmail: true } : {}), ...(limited(d) ? { limited: true } : {}), ...extra });
+  const pack = (d, c, extra) => ({ cents: c, name: d.name, id: d.id, ...(d.code ? { code: d.code } : {}), ...(d.onePerCustomer && !ek ? { needEmail: true } : {}), ...(limited(d) ? { limited: true } : {}), ...(d.kind === "freeship" ? { freeShip: true } : {}), ...extra });
   let best = null;
-  for (const d of live.filter((x) => !x.code)) { if (blocked(d)) continue; const c = amountFor(d, lines); if (c > 0 && (!best || c > best.cents)) best = pack(d, c); }
+  for (const d of live.filter((x) => !x.code)) { if (blocked(d)) continue; const c = amountFor(d, lines, shipVal); if (c > 0 && (!best || c > best.cents)) best = pack(d, c); }
   if (coded) {
-    const c = amountFor(coded, lines);
+    const c = amountFor(coded, lines, shipVal);
     if (c <= 0) {
+      if (coded.kind === "freeship" && sub >= (coded.minCents || 0) && (coded.scope !== "items" || lines.some((l) => coded.itemIds.includes(l.id)))) return { error: ctx.noShip ? "That code is for free shipping, which applies to orders that ship." : "That code is for free shipping. Choose a shipping option first." };
       if (sub < (coded.minCents || 0)) return { error: `That code needs an order of ${money(coded.minCents)} or more.` };
       return { error: coded.scope === "items" ? "That code doesn't apply to the items in your bag." : coded.kind === "bogo" ? `That code needs ${coded.buy + coded.get} items in your bag (buy ${coded.buy}, get ${coded.get} free).` : "That code doesn't apply to your bag." };
     }

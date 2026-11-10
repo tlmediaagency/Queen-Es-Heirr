@@ -113,6 +113,7 @@ async function loadOrder(env, deps, id) {
   return {
     id: s.id, created: s.created * 1000, total: s.amount_total, fulfillment: (s.metadata && s.metadata.fulfillment) || "ship",
     shippingPaid: (s.total_details && s.total_details.amount_shipping) || (s.shipping_cost && s.shipping_cost.amount_total) || 0,
+    freeShip: !!(s.metadata && s.metadata.free_shipping), freeShipName: (s.metadata && s.metadata.discount) || "",
     name: (sd && sd.name) || (s.customer_details && s.customer_details.name) || "", email: (s.customer_details && s.customer_details.email) || "", phone: (s.customer_details && s.customer_details.phone) || "",
     address: a ? { street1: a.line1 || "", street2: a.line2 || "", city: a.city || "", state: a.state || "", zip: a.postal_code || "", country: a.country || "US" } : null,
     items, quotedZip: (s.metadata && s.metadata.ship_zip) || "", shipService: (s.metadata && s.metadata.ship_service) || "",
@@ -226,6 +227,7 @@ export async function shippingRoute(route, method, body, env, me, deps, j, origi
         orders.push({ id: s.id, created: s.created * 1000, name: (sd && sd.name) || (s.customer_details && s.customer_details.name) || "", email: (s.customer_details && s.customer_details.email) || "",
           address: a ? [a.line1, a.line2, `${a.city}, ${a.state} ${a.postal_code}`].filter(Boolean).join(", ") : "", hasAddress: !!a, country: a ? a.country : "",
           shippingPaid: (s.total_details && s.total_details.amount_shipping) || 0,
+          freeShip: !!(s.metadata && s.metadata.free_shipping), freeShipName: (s.metadata && s.metadata.discount) || "",
           items: ((s.line_items && s.line_items.data) || []).map((l) => ({ name: l.description, qty: l.quantity })), voidedLabel: !!(rec && rec.voided) });
       }
       return j({ orders, ready: !!(st.from.street1 && st.from.zip && st.from.phone), mode: mode(env) });

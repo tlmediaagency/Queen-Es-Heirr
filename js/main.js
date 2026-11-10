@@ -188,7 +188,7 @@
     buildPromo(); if (!promoUI) return;
     var seq = ++promo.seq;
     if (!lines.length) { promo.cents = 0; promo.applied = false; promoUI.line.hidden = true; promoUI.msg.textContent = ""; return; }
-    fetch(workerUrl("/discount-preview"), { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ items: lines, code: promo.code, email: promo.email }) })
+    fetch(workerUrl("/discount-preview"), { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ items: lines, code: promo.code, email: promo.email, fulfillment: promoFulfillment(), shipCents: shipQ.chosen && !shipQ.chosen.local && typeof shipQ.chosen.cents === "number" ? shipQ.chosen.cents : undefined }) })
       .then(function (r) { return r.json(); })
       .then(function (d) {
         if (seq !== promo.seq) return;
@@ -202,7 +202,7 @@
         }
         if (d.cents > 0) {
           promo.cents = d.cents; promo.name = d.name; promo.applied = !!promo.code && String(d.code || "") !== "";
-          promoUI.line.textContent = (d.name || "Discount") + ": -" + money(d.cents);
+          promoUI.line.textContent = (d.name || "Discount") + (d.freeShip ? ": free shipping (saves " : ": -") + money(d.cents) + (d.freeShip ? ")" : "");
           promoUI.line.hidden = false;
           promoUI.msg.textContent = d.needEmail ? "Enter your email below. This offer is one use per customer." : (d.note || (explicit && promo.applied ? "Code applied." : ""));
         } else {
@@ -211,6 +211,7 @@
         }
       }).catch(function () { /* discounts are optional; checkout still works */ });
   }
+  function promoFulfillment() { return shipQ.chosen && shipQ.chosen.local ? "delivery" : fulfillment(); }
   function schedulePromo() { clearTimeout(promo.timer); promo.timer = setTimeout(function () { refreshPromo(false); }, 300); }
 
   function change(id, size, delta) {
@@ -659,7 +660,7 @@
   document.querySelectorAll('input[name="fulfillment"]').forEach(function (r) {
     r.addEventListener("change", function () {
       var note = document.querySelector("[data-fulfill-note]");
-      syncEventSelect(); syncShipBox(false);
+      syncEventSelect(); syncShipBox(false); schedulePromo();
       if (note) note.textContent = fulfillment() === "event"
         ? "No shipping charge. Pick up your order at the event you choose. Any sales tax is added at secure checkout."
         : fulfillment() === "pickup"
@@ -692,7 +693,7 @@
           if (hasDel) {
             var dlab = el("label", { "class": "ship-opt" }), dinp = el("input", { type: "radio", name: "shipopt" });
             dinp.addEventListener("change", function () {
-              shipQ.chosen = { local: true }; setMsg(""); delForm.hidden = false;
+              shipQ.chosen = { local: true }; setMsg(""); delForm.hidden = false; schedulePromo();
               var note = document.querySelector("[data-fulfill-note]"); if (note) note.textContent = "Free local delivery. We will contact you to arrange a delivery time. Any sales tax is added at secure checkout.";
             });
             dlab.appendChild(dinp); dlab.appendChild(document.createTextNode(" Free local delivery \u2014 $0.00 (we will contact you to arrange a time)"));
@@ -701,7 +702,7 @@
           if (delForm) optBox.appendChild(delForm);
           d.options.forEach(function (o, i) {
             var lab = el("label", { "class": "ship-opt" }), inp = el("input", { type: "radio", name: "shipopt" });
-            inp.addEventListener("change", function () { shipQ.chosen = o; setMsg(""); if (delForm) delForm.hidden = true; });
+            inp.addEventListener("change", function () { shipQ.chosen = o; setMsg(""); if (delForm) delForm.hidden = true; schedulePromo(); });
             lab.appendChild(inp);
             lab.appendChild(document.createTextNode(" " + o.service + " \u2014 " + money(o.cents) + (o.days ? " (about " + o.days + (o.days === 1 ? " day" : " days") + " in transit)" : "")));
             optBox.appendChild(lab);

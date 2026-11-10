@@ -179,10 +179,13 @@ async function handleDiscountPreview(request, env, c) {
     if (size && Number.isInteger(it.qty) && it.qty > 0 && it.qty <= MAX_QTY) lines.push({ id: product.id, cents: size.cents, qty: it.qty });
   }
   const all = await readDiscounts(env);
-  const r = bestDiscount(all, lines, payload.code, undefined, { use: await readUse(env), ek: emailKey(payload.email) });
+  const flat = parseInt(env.SHIPPING_CENTS || "1000", 10);
+  const noShip = payload.fulfillment === "pickup" || payload.fulfillment === "event" || payload.fulfillment === "delivery" || items.every((it) => { const pr = catalog.find((p) => p.id === (it && it.id)); return pr && pr.digital; });
+  const shipC = Number.isInteger(payload.shipCents) && payload.shipCents >= 0 && payload.shipCents <= 100000 ? payload.shipCents : flat;   // display only: checkout uses the signed quote
+  const r = bestDiscount(all, lines, payload.code, undefined, { use: await readUse(env), ek: emailKey(payload.email), shipCents: shipC, noShip });
   if (r.error) return json({ error: r.error }, 200, c.headers);
   const sub = lines.reduce((t, l) => t + l.cents * l.qty, 0);
-  return json({ cents: capDiscount(r.cents || 0, sub), name: r.name || "", code: r.code || "", note: r.note || "", needEmail: !!r.needEmail, limited: !!r.limited }, 200, c.headers);
+  return json({ cents: r.freeShip ? (r.cents || 0) : capDiscount(r.cents || 0, sub), freeShip: !!r.freeShip, name: r.name || "", code: r.code || "", note: r.note || "", needEmail: !!r.needEmail, limited: !!r.limited }, 200, c.headers);
 }
 
 async function handleCheckout(request, env, c) {
@@ -242,6 +245,7 @@ async function handleCheckout(request, env, c) {
     if (chk.error) return json({ error: chk.error }, 400, c.headers);
     delivery = chk.address;
   }
+  let chosen = null;   // the verified USPS quote, when shipping
   let ev = null;
   if (!allDigital && payload.fulfillment === "event") {
     ev = upcoming(await readEvents(env)).find((e) => e.id === payload.eventId);
@@ -270,7 +274,6 @@ async function handleCheckout(request, env, c) {
     params.set("billing_address_collection", "required");
     params.set("custom_text[submit][message]", ev ? `Pickup at ${ev.name} on ${ev.date}${ev.location ? " (" + ev.location + ")" : ""}. We will email you the details.` : "Local pickup: we will email you to arrange a pickup time and place.");
   } else {
-    let chosen = null;
     if (payload.ship && typeof payload.ship === "object") {
       chosen = await verifyQuote(env, catalog, items, payload.ship, String(payload.shipZip || ""));
       if (chosen && chosen.stale) return json({ error: "Your bag or shipping prices changed. Please choose your shipping option again." }, 400, c.headers);
@@ -286,16 +289,26 @@ async function handleCheckout(request, env, c) {
   }
   // Discounts: recomputed here from catalog prices (never trusted from the page), then given to Stripe as a one-time coupon.
   const ek = emailKey(payload.email);
-  const disc = bestDiscount(await readDiscounts(env), priced, payload.code, undefined, { use: await readUse(env), ek });
+  const shipsOut = !allDigital && !pickup && !delivery;
+  const shipCents = chosen ? chosen.cents : parseInt(env.SHIPPING_CENTS || "1000", 10);
+  const disc = bestDiscount(await readDiscounts(env), priced, payload.code, undefined, { use: await readUse(env), ek, shipCents, noShip: !shipsOut });
   if (disc.error) return json({ error: disc.error }, 400, c.headers);
-  const discCents = capDiscount(disc.cents || 0, subtotalCents);
+  const discCents = disc.freeShip ? (disc.cents || 0) : capDiscount(disc.cents || 0, subtotalCents);
   if (discCents > 0 && disc.needEmail) return json({ error: "Please enter your email in the bag to use this offer (one use per customer)." }, 400, c.headers);
-  if (discCents > 0) {
+  if (discCents > 0 && disc.freeShip) {
+    // Free shipping: no coupon. The shipping charge on the Stripe page becomes $0.00.
+    params.set("shipping_options[0][shipping_rate_data][fixed_amount][amount]", "0");
+    params.set("shipping_options[0][shipping_rate_data][display_name]", (chosen ? chosen.service : "Shipping") + " (free shipping)");
+    params.set("metadata[free_shipping]", "1");
+  }
+  if (discCents > 0 && !disc.freeShip) {
     const cp = new URLSearchParams({ amount_off: String(discCents), currency: "usd", duration: "once", max_redemptions: "1", name: String(disc.name).slice(0, 40) });
     const cr = await fetch(`${API}/coupons`, { method: "POST", headers: { Authorization: `Bearer ${env.STRIPE_SECRET_KEY}`, "Content-Type": "application/x-www-form-urlencoded" }, body: cp });
     const coupon = await cr.json();
     if (!cr.ok || !coupon.id) { console.log("coupon error", cr.status, JSON.stringify(coupon.error || {})); return json({ error: "Could not apply your discount. Please try again." }, 502, c.headers); }
     params.set("discounts[0][coupon]", coupon.id);
+  }
+  if (discCents > 0) {
     params.set("metadata[discount]", String(disc.name).slice(0, 80));
     params.set("metadata[discount_cents]", String(discCents));
     if (disc.code) params.set("metadata[promo_code]", disc.code);

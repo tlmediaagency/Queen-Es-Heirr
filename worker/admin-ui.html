@@ -268,6 +268,7 @@ function viewToShip(n) {
       var box = h("div");
       var card = h("div", { "class": "card" }, [
         h("div", { style: "display:flex;justify-content:space-between;gap:8px;flex-wrap:wrap" }, [h("strong", { text: o.name || o.email }), h("span", { "class": "muted", text: new Date(o.created).toLocaleDateString() })]),
+        o.freeShip ? h("p", null, [h("span", { "class": "pill", text: "Free shipping" + (o.freeShipName ? ": " + o.freeShipName : "") })]) : null,
         h("ul", null, o.items.map(function (i) { return h("li", { text: i.qty + " x " + i.name }); })),
         h("p", { "class": "muted", text: o.hasAddress ? o.address : "No shipping address on this order." }),
         h("p", null, [h("button", { "class": "btn small primary", text: "Make label", onclick: function () { if (!box.firstChild) shipPrepare(o, box, function () { viewToShip(n); }); } })]), box]);
@@ -289,7 +290,7 @@ function shipPrepare(o, box, done) {
     var out = h("div"), msg = h("p", { "class": "msg", role: "status" }), qr = h("input", { type: "checkbox" });
     var sd = h("input", { type: "date" }), nt = h("input", { type: "checkbox", checked: true });
     box.appendChild(h("div", { "class": "card" }, [
-      h("p", { "class": "muted", text: "Customer paid " + money(d.order.shippingPaid || 0) + " for shipping" + (d.order.shipService ? " (" + d.order.shipService + ")" : "") + "." }),
+      h("p", { "class": "muted", text: d.order.freeShip ? "Free shipping" + (d.order.freeShipName ? " (" + d.order.freeShipName + ")" : "") + ": the customer paid " + money(d.order.shippingPaid || 0) + " for shipping, so the label cost comes out of your pocket." : "Customer paid " + money(d.order.shippingPaid || 0) + " for shipping" + (d.order.shipService ? " (" + d.order.shipService + ")" : "") + "." }),
       d.order.zipChanged ? h("p", { "class": "msg err", text: "The customer quoted shipping to a different ZIP than the address they entered. Compare the label price to what they paid." }) : null,
       h("label", null, ["Box", pre]),
       h("div", { "class": "row" }, [h("label", null, ["Length in", L]), h("label", null, ["Width in", W]), h("label", null, ["Height in", H]), h("label", null, ["Weight oz", oz])]),
@@ -514,6 +515,7 @@ function viewDiscounts(n) {
     function money(c) { return "$" + (c % 100 ? (c / 100).toFixed(2) : String(c / 100)); }
     function nameOf(id) { var p = products.filter(function (x) { return x.id === id; })[0]; return p ? p.name : id; }
     function summary(x) {
+      if (x.kind === "freeship") return "Free shipping" + (x.scope === "items" ? " when the bag has " + ((x.itemIds || []).map(nameOf).join(" or ") || "(choose products)") : "") + (x.minCents ? ", orders of " + money(x.minCents) + " or more" : "") + ". " + (x.code ? "Customers enter code " + x.code.toUpperCase() : "Applied automatically") + ". Shipped orders only.";
       var what = x.kind === "percent" ? (x.percent || 0) + "% off" : x.kind === "amount" ? money(x.cents || 0) + " off" : "Buy " + (x.buy || 0) + ", get " + (x.get || 0) + " free";
       var where = x.scope === "items" ? " on " + ((x.itemIds || []).map(nameOf).join(", ") || "(choose products)") : x.kind === "bogo" ? " on any items" : " your whole order";
       var how = x.code ? "Customers enter code " + x.code.toUpperCase() : "Applied automatically";
@@ -528,11 +530,11 @@ function viewDiscounts(n) {
         var num = function (k, label, extra, toStored, fromStored) { var inp = h("input", Object.assign({ type: "number", min: 0, step: "1", value: x[k] != null ? fromStored(x[k]) : "" }, extra || {})); inp.addEventListener("input", function () { x[k] = toStored(parseFloat(inp.value) || 0); sum.textContent = summary(x); }); return h("label", null, [label, inp]); };
         var id1 = function (v) { return v; }, toC = function (v) { return Math.round(v * 100); }, fromC = function (v) { return Math.round(v) / 100; };
         var sum = h("p", { "class": "muted", style: "margin:10px 0 0", text: summary(x) });
-        var kind = h("select", null, [["percent", "Percent off (like 20% off)"], ["amount", "Dollars off (like $5 off)"], ["bogo", "Buy X, get Y free"]].map(function (k) { return h("option", { value: k[0], text: k[1], selected: k[0] === x.kind }); }));
+        var kind = h("select", null, [["percent", "Percent off (like 20% off)"], ["amount", "Dollars off (like $5 off)"], ["bogo", "Buy X, get Y free"], ["freeship", "Free shipping"]].map(function (k) { return h("option", { value: k[0], text: k[1], selected: k[0] === x.kind }); }));
         kind.addEventListener("change", function () { x.kind = kind.value; if (x.kind === "percent" && !x.percent) x.percent = 10; if (x.kind === "amount" && !x.cents) x.cents = 500; if (x.kind === "bogo" && !x.buy) { x.buy = 2; x.get = 1; } draw(); });
-        var val = x.kind === "percent" ? num("percent", "Percent off", { max: 100 }, Math.round, id1) : x.kind === "amount" ? num("cents", "Dollars off ($)", { step: "0.01" }, toC, fromC)
+        var val = x.kind === "freeship" ? h("p", { "class": "muted", style: "align-self:end;margin:0", text: "The shipping charge becomes $0.00. You still pay for the label." }) : x.kind === "percent" ? num("percent", "Percent off", { max: 100 }, Math.round, id1) : x.kind === "amount" ? num("cents", "Dollars off ($)", { step: "0.01" }, toC, fromC)
           : h("div", { "class": "row" }, [num("buy", "Customer buys", { min: 1 }, Math.round, id1), num("get", "Gets this many free", { min: 1 }, Math.round, id1)]);
-        var scope = h("select", null, [["all", x.kind === "bogo" ? "Any items in the bag" : "The whole order"], ["items", "Only certain products"]].map(function (k) { return h("option", { value: k[0], text: k[1], selected: k[0] === x.scope }); }));
+        var scope = h("select", null, [["all", x.kind === "bogo" ? "Any items in the bag" : x.kind === "freeship" ? "Any order that ships" : "The whole order"], ["items", x.kind === "freeship" ? "Only when the bag has certain products" : "Only certain products"]].map(function (k) { return h("option", { value: k[0], text: k[1], selected: k[0] === x.scope }); }));
         scope.addEventListener("change", function () { x.scope = scope.value; if (x.scope === "items" && !x.itemIds) x.itemIds = []; draw(); });
         var how = h("select", null, [["auto", "Automatic (no code needed)"], ["code", "Needs a promo code"]].map(function (k) { return h("option", { value: k[0], text: k[1], selected: k[0] === (x.code ? "code" : "auto") }); }));
         how.addEventListener("change", function () { if (how.value === "code") { x.code = x.code || "SAVE"; } else { x.code = ""; x.show = false; } draw(); });
