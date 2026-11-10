@@ -521,7 +521,7 @@ function viewDiscounts(n) {
       var how = x.code ? "Customers enter code " + x.code.toUpperCase() : "Applied automatically";
       return what + where + (x.minCents ? ", orders of " + money(x.minCents) + " or more" : "") + ". " + how + ".";
     }
-    n.appendChild(h("p", { "class": "muted", text: "Set up sales and promo codes. Each discount is either automatic (applies by itself) or needs a code the customer types in the bag. Limits: "Total uses allowed" stops the discount once that many orders have used it, and "One use per customer" asks for their email in the bag and allows one order per email address. When several could apply, the customer gets the one that saves them the most; discounts do not stack. Shipping and tax are never discounted. Codes marked \\"Show on Deals page\\" are listed at queenesheirr.com/deals. Remember to tap Save changes." }));
+    n.appendChild(h("p", { "class": "muted", text: "Set up sales and promo codes. Each discount is either automatic (applies by itself) or needs a code the customer types in the bag. Limits: Total uses allowed stops the discount once that many orders have used it, and One use per customer asks for their email in the bag and allows one order per email address. When several could apply, the customer gets the one that saves them the most; discounts do not stack. Only free shipping touches shipping, and tax is never discounted. Codes marked Show on Deals page are listed at queenesheirr.com/deals. Remember to tap Save changes." }));
     function draw() {
       clear(box);
       if (!list.length) box.appendChild(h("p", { "class": "muted", text: "No discounts yet. Tap Add a discount." }));
