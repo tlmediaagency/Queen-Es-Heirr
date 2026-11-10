@@ -386,3 +386,6 @@ a.btn[href] { text-decoration: none; }
 .deal h3 { margin: 0 0 .4rem; }
 .deal .code { display: inline-block; margin: .5rem 0; padding: .35rem .8rem; border: 2px dashed var(--gold, #d4af37); border-radius: 10px; font-weight: 700; letter-spacing: .12em; }
 .deal .copy { margin-left: .5rem; }
+
+.promo-email { margin: .5rem 0 0; }
+.promo-email input { width: 100%; }

@@ -157,8 +157,8 @@
 
   // Promo code box and discount line, added under the subtotal. The Worker works out the discount (automatic deals and codes);
   // the page only displays it, and checkout re-checks everything on the server.
-  var promo = { code: "", applied: false, cents: 0, name: "", seq: 0, timer: 0 };
-  try { promo.code = localStorage.getItem("queen-e-promo") || ""; } catch (e) { /* storage blocked */ }
+  var promo = { code: "", email: "", needEmail: false, applied: false, cents: 0, name: "", seq: 0, timer: 0 };
+  try { promo.code = localStorage.getItem("queen-e-promo") || ""; promo.email = localStorage.getItem("queen-e-promo-email") || ""; } catch (e) { /* storage blocked */ }
   var promoUI = null;
   function buildPromo() {
     if (promoUI || !subEl || !subEl.parentNode || !CFG.CHECKOUT_URL) return;
@@ -168,7 +168,10 @@
     var msg = el("p", { "class": "muted promo-msg", role: "status", "aria-live": "polite" });
     var line = el("p", { "class": "promo-line" }); line.hidden = true;
     var box = el("div", { "class": "promo" });
-    box.appendChild(line); box.appendChild(row); box.appendChild(msg);
+    var em = el("input", { type: "email", "aria-label": "Your email (needed for this offer)", placeholder: "Your email (one use per customer)", autocomplete: "email", maxlength: "254", value: promo.email });
+    var emWrap = el("div", { "class": "promo-email" }); emWrap.hidden = true; emWrap.appendChild(em);
+    em.addEventListener("change", function () { promo.email = em.value.trim(); try { localStorage.setItem("queen-e-promo-email", promo.email); } catch (e) { /* ignore */ } refreshPromo(true); });
+    box.appendChild(line); box.appendChild(row); box.appendChild(emWrap); box.appendChild(msg);
     var link = el("a", { href: "/deals/" }, "See current deals"); var more = el("p", { "class": "promo-more" }); more.appendChild(link); box.appendChild(more);
     subEl.parentNode.insertAdjacentElement("afterend", box);
     function apply() {
@@ -178,18 +181,19 @@
     }
     btn.addEventListener("click", apply);
     inp.addEventListener("keydown", function (e) { if (e.key === "Enter") { e.preventDefault(); apply(); } });
-    promoUI = { inp: inp, msg: msg, line: line, box: box };
+    promoUI = { inp: inp, msg: msg, line: line, box: box, emWrap: emWrap, em: em };
   }
   function refreshPromo(explicit) {
     var lines = loadCart().filter(function (l) { return findProduct(l.id) && sizeOf(l.id, l.size); });
     buildPromo(); if (!promoUI) return;
     var seq = ++promo.seq;
     if (!lines.length) { promo.cents = 0; promo.applied = false; promoUI.line.hidden = true; promoUI.msg.textContent = ""; return; }
-    fetch(workerUrl("/discount-preview"), { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ items: lines, code: promo.code }) })
+    fetch(workerUrl("/discount-preview"), { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ items: lines, code: promo.code, email: promo.email }) })
       .then(function (r) { return r.json(); })
       .then(function (d) {
         if (seq !== promo.seq) return;
-        promo.applied = false; promo.cents = 0; promo.name = "";
+        promo.applied = false; promo.cents = 0; promo.name = ""; promo.needEmail = !!d.needEmail;
+        promoUI.emWrap.hidden = !(d.needEmail || (promo.email && d.cents > 0 && d.limited));
         if (d.error) {
           promoUI.msg.textContent = promo.code ? d.error : "";
           promoUI.line.hidden = true;
@@ -200,7 +204,7 @@
           promo.cents = d.cents; promo.name = d.name; promo.applied = !!promo.code && String(d.code || "") !== "";
           promoUI.line.textContent = (d.name || "Discount") + ": -" + money(d.cents);
           promoUI.line.hidden = false;
-          promoUI.msg.textContent = d.note || (explicit && promo.applied ? "Code applied." : "");
+          promoUI.msg.textContent = d.needEmail ? "Enter your email below. This offer is one use per customer." : (d.note || (explicit && promo.applied ? "Code applied." : ""));
         } else {
           promoUI.line.hidden = true;
           promoUI.msg.textContent = explicit && promo.code ? "That code doesn't change this bag." : "";
@@ -729,7 +733,7 @@
       fetch(CFG.CHECKOUT_URL, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ items: lines, code: promo.code || undefined, fulfillment: isLocal ? "delivery" : fulfillment(), delivery: delivery, eventId: fulfillment() === "event" && eventSel ? eventSel.value : undefined, ship: needShip && shipQ.chosen && !isLocal ? { token: shipQ.chosen.token, cents: shipQ.chosen.cents, exp: shipQ.chosen.exp, sig: shipQ.chosen.sig } : undefined, shipZip: needShip && shipQ.chosen && !isLocal ? shipQ.zip : undefined, optin: !!(document.querySelector("[data-optin]") && document.querySelector("[data-optin]").checked) })
+        body: JSON.stringify({ items: lines, code: promo.code || undefined, email: promo.email || undefined, fulfillment: isLocal ? "delivery" : fulfillment(), delivery: delivery, eventId: fulfillment() === "event" && eventSel ? eventSel.value : undefined, ship: needShip && shipQ.chosen && !isLocal ? { token: shipQ.chosen.token, cents: shipQ.chosen.cents, exp: shipQ.chosen.exp, sig: shipQ.chosen.sig } : undefined, shipZip: needShip && shipQ.chosen && !isLocal ? shipQ.zip : undefined, optin: !!(document.querySelector("[data-optin]") && document.querySelector("[data-optin]").checked) })
       }).then(function (r) {
         return r.json().then(function (d) { if (!r.ok) throw new Error(d.error || "Checkout failed"); return d; });
       }).then(function (d) {

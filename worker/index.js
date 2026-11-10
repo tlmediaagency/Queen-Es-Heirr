@@ -16,7 +16,7 @@ import { shippoWebhook, quoteOptions, verifyQuote } from "./shipping.js";
 import { addOptIn } from "./marketing.js";
 import { blogPublic } from "./blog.js";
 import { servicesPublic } from "./services.js";
-import { readDiscounts, bestDiscount, capDiscount, publicDiscounts } from "./discounts.js";
+import { readDiscounts, bestDiscount, capDiscount, publicDiscounts, readUse, reserveUse, recordUse, emailKey } from "./discounts.js";
 import { wholesalePublic, wsPaid } from "./wholesale.js";
 import { onEventOrderPaid, eventReminders } from "./eventorders.js";
 import { deliveryFor, checkDelivery, onDeliveryOrderPaid } from "./delivery.js";
@@ -178,10 +178,11 @@ async function handleDiscountPreview(request, env, c) {
     const size = product && product.sizes.find((s) => s.label === stdSize(product.category, it.size));
     if (size && Number.isInteger(it.qty) && it.qty > 0 && it.qty <= MAX_QTY) lines.push({ id: product.id, cents: size.cents, qty: it.qty });
   }
-  const r = bestDiscount(await readDiscounts(env), lines, payload.code);
+  const all = await readDiscounts(env);
+  const r = bestDiscount(all, lines, payload.code, undefined, { use: await readUse(env), ek: emailKey(payload.email) });
   if (r.error) return json({ error: r.error }, 200, c.headers);
   const sub = lines.reduce((t, l) => t + l.cents * l.qty, 0);
-  return json({ cents: capDiscount(r.cents || 0, sub), name: r.name || "", code: r.code || "", note: r.note || "" }, 200, c.headers);
+  return json({ cents: capDiscount(r.cents || 0, sub), name: r.name || "", code: r.code || "", note: r.note || "", needEmail: !!r.needEmail, limited: !!r.limited }, 200, c.headers);
 }
 
 async function handleCheckout(request, env, c) {
@@ -284,9 +285,11 @@ async function handleCheckout(request, env, c) {
     if (env.TAX_ENABLED === "true") params.set("shipping_options[0][shipping_rate_data][tax_behavior]", "exclusive");
   }
   // Discounts: recomputed here from catalog prices (never trusted from the page), then given to Stripe as a one-time coupon.
-  const disc = bestDiscount(await readDiscounts(env), priced, payload.code);
+  const ek = emailKey(payload.email);
+  const disc = bestDiscount(await readDiscounts(env), priced, payload.code, undefined, { use: await readUse(env), ek });
   if (disc.error) return json({ error: disc.error }, 400, c.headers);
   const discCents = capDiscount(disc.cents || 0, subtotalCents);
+  if (discCents > 0 && disc.needEmail) return json({ error: "Please enter your email in the bag to use this offer (one use per customer)." }, 400, c.headers);
   if (discCents > 0) {
     const cp = new URLSearchParams({ amount_off: String(discCents), currency: "usd", duration: "once", max_redemptions: "1", name: String(disc.name).slice(0, 40) });
     const cr = await fetch(`${API}/coupons`, { method: "POST", headers: { Authorization: `Bearer ${env.STRIPE_SECRET_KEY}`, "Content-Type": "application/x-www-form-urlencoded" }, body: cp });
@@ -296,6 +299,13 @@ async function handleCheckout(request, env, c) {
     params.set("metadata[discount]", String(disc.name).slice(0, 80));
     params.set("metadata[discount_cents]", String(discCents));
     if (disc.code) params.set("metadata[promo_code]", disc.code);
+    params.set("metadata[discount_id]", String(disc.id));
+    if (disc.limited) {
+      // Limited offers: lock the customer's email on the Stripe page (it is how "one per customer" is checked) and let the page expire
+      // after the 35 minute hold so unfinished checkouts hand the use back.
+      if (ek) { params.set("customer_email", String(payload.email).trim().slice(0, 254)); params.set("metadata[discount_ek]", ek); }
+      params.set("expires_at", String(Math.floor(Date.now() / 1000) + 31 * 60));
+    }
   }
   // Sales tax: set the Worker variable TAX_ENABLED=true once Stripe Tax is configured in the dashboard.
   if (env.TAX_ENABLED === "true") params.set("automatic_tax[enabled]", "true");
@@ -310,6 +320,7 @@ async function handleCheckout(request, env, c) {
     console.log("Stripe error", res.status, JSON.stringify(data.error || {}));
     return json({ error: "Could not start checkout" }, 502, c.headers);
   }
+  if (discCents > 0 && disc.limited) { try { await reserveUse(env, disc.id, data.id, ek); } catch (e) { console.log("reserve use failed", String(e)); } }
   return json({ url: data.url }, 200, c.headers);
 }
 
@@ -599,6 +610,9 @@ async function handleStripeWebhook(request, env) {
   if (session.metadata && session.metadata.kind === "class") {
     try { await recordBooking(env, session); } catch (e) { console.log("booking error", String(e)); return new Response("error", { status: 500 }); }
     return new Response("ok", { status: 200 });
+  }
+  if (session.metadata && session.metadata.discount_id) {
+    try { await recordUse(env, session); } catch (e) { console.log("discount use record failed", String(e)); }
   }
   try {
     const li = await stripeGet(env, `/checkout/sessions/${session.id}/line_items?limit=100`);

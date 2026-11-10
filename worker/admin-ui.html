@@ -510,7 +510,7 @@ function viewDiscounts(n) {
   loading(n);
   api("GET", "discounts").then(function (d) {
     clear(n);
-    var list = d.discounts, products = d.products || [], box = h("div");
+    var list = d.discounts, products = d.products || [], uses = d.uses || {}, box = h("div");
     function money(c) { return "$" + (c % 100 ? (c / 100).toFixed(2) : String(c / 100)); }
     function nameOf(id) { var p = products.filter(function (x) { return x.id === id; })[0]; return p ? p.name : id; }
     function summary(x) {
@@ -519,7 +519,7 @@ function viewDiscounts(n) {
       var how = x.code ? "Customers enter code " + x.code.toUpperCase() : "Applied automatically";
       return what + where + (x.minCents ? ", orders of " + money(x.minCents) + " or more" : "") + ". " + how + ".";
     }
-    n.appendChild(h("p", { "class": "muted", text: "Set up sales and promo codes. Each discount is either automatic (applies by itself) or needs a code the customer types in the bag. When several could apply, the customer gets the one that saves them the most; discounts do not stack. Shipping and tax are never discounted. Codes marked \"Show on Deals page\" are listed at queenesheirr.com/deals. Remember to tap Save changes." }));
+    n.appendChild(h("p", { "class": "muted", text: "Set up sales and promo codes. Each discount is either automatic (applies by itself) or needs a code the customer types in the bag. Limits: "Total uses allowed" stops the discount once that many orders have used it, and "One use per customer" asks for their email in the bag and allows one order per email address. When several could apply, the customer gets the one that saves them the most; discounts do not stack. Shipping and tax are never discounted. Codes marked \"Show on Deals page\" are listed at queenesheirr.com/deals. Remember to tap Save changes." }));
     function draw() {
       clear(box);
       if (!list.length) box.appendChild(h("p", { "class": "muted", text: "No discounts yet. Tap Add a discount." }));
@@ -545,6 +545,8 @@ function viewDiscounts(n) {
             return h("label", { "class": "chk", style: "display:block" }, [cb, " " + p.name]);
           }));
         }
+        var one = h("input", { type: "checkbox", checked: !!x.onePerCustomer }); one.addEventListener("change", function () { x.onePerCustomer = one.checked; });
+        var used = x.id && uses[x.id] ? uses[x.id] : 0;
         var act = h("input", { type: "checkbox", checked: x.active !== false }); act.addEventListener("change", function () { x.active = act.checked; });
         var show = h("input", { type: "checkbox", checked: !!x.show }); show.addEventListener("change", function () { x.show = show.checked; });
         var date = function (k, label) { var inp = h("input", { type: "date", value: x[k] || "" }); inp.addEventListener("input", function () { x[k] = inp.value; }); return h("label", null, [label, inp]); };
@@ -555,6 +557,9 @@ function viewDiscounts(n) {
           pick,
           h("div", { "class": "row", style: "margin-top:10px" }, [h("label", null, ["How customers get it", how]), codeInp, num("minCents", "Minimum order ($, 0 for none)", { step: "0.01" }, toC, fromC)]),
           h("div", { "class": "row", style: "margin-top:10px" }, [date("start", "Starts (optional)"), date("end", "Ends (optional, last day)"), txt("note", "Short note on the Deals page (optional)")]),
+          h("div", { "class": "row", style: "margin-top:10px" }, [num("maxUses", "Total uses allowed (0 = no limit)", { step: "1" }, Math.round, id1),
+            h("label", { "class": "chk", style: "align-self:end" }, [one, "One use per customer (by email)"]),
+            h("span", { "class": "muted", style: "align-self:end", text: used ? "Used " + used + (used === 1 ? " time" : " times") + " so far" : "Not used yet" })]),
           sum,
           h("div", { style: "display:flex;justify-content:space-between;align-items:center;margin-top:10px;gap:8px;flex-wrap:wrap" }, [
             h("label", { "class": "chk" }, [act, "On"]), x.code ? h("label", { "class": "chk" }, [show, "Show this code on the Deals page"]) : h("span", { "class": "muted", text: "Automatic deals always show on the Deals page." }),
@@ -562,7 +567,7 @@ function viewDiscounts(n) {
       });
     }
     draw(); n.appendChild(box);
-    n.appendChild(h("p", null, [h("button", { "class": "btn", text: "Add a discount", onclick: function () { list.push({ name: "", kind: "percent", percent: 10, scope: "all", itemIds: [], code: "", show: false, minCents: 0, start: "", end: "", note: "", active: true }); draw(); } }), " ",
+    n.appendChild(h("p", null, [h("button", { "class": "btn", text: "Add a discount", onclick: function () { list.push({ name: "", kind: "percent", percent: 10, scope: "all", itemIds: [], code: "", show: false, minCents: 0, maxUses: 0, onePerCustomer: false, start: "", end: "", note: "", active: true }); draw(); } }), " ",
       h("button", { "class": "btn primary", text: "Save changes", onclick: function () {
         api("POST", "discounts-save", { discounts: list }).then(function (r) { list.length = 0; r.discounts.forEach(function (z) { list.push(z); }); draw(); toast("Saved"); }).catch(function (er) { toast(er.message); });
       } })]));

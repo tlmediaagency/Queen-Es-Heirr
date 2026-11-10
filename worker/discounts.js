@@ -2,6 +2,7 @@
 // - Each discount applies to the whole order or to chosen products only.
 // - Each is either automatic (no code) or needs a promo code. A code can be listed on the website's Deals page or kept private.
 // - One discount per order: the one worth the most to the customer (the code they typed competes with the automatic ones).
+// - Optional limits: a total number of uses, and one use per customer (matched by email, which checkout then locks in).
 // - The Worker recomputes everything at checkout (prices come from the catalog), then hands Stripe a one-time coupon for the exact amount,
 //   so Stripe Tax and receipts stay correct. Shipping and tax are never discounted.
 const one = (v, n) => String(v == null ? "" : v).replace(/[\r\n]+/g, " ").trim().slice(0, n);
@@ -23,6 +24,7 @@ function clean(list) {
     const kind = KINDS.includes(d.kind) ? d.kind : "percent";
     const out = { id: /^d[a-z0-9]{2,16}$/.test(d.id || "") && !seen.has(d.id) ? d.id : "d" + Date.now().toString(36) + i, name, kind,
       scope: d.scope === "items" ? "items" : "all", itemIds: [], code: codeKey(d.code), active: d.active !== false, show: d.show === true,
+      maxUses: Math.max(0, Math.min(1000000, Math.round(Number(d.maxUses) || 0))), onePerCustomer: d.onePerCustomer === true,
       minCents: Math.max(0, Math.min(100000000, Math.round(Number(d.minCents) || 0))), start: DATE_RE.test(d.start || "") ? d.start : "", end: DATE_RE.test(d.end || "") ? d.end : "", note: one(d.note, 200) };
     seen.add(out.id);
     if (out.code) { if (out.code.length < 3) throw new Error("Promo codes need at least 3 letters or numbers (" + name + ")."); if (codes.has(out.code)) throw new Error("The code " + out.code + " is used twice."); codes.add(out.code); }
@@ -68,25 +70,73 @@ export function amountFor(d, lines) {
   return off;
 }
 
-/** Pick the best discount for this bag. Returns { cents, name, code?, note? } or { error }. */
-export function bestDiscount(all, lines, codeRaw, today) {
+// ---- usage limits ---------------------------------------------------------------------------------
+// KV "discountuse": { [discountId]: { n: paid uses, e: [email keys that used it], d: [session ids counted], p: [{ s, t, k }] pending } }.
+// A started checkout holds its use for 35 minutes (the Stripe page expires then), so abandoned bags don't use up a limited code.
+const HOLD_MS = 35 * 60e3;
+export function emailKey(v) {
+  const t = String(v == null ? "" : v).trim().toLowerCase();
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(t) || t.length > 254) return "";
+  let [u, dom] = t.split("@");
+  u = u.split("+")[0];
+  if (dom === "gmail.com" || dom === "googlemail.com") { u = u.replace(/\./g, ""); dom = "gmail.com"; }
+  return u + "@" + dom;
+}
+export async function readUse(env) { try { const o = JSON.parse((await env.ADMIN_KV.get("discountuse")) || "{}"); return o && typeof o === "object" ? o : {}; } catch { return {}; } }
+function view(use, id, nowMs) {
+  const r = use[id] || {}; const live = (r.p || []).filter((x) => nowMs - x.t < HOLD_MS);
+  return { count: (r.n || 0) + live.length, paid: r.n || 0, emails: new Set([...(r.e || []), ...live.map((x) => x.k).filter(Boolean)]) };
+}
+const limited = (d) => d.maxUses > 0 || d.onePerCustomer;
+
+/** Hold a use for a checkout that just started. */
+export async function reserveUse(env, id, sessionId, ek) {
+  const use = await readUse(env), r = use[id] || (use[id] = { n: 0, e: [], d: [], p: [] }), t = Date.now();
+  r.p = (r.p || []).filter((x) => t - x.t < HOLD_MS).slice(-200); r.p.push({ s: sessionId, t, k: ek || "" });
+  await env.ADMIN_KV.put("discountuse", JSON.stringify(use));
+}
+/** Payment finished: turn the hold into a real use (safe to run twice for the same order). */
+export async function recordUse(env, session) {
+  const md = (session && session.metadata) || {}; const id = md.discount_id; if (!id) return;
+  const use = await readUse(env), r = use[id] || (use[id] = { n: 0, e: [], d: [], p: [] });
+  if ((r.d || []).includes(session.id)) return;
+  r.d = [...(r.d || []), session.id].slice(-300); r.p = (r.p || []).filter((x) => x.s !== session.id);
+  r.n = (r.n || 0) + 1;
+  const k = emailKey((session.customer_details && session.customer_details.email) || session.customer_email) || md.discount_ek || "";
+  if (k && !r.e.includes(k)) r.e = [...r.e, k].slice(-5000);
+  await env.ADMIN_KV.put("discountuse", JSON.stringify(use));
+}
+
+/** Pick the best discount for this bag. ctx = { use, ek (email key or ""), now }. Returns { cents, name, id, code?, needEmail?, note? } or { error }. */
+export function bestDiscount(all, lines, codeRaw, today, ctx = {}) {
   const sub = lines.reduce((t, l) => t + l.cents * l.qty, 0);
+  const use = ctx.use || {}, nowMs = ctx.now || Date.now(), ek = ctx.ek || "";
   const live = all.filter((d) => inWindow(d, today));
   const typed = codeKey(codeRaw);
+  // Why a rule can't be used right now (null = fine).
+  const blocked = (d) => {
+    if (!limited(d)) return null;
+    const v = view(use, d.id, nowMs);
+    if (d.maxUses > 0 && v.count >= d.maxUses) return "That code has been fully claimed.";
+    if (d.onePerCustomer && ek && v.emails.has(ek)) return "That offer has already been used with this email address.";
+    return null;
+  };
   let coded = null;
   if (typed) {
     coded = live.find((d) => d.code && d.code === typed);
     if (!coded) return { error: "That promo code isn't valid or has ended." };
+    const why = blocked(coded); if (why) return { error: why };
   }
+  const pack = (d, c, extra) => ({ cents: c, name: d.name, id: d.id, ...(d.code ? { code: d.code } : {}), ...(d.onePerCustomer && !ek ? { needEmail: true } : {}), ...(limited(d) ? { limited: true } : {}), ...extra });
   let best = null;
-  for (const d of live.filter((x) => !x.code)) { const c = amountFor(d, lines); if (c > 0 && (!best || c > best.cents)) best = { cents: c, name: d.name, id: d.id }; }
+  for (const d of live.filter((x) => !x.code)) { if (blocked(d)) continue; const c = amountFor(d, lines); if (c > 0 && (!best || c > best.cents)) best = pack(d, c); }
   if (coded) {
     const c = amountFor(coded, lines);
     if (c <= 0) {
       if (sub < (coded.minCents || 0)) return { error: `That code needs an order of ${money(coded.minCents)} or more.` };
       return { error: coded.scope === "items" ? "That code doesn't apply to the items in your bag." : coded.kind === "bogo" ? `That code needs ${coded.buy + coded.get} items in your bag (buy ${coded.buy}, get ${coded.get} free).` : "That code doesn't apply to your bag." };
     }
-    if (!best || c >= best.cents) return { cents: c, name: coded.name, id: coded.id, code: coded.code };
+    if (!best || c >= best.cents) return pack(coded, c);
     return { ...best, note: `Your automatic deal "${best.name}" saves more than that code, so we applied it.` };
   }
   return best || { cents: 0 };
@@ -97,9 +147,10 @@ export const capDiscount = (cents, subtotal) => Math.max(0, Math.min(cents, subt
 
 // ---- public (the website) ------------------------------------------------------------------------
 export async function publicDiscounts(env, headers, json, nameOf) {
-  const today = todayCT();
-  const list = (await readDiscounts(env)).filter((d) => inWindow(d, today) && (!d.code || d.show)).map((d) => ({
-    name: d.name, text: describe(d, nameOf), code: d.code || "", automatic: !d.code, ends: d.end || "", note: d.note || "",
+  const today = todayCT(), use = await readUse(env), t = Date.now();
+  const list = (await readDiscounts(env)).filter((d) => inWindow(d, today) && (!d.code || d.show) && !(d.maxUses > 0 && view(use, d.id, t).count >= d.maxUses)).map((d) => ({
+    name: d.name, text: describe(d, nameOf), code: d.code || "", automatic: !d.code, ends: d.end || "",
+    note: [d.note, d.onePerCustomer ? "One use per customer." : "", d.maxUses > 0 ? "Limited number available." : ""].filter(Boolean).join(" "),
   }));
   return json({ discounts: list }, 200, { ...headers, "Cache-Control": "public, max-age=60" });
 }
@@ -109,7 +160,8 @@ export async function discountsRoute(route, method, body, env, me, deps, j) {
   if (route === "discounts" && method === "GET") {
     let products = [];
     try { products = (await deps.loadCatalog(env)).map((p) => ({ id: p.id, name: p.name })); } catch { products = []; }
-    return j({ discounts: await readDiscounts(env), products, today: todayCT() });
+    const use = await readUse(env), uses = {}; for (const k of Object.keys(use)) uses[k] = view(use, k, Date.now()).paid;
+    return j({ discounts: await readDiscounts(env), products, today: todayCT(), uses });
   }
   if (route === "discounts-save" && method === "POST") {
     try { const list = clean(body.discounts); await env.ADMIN_KV.put("discounts", JSON.stringify(list)); return j({ ok: true, discounts: list }); }
