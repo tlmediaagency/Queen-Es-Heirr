@@ -103,6 +103,7 @@ function intakeLines(b) {
     if (i.method === "link" && i.link) out.push(["Forms link", i.link]);
     if (i.method === "files") out.push(["Forms attached", String((b.docs || []).length) + " file" + ((b.docs || []).length === 1 ? "" : "s")]);
   } else out.push(["Vendor forms required", "No"]);
+  out.push(["W-9", i.w9 === "yes" ? "Requested (link provided)" : "Not needed"]);
   if (i.note) out.push(["Their note", i.note]);
   return out;
 }
@@ -137,8 +138,8 @@ export async function emailLink(env, b, origin) {
   const html = frame("Your booking is ready to confirm",
     P(`Hi ${esc(first)},`) + P("Thank you for choosing Queen E's Heirr. Here are the details of your booking. Please look them over, and use the button below to confirm and pay securely by card. You will also have the chance to add copies of the J.U.D.A.H. workbook for your program.") +
     detailTable(b) + P(`<strong>Amount due now:</strong> ${esc(money(dueNow(b)))}` + (balance(b) > 0 ? ` (balance of ${esc(money(balance(b)))} due before the event)` : "")) +
-    button(url, "Review and pay") + (b.hasW9 ? P(`Our W-9 for your records: <a href="${esc(w9Link(env, b))}">download here</a>.`) : "") + P(`If anything above is not right, reply to this email or write info@queenesheirr.com and we will fix it before you pay.`), siteOf(env));
-  const text = `Hi ${first},\n\nHere are the details of your booking with Queen E's Heirr:\n\n${detailText(b)}\n\nAmount due now: ${money(dueNow(b))}\n\nReview and pay: ${url}${b.hasW9 ? "\n\nOur W-9: " + w9Link(env, b) : ""}\n\nIf anything is not right, reply to this email.`;
+    button(url, "Review and pay") + P(`Need to tell us more about your event? Our <a href="${esc(siteOf(env))}/training/#ask">program request form</a> is the best place to do it.`) + P(`If anything above is not right, reply to this email or write info@queenesheirr.com and we will fix it before you pay.`), siteOf(env));
+  const text = `Hi ${first},\n\nHere are the details of your booking with Queen E's Heirr:\n\n${detailText(b)}\n\nAmount due now: ${money(dueNow(b))}\n\nReview and pay: ${url}\n\nMore about your event? ${siteOf(env)}/training/#ask\n\nIf anything is not right, reply to this email.`;
   await sendMail(env, b.client.email, `Your Queen E's Heirr booking: ${one((b.event || {}).title, 80)}`, html, text);
 }
 
@@ -165,11 +166,11 @@ export async function emailSummary(env, b, origin) {
     (balance(b) > 0 ? P(`<strong>Remaining balance:</strong> ${esc(money(balance(b)))}, due before the event. We will email you the invoice 5 days before your event.`) : "") +
     (paid.booksQty > 0 ? P(`<strong>Books for your program:</strong> ${esc(String(paid.booksQty))} ${paid.booksQty === 1 ? "copy" : "copies"}. ${esc((b.book && b.book.delivery) || "We bring them with us on event day.")}`) : "") +
     intakeHtml(b) + (b.intake && b.intake.vendor === "yes" && b.intake.method === "later" ? P("Please email your vendor forms to info@queenesheirr.com when you have them. We will complete them promptly.") : "") +
-    (b.hasW9 ? P(`Our W-9 is available for your records: <a href="${esc(w9Link(env, b))}">download our W-9</a>.`) : "") +
+    (b.intake && b.intake.w9 === "yes" ? (b.hasW9 ? P(`As you asked, here is our W-9: <a href="${esc(w9Link(env, b))}">download our W-9</a>.`) : P("As you asked, we will email you our W-9 shortly.")) : "") +
     H2("What to expect") + rich(b.expect) + H2("What we need from you") + rich(b.need) +
     (b.notes ? H2("A note from us") + rich(b.notes) : "") + H2("Terms of this booking") + rich(b.terms, `font-size:14px;color:${MUTED}`) +
     P("Questions at any time? Reply to this email or write info@queenesheirr.com. We are excited to be with you."), siteOf(env));
-  const text = `Hi ${first},\n\nThank you! Your payment came through and your date is held.\n\n${detailText(b)}\n\nPaid: ${money(paid.paidCents != null ? paid.paidCents : dueNow(b))}${paid.booksQty > 0 ? `\nBooks: ${paid.booksQty}` : ""}${balance(b) > 0 ? `\nRemaining balance: ${money(balance(b))} (we will email the invoice 5 days before your event)` : ""}\n${intakeText(b)}${b.intake && b.intake.vendor === "yes" && b.intake.method === "later" ? "\nPlease email your vendor forms to info@queenesheirr.com when you have them.\n" : ""}${b.hasW9 ? "\nOur W-9: " + w9Link(env, b) + "\n" : ""}\nWHAT TO EXPECT\n${bullets(b.expect)}\n\nWHAT WE NEED FROM YOU\n${bullets(b.need)}\n${b.notes ? "\nA NOTE FROM US\n" + b.notes + "\n" : ""}\nTERMS\n${bullets(b.terms)}\n\nQuestions? Reply to this email or write info@queenesheirr.com.`;
+  const text = `Hi ${first},\n\nThank you! Your payment came through and your date is held.\n\n${detailText(b)}\n\nPaid: ${money(paid.paidCents != null ? paid.paidCents : dueNow(b))}${paid.booksQty > 0 ? `\nBooks: ${paid.booksQty}` : ""}${balance(b) > 0 ? `\nRemaining balance: ${money(balance(b))} (we will email the invoice 5 days before your event)` : ""}\n${intakeText(b)}${b.intake && b.intake.vendor === "yes" && b.intake.method === "later" ? "\nPlease email your vendor forms to info@queenesheirr.com when you have them.\n" : ""}${b.intake && b.intake.w9 === "yes" ? (b.hasW9 ? "\nOur W-9: " + w9Link(env, b) + "\n" : "\nWe will email you our W-9 shortly.\n") : ""}\nWHAT TO EXPECT\n${bullets(b.expect)}\n\nWHAT WE NEED FROM YOU\n${bullets(b.need)}\n${b.notes ? "\nA NOTE FROM US\n" + b.notes + "\n" : ""}\nTERMS\n${bullets(b.terms)}\n\nQuestions? Reply to this email or write info@queenesheirr.com.`;
   await sendMail(env, b.client.email, `You are booked: ${one((b.event || {}).title, 80)}`, html, text);
 }
 
@@ -348,7 +349,8 @@ function bookingPage(b, origin) {
     `<div id="vbox" style="display:none"><label for="vmethod"><strong>How would you like to get them to us?</strong></label><select id="vmethod" style="width:100%;height:44px;margin:6px 0 12px"><option value="">Please choose</option><option value="link">I have a link to the forms</option><option value="files">I will attach the documents now</option><option value="later">I will send them later</option></select>` +
     `<div id="vlink" style="display:none"><label for="vurl">Link to the forms</label><input id="vurl" type="url" placeholder="https://" style="width:100%;height:44px;margin:6px 0 12px;padding:0 10px;border:1px solid ${LINEN};border-radius:10px;font-size:16px"></div>` +
     `<div id="vfiles" style="display:none"><label for="vfile">Attach up to ${MAX_DOCS} files (PDF, Word, Excel, or image, ${MAX_DOC_MB} MB each)</label><input id="vfile" type="file" multiple accept=".pdf,.doc,.docx,.xls,.xlsx,.png,.jpg,.jpeg" style="display:block;margin:6px 0 12px"></div></div>` +
-    (b.hasW9 ? `<p style="margin:0 0 12px"><strong>Our W-9:</strong> <a href="/booking/${b.id}/w9">download our W-9 here</a> for your records.</p>` : "") +
+    `<label for="w9"><strong>Does your organization need our W-9?</strong></label><select id="w9" style="width:100%;height:44px;margin:6px 0 12px"><option value="">Please choose</option><option value="no">No, we do not need one</option><option value="yes">Yes, we need it</option></select>` +
+    `<p id="w9box" style="display:none;margin:0 0 12px;padding:12px;background:#f4ecd0;border:1px solid ${GOLD};border-radius:10px">` + (b.hasW9 ? `<a href="/booking/${b.id}/w9"><strong>Download our W-9 here</strong></a>. We will also include the link in your confirmation email.` : "We will email you our W-9 with your confirmation.") + `</p>` +
     `<label for="vnote">Anything else about paperwork or payment (optional)</label><textarea id="vnote" rows="2" maxlength="500" style="width:100%;margin-top:6px;padding:10px;border:1px solid ${LINEN};border-radius:10px;font:16px ${SANS}"></textarea></div>` +
     `<h2>Terms of this booking</h2><div class="muted">${rich(b.terms)}</div>` +
     `<div class="card" style="text-align:center"><button class="pay" id="pay" type="button">Confirm and pay</button><p class="err" id="err" role="alert"></p><p class="muted" style="margin:0">Payments are processed securely by Stripe. By paying you agree to the terms above.</p></div>` +
@@ -360,12 +362,12 @@ if(q){q.addEventListener("input",upd);document.getElementById("minus").addEventL
 upd();
 function $(i){return document.getElementById(i);}
 function sh(){var v=$("vendor").value,m=$("vmethod").value;$("vbox").style.display=v==="yes"?"block":"none";$("vlink").style.display=v==="yes"&&m==="link"?"block":"none";$("vfiles").style.display=v==="yes"&&m==="files"?"block":"none";}
-$("vendor").addEventListener("change",sh);$("vmethod").addEventListener("change",sh);
+$("w9").addEventListener("change",function(){$("w9box").style.display=$("w9").value==="yes"?"block":"none";});$("vendor").addEventListener("change",sh);$("vmethod").addEventListener("change",sh);
 function b64(f){return new Promise(function(ok,no){var r=new FileReader();r.onload=function(){ok(String(r.result).split(",")[1]||"");};r.onerror=function(){no(new Error("Could not read "+f.name));};r.readAsDataURL(f);});}
 function post(path,body){return fetch(location.pathname+path,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(body)}).then(function(r){return r.json().then(function(d){if(!r.ok)throw new Error(d.error||"Something went wrong");return d;});});}
 $("pay").addEventListener("click",function(){var btn=this,err=$("err");err.textContent="";
-var v=$("vendor").value,m=$("vmethod").value,fl=$("vfile").files;
-if(!v){err.textContent="Please answer the paperwork question above.";return;}
+var v=$("vendor").value,m=$("vmethod").value,w=$("w9").value,fl=$("vfile").files;
+if(!v||!w){err.textContent="Please answer the paperwork questions above.";return;}
 if(v==="yes"&&!m){err.textContent="Please choose how you will get us the vendor forms.";return;}
 if(v==="yes"&&m==="link"&&!/^https?:[/][/]/i.test($("vurl").value.trim())){err.textContent="Please enter the link, starting with https://";return;}
 if(v==="yes"&&m==="files"&&!fl.length){err.textContent="Please choose the file(s) to attach, or pick another option.";return;}
@@ -373,7 +375,7 @@ if(fl.length>${MAX_DOCS}){err.textContent="Please attach no more than ${MAX_DOCS
 for(var i=0;i<fl.length&&v==="yes"&&m==="files";i++){if(fl[i].size>${MAX_DOC_MB}*1048576){err.textContent=fl[i].name+" is larger than ${MAX_DOC_MB} MB.";return;}}
 btn.disabled=true;var chain=Promise.resolve();
 if(v==="yes"&&m==="files"){Array.prototype.forEach.call(fl,function(f){chain=chain.then(function(){return b64(f).then(function(d){return post("/doc",{name:f.name,type:f.type,data:d});});});});}
-chain.then(function(){return post("/pay",{qty:qv(),intake:{vendor:v,method:v==="yes"?m:"",link:$("vurl").value.trim(),note:$("vnote").value}});})
+chain.then(function(){return post("/pay",{qty:qv(),intake:{vendor:v,method:v==="yes"?m:"",link:$("vurl").value.trim(),w9:w,note:$("vnote").value}});})
 .then(function(d){if(!d.url||d.url.indexOf("https://checkout.stripe.com/")!==0)throw new Error("Unexpected response");location.href=d.url;}).catch(function(e){err.textContent=e.message;btn.disabled=false;});});})();</script>`);
 }
 
@@ -432,8 +434,8 @@ export async function publicBooking(request, env, url, deps = {}) {
   const body = await request.json().catch(() => ({}));
   {   // paperwork answers
     const t = body.intake || {};
-    if (!["yes", "no"].includes(t.vendor)) return J({ error: "Please answer the paperwork questions." }, 400);
-    const it = { vendor: t.vendor, method: "", link: "", note: many(t.note, 500), at: Date.now() };
+    if (!["yes", "no"].includes(t.vendor) || !["yes", "no"].includes(t.w9)) return J({ error: "Please answer the paperwork questions." }, 400);
+    const it = { vendor: t.vendor, w9: t.w9, method: "", link: "", note: many(t.note, 500), at: Date.now() };
     if (t.vendor === "yes") {
       if (!["link", "files", "later"].includes(t.method)) return J({ error: "Please choose how you will send the vendor forms." }, 400);
       it.method = t.method;
