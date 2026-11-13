@@ -211,7 +211,7 @@ var GROUPS = [
   ["Wholesale", [["wsorders", "Refill Orders"], ["wsvendors", "Vendors"]]],
   ["Events", [["events", "Events"]]],
   ["Classes & Bookings", [["classes", "Classes"], ["bookings", "Bookings"]]],
-  ["Programs", [["services", "Program Pricing"]]],
+  ["Programs", [["services", "Program Pricing"], ["bookinv", "Booking Invoices"]]],
   ["Marketing", [["discounts", "Discounts"], ["subscribers", "Mailing List"], ["campaigns", "Email Campaigns"], ["blog", "Blog Posts"]]]
 ];
 function groupOf(key) { return GROUPS.filter(function (g) { return g[1].some(function (v) { return v[0] === key; }); })[0] || null; }
@@ -248,7 +248,7 @@ function start() {
     }));
   }
   shell(subnav ? [nav, subnav, body] : [nav, body]);
-  ({ orders: viewOrders, products: viewProducts, requests: viewRequests, classes: viewClasses, bookings: viewBookings, events: viewEvents, ledger: viewLedger, reports: viewReports, sale: viewSale, eventpickups: viewEventPickups, subscribers: viewSubscribers, campaigns: viewCampaigns, toship: viewToShip, shipped: viewShipped, shipsetup: viewShipSetup, services: viewServices, discounts: viewDiscounts, todeliver: viewToDeliver, blog: viewBlog, wsorders: viewWsOrders, wsvendors: viewWsVendors })[current](body);
+  ({ orders: viewOrders, products: viewProducts, requests: viewRequests, classes: viewClasses, bookings: viewBookings, events: viewEvents, ledger: viewLedger, reports: viewReports, sale: viewSale, eventpickups: viewEventPickups, subscribers: viewSubscribers, campaigns: viewCampaigns, toship: viewToShip, shipped: viewShipped, shipsetup: viewShipSetup, services: viewServices, bookinv: viewBookingInvoices, discounts: viewDiscounts, todeliver: viewToDeliver, blog: viewBlog, wsorders: viewWsOrders, wsvendors: viewWsVendors })[current](body);
   keepAwake(current === "sale");
 }
 
@@ -506,6 +506,88 @@ function viewServices(n) {
         api("POST", "services-save", { services: list }).then(function (r) { list.length = 0; r.services.forEach(function (x) { list.push(x); }); draw(); toast("Saved"); }).catch(function (er) { toast(er.message); });
       } })]));
   }).catch(function (er) { failed(n, er); });
+}
+function viewBookingInvoices(n) {
+  loading(n);
+  api("GET", "bookinv").then(function (d) { clear(n); bkList(n, d); }).catch(function (er) { failed(n, er); });
+}
+function bkList(n, d) {
+  n.appendChild(h("p", { "class": "muted", text: "Create an invoice for a keynote or special booking. Your client gets a private link with the event details, an offer to add books for their program, and a secure card payment through Stripe. When they pay, they are emailed a full summary of what to expect and what you need from them, and you are emailed too." }));
+  n.appendChild(h("p", null, [h("button", { "class": "btn primary", text: "New booking invoice", onclick: function () { clear(n); bkEditor(n, d, null); } })]));
+  if (!d.bookings.length) n.appendChild(h("p", { "class": "muted", text: "No booking invoices yet." }));
+  d.bookings.forEach(function (b) {
+    var st = { draft: "Draft", sent: "Sent, waiting", paid: "Paid", cancelled: "Cancelled" }[b.status] || b.status;
+    var e = b.event || {}, paid = b.paid;
+    var acts = [];
+    if (b.status === "draft" || b.status === "sent") {
+      acts.push(h("button", { "class": "btn small primary", text: b.status === "sent" ? "Email link again" : "Email link to client", onclick: function () { if (!window.confirm('Email the pay link to ' + b.client.email + '?')) return; api("POST", "bookinv-send", { id: b.id }).then(function () { toast("Sent"); viewBookingInvoices(n); }).catch(function (er) { toast(er.message); }); } }));
+      acts.push(h("button", { "class": "btn small", text: "Copy link", onclick: function () { if (navigator.clipboard) navigator.clipboard.writeText(b.link).then(function () { toast("Link copied"); }, function () { window.prompt("Copy this link", b.link); }); else window.prompt("Copy this link", b.link); } }));
+      acts.push(h("button", { "class": "btn small", text: "Edit", onclick: function () { clear(n); bkEditor(n, d, b); } }));
+      acts.push(h("button", { "class": "btn small", text: "Paid another way", onclick: function () {
+        var q = b.book ? window.prompt('How many books were bought for the program? (0 for none)', '0') : '0';
+        if (q === null) return;
+        if (!window.confirm('Mark as paid (check, cash, or Zelle) and email the client the summary?')) return;
+        api("POST", "bookinv-paid", { id: b.id, booksQty: parseInt(q, 10) || 0 }).then(function (r) { toast(r.warning || "Marked paid"); viewBookingInvoices(n); }).catch(function (er) { toast(er.message); });
+      } }));
+      acts.push(h("button", { "class": "btn small danger", text: "Cancel", onclick: function () { if (window.confirm('Cancel this invoice? The link will stop working.')) api("POST", "bookinv-cancel", { id: b.id }).then(function () { viewBookingInvoices(n); }).catch(function (er) { toast(er.message); }); } }));
+    }
+    if (b.status === "paid") acts.push(h("button", { "class": "btn small", text: "Resend summary email", onclick: function () { api("POST", "bookinv-summary", { id: b.id }).then(function () { toast("Sent"); }).catch(function (er) { toast(er.message); }); } }));
+    if (b.status === "cancelled") acts.push(h("button", { "class": "btn small danger", text: "Delete", onclick: function () { if (window.confirm('Delete this record?')) api("POST", "bookinv-delete", { id: b.id }).then(function () { viewBookingInvoices(n); }).catch(function (er) { toast(er.message); }); } }));
+    n.appendChild(h("div", { "class": "card" }, [
+      h("div", { style: "display:flex;justify-content:space-between;gap:8px;flex-wrap:wrap" }, [h("strong", { text: e.title || "Booking" }), h("span", { "class": "pill" + (b.status === "paid" ? "" : " void"), text: st })]),
+      h("p", { "class": "muted", text: [b.client.name, b.client.org, e.date, e.location].filter(Boolean).join(" · ") }),
+      h("p", { text: "Due now " + money(b.dueNow) + (b.total > b.dueNow ? " (total " + money(b.total) + ")" : "") + (b.book ? " · Book offer: " + b.book.name : "") }),
+      paid ? h("p", { "class": "muted", text: "Paid " + money(paid.paidCents || 0) + (paid.booksQty ? " including " + paid.booksQty + " books" : "") + (paid.manual ? " (recorded manually)" : "") }) : null,
+      h("p", null, acts.reduce(function (a, x) { a.push(x, " "); return a; }, []))]));
+  });
+}
+function bkEditor(n, d, b) {
+  var cur = b || { client: {}, event: { speaker: "LyKinda Thibodeaux" }, expect: d.defaults.expect, need: d.defaults.need, terms: d.defaults.terms, notes: "", internal: "" };
+  var f = {};
+  function txt(key, label, val, type, extra) { var inp = h("input", Object.assign({ type: type || "text", value: val == null ? "" : val }, extra || {})); f[key] = inp; return h("label", null, [label, inp]); }
+  function area(key, label, val, rows) { var t = h("textarea", { rows: String(rows || 5) }); t.value = val || ""; f[key] = t; return h("label", null, [label, t]); }
+  var dol = function (c) { return c ? String(c / 100) : ""; };
+  var bk = cur.book;
+  var bookSel = h("select", null, [h("option", { value: "", text: "No book offer" })].concat(d.books.map(function (x) { return h("option", { value: x.key, text: x.label, selected: !!bk && bk.productId + "|" + bk.size === x.key }); })));
+  var cl = cur.client, ev = cur.event;
+  n.appendChild(h("p", null, [h("button", { "class": "btn small", text: "Back to invoices", onclick: function () { viewBookingInvoices(n); } })]));
+  n.appendChild(h("div", { "class": "card" }, [
+    h("h3", { text: "Client" }),
+    h("div", { "class": "row" }, [txt("cname", "Contact name", cl.name), txt("corg", "Organization", cl.org)]),
+    h("div", { "class": "row", style: "margin-top:10px" }, [txt("cemail", "Email (receipt goes here)", cl.email, "email"), txt("cphone", "Phone", cl.phone, "tel")])]));
+  n.appendChild(h("div", { "class": "card" }, [
+    h("h3", { text: "Event" }),
+    h("div", { "class": "row" }, [txt("etitle", "Event name", ev.title, "text", { placeholder: "Women's Leadership Luncheon keynote" })]),
+    h("div", { "class": "row", style: "margin-top:10px" }, [txt("edate", "Date", ev.date, "date"), txt("estart", "Start time", ev.start, "time"), txt("eend", "End time", ev.end, "time")]),
+    h("div", { "class": "row", style: "margin-top:10px" }, [txt("eloc", "Location", ev.location), txt("eatt", "Estimated attendees", ev.attendees || "", "number", { min: 0 }), txt("espk", "Keynote speaker", ev.speaker)])]));
+  n.appendChild(h("div", { "class": "card" }, [
+    h("h3", { text: "Payment" }),
+    h("div", { "class": "row" }, [txt("fee", "Fee ($)", dol(cur.feeCents), "number", { min: 0, step: "0.01" }), txt("travel", "Travel ($, optional)", dol(cur.travelCents), "number", { min: 0, step: "0.01" }), txt("deposit", "Deposit now ($, optional)", dol(cur.depositCents), "number", { min: 0, step: "0.01" })]),
+    h("p", { "class": "muted", text: "Leave the deposit blank to collect the full amount. With a deposit, the client pays that now and you invoice the balance separately." })]));
+  var q = h("input", { type: "number", min: 0, value: bk ? bk.suggestedQty : "" }), unit = h("input", { type: "number", min: 0, step: "0.01", value: bk ? dol(bk.unitCents) : "" });
+  n.appendChild(h("div", { "class": "card" }, [
+    h("h3", { text: "Book offer for their program" }),
+    h("div", { "class": "row" }, [h("label", null, ["Book", bookSel]), h("label", null, ["Program price each ($, blank = shop price)", unit]), h("label", null, ["Suggested copies (their attendees)", q])]),
+    txt("bdel", "How the books are delivered", bk ? bk.delivery : "We bring them with us on event day."),
+    h("p", { "class": "muted", text: "The client can choose any number of copies on the pay page. The book count is subtracted from your shop stock when they pay." })]));
+  n.appendChild(h("div", { "class": "card" }, [
+    h("h3", { text: "What the client receives" }),
+    area("notes", "A personal note shown on the pay page and in the email (optional)", cur.notes, 3),
+    area("expect", "What to expect (one bullet per line, starting with a dash)", cur.expect, 6),
+    area("need", "What we need from you", cur.need, 8),
+    area("terms", "Terms (please have these reviewed to fit your business)", cur.terms, 6),
+    area("internal", "Private notes (only you see these)", cur.internal, 2)]));
+  var msg = h("p", { "class": "msg err", role: "alert" });
+  n.appendChild(msg);
+  n.appendChild(h("p", null, [h("button", { "class": "btn primary", text: "Save invoice", onclick: function () {
+    msg.textContent = "";
+    var body = { id: b ? b.id : undefined, client: { name: f.cname.value, org: f.corg.value, email: f.cemail.value, phone: f.cphone.value },
+      event: { title: f.etitle.value, date: f.edate.value, start: f.estart.value, end: f.eend.value, location: f.eloc.value, attendees: f.eatt.value, speaker: f.espk.value },
+      fee: f.fee.value, travel: f.travel.value, deposit: f.deposit.value,
+      book: bookSel.value ? { key: bookSel.value, unit: unit.value, suggestedQty: q.value, delivery: f.bdel.value } : null,
+      notes: f.notes.value, expect: f.expect.value, need: f.need.value, terms: f.terms.value, internal: f.internal.value };
+    api("POST", "bookinv-save", body).then(function () { toast("Saved"); viewBookingInvoices(n); }).catch(function (er) { msg.textContent = er.message; });
+  } })]));
 }
 function viewDiscounts(n) {
   loading(n);

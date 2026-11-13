@@ -21,6 +21,7 @@ import { wholesalePublic, wsPaid } from "./wholesale.js";
 import { onEventOrderPaid, eventReminders } from "./eventorders.js";
 import { deliveryFor, checkDelivery, onDeliveryOrderPaid } from "./delivery.js";
 import { publicClasses, classCheckout, recordBooking } from "./classes.js";
+import { publicBooking, onBookingPaid } from "./bookings.js";
 
 const API = "https://api.stripe.com/v1";
 const MAX_LINES = 40;
@@ -620,6 +621,10 @@ async function handleStripeWebhook(request, env) {
     try { await wsPaid(env, session); } catch (e) { console.log("ws paid error", String(e)); }
     return new Response("ok", { status: 200 });
   }
+  if (session.metadata && session.metadata.kind === "booking") {
+    try { await onBookingPaid(env, session, "", { stripeGet, stripePost, stockOf }); } catch (e) { console.log("booking paid error", String(e)); return new Response("error", { status: 500 }); }
+    return new Response("ok", { status: 200 });
+  }
   if (session.metadata && session.metadata.kind === "class") {
     try { await recordBooking(env, session); } catch (e) { console.log("booking error", String(e)); return new Response("error", { status: 500 }); }
     return new Response("ok", { status: 200 });
@@ -697,7 +702,7 @@ export default {
     const url = new URL(request.url);
     const c = cors(env, request.headers.get("Origin") || "");
     if (request.method === "OPTIONS") return new Response(null, { status: 204, headers: c.headers });
-    if (url.pathname === "/robots.txt" && request.method === "GET") return new Response("User-agent: *\nDisallow: /admin\nDisallow: /ws/\nAllow: /blog\n", { headers: { "Content-Type": "text/plain; charset=utf-8", "Cache-Control": "public, max-age=3600" } });
+    if (url.pathname === "/robots.txt" && request.method === "GET") return new Response("User-agent: *\nDisallow: /admin\nDisallow: /ws/\nDisallow: /booking/\nAllow: /blog\n", { headers: { "Content-Type": "text/plain; charset=utf-8", "Cache-Control": "public, max-age=3600" } });
     if (env.ADMIN_HOST && url.hostname === env.ADMIN_HOST && url.pathname === "/") return Response.redirect(`https://${env.ADMIN_HOST}/admin`, 302);
     if (!env.STRIPE_SECRET_KEY) return json({ error: "Not configured" }, 500, c.headers);
     if (url.pathname === "/admin" || url.pathname.startsWith("/admin/")) {
@@ -710,6 +715,10 @@ export default {
     if (pm && request.method === "GET") return payRedirect(env, pm[1]);
     if ((url.pathname === "/blog" || url.pathname.startsWith("/blog/")) && request.method === "GET") {
       const r = await blogPublic(url, env, c.headers, json, ctx);
+      if (r) return r;
+    }
+    if (url.pathname.startsWith("/booking/")) {
+      const r = await publicBooking(request, env, url, { stripeGet, stockOf });
       if (r) return r;
     }
     if (url.pathname === "/services" && request.method === "GET") return servicesPublic(env, c.headers, json);
