@@ -9,7 +9,7 @@ const EMAIL_RE = /^[^@\s]+@[^@\s]+\.[^@\s]+$/;
 const FOREST = "#1b3b22", GOLD = "#d4af37", CREAM = "#fcfaf7", INK = "#0e2012", LINEN = "#e5dbd1", MUTED = "#5c6b5f";
 const SERIF = "Georgia,'Times New Roman',serif", SANS = "Helvetica,Arial,sans-serif";
 const API = "https://api.stripe.com/v1";
-const MAX_BOOKS = 500;
+const MAX_BOOKS = 500, MAX_DOCS = 3, MAX_DOC_MB = 3;
 
 const esc = (v) => String(v == null ? "" : v).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 const one = (v, n) => String(v == null ? "" : v).replace(/[\r\n]+/g, " ").trim().slice(0, n);
@@ -87,6 +87,22 @@ const detailTable = (b) => `<table role="presentation" width="100%" cellspacing=
   detailRows(b).map((r, i) => `<tr><td style="padding:10px 14px;font:700 12px ${SANS};letter-spacing:.08em;text-transform:uppercase;color:${MUTED};width:38%;border-top:${i ? "1px solid " + LINEN : "0"}">${esc(r[0])}</td><td style="padding:10px 14px;font:16px/1.4 ${SANS};color:${INK};border-top:${i ? "1px solid " + LINEN : "0"}">${esc(r[1])}</td></tr>`).join("") + "</table>";
 const detailText = (b) => detailRows(b).map((r) => r[0] + ": " + r[1]).join("\n");
 
+const INTAKE_NO = { link: "Link to the forms", files: "Forms attached on the booking page", later: "They will send the forms later" };
+function intakeLines(b) {
+  const i = b.intake; if (!i) return [];
+  const out = [];
+  if (i.vendor === "yes") {
+    out.push(["Vendor forms required", "Yes. " + (INTAKE_NO[i.method] || "")]);
+    if (i.method === "link" && i.link) out.push(["Forms link", i.link]);
+    if (i.method === "files") out.push(["Forms attached", String((b.docs || []).length) + " file" + ((b.docs || []).length === 1 ? "" : "s")]);
+  } else out.push(["Vendor forms required", "No"]);
+  out.push(["W-9 from us", i.w9 === "yes" ? "Yes, please send" : "Not needed"]);
+  if (i.note) out.push(["Their note", i.note]);
+  return out;
+}
+const intakeHtml = (b) => { const l = intakeLines(b); return l.length ? H2("Paperwork") + `<table role="presentation" width="100%" cellspacing="0" cellpadding="0">` + l.map((r) => `<tr><td style="padding:4px 0;font:700 13px ${SANS};color:${MUTED};width:42%">${esc(r[0])}</td><td style="padding:4px 0;font:15px ${SANS};color:${INK}">${esc(r[1])}</td></tr>`).join("") + "</table>" : ""; };
+const intakeText = (b) => { const l = intakeLines(b); return l.length ? "\nPAPERWORK\n" + l.map((r) => r[0] + ": " + r[1]).join("\n") + "\n" : ""; };
+
 // ---- email --------------------------------------------------------------------------------------
 async function sendMail(env, to, subject, html, text) {
   if (!env.MAIL_URL || !env.MAIL_SECRET) throw new Error("Email is not set up");
@@ -142,10 +158,12 @@ export async function emailSummary(env, b, origin) {
     detailTable(b) + H2("Payment summary") + payTable +
     (balance(b) > 0 ? P(`<strong>Remaining balance:</strong> ${esc(money(balance(b)))}, due before the event. We will email you the invoice 5 days before your event.`) : "") +
     (paid.booksQty > 0 ? P(`<strong>Books for your program:</strong> ${esc(String(paid.booksQty))} ${paid.booksQty === 1 ? "copy" : "copies"}. ${esc((b.book && b.book.delivery) || "We bring them with us on event day.")}`) : "") +
+    intakeHtml(b) + (b.intake && b.intake.vendor === "yes" && b.intake.method === "later" ? P("Please email your vendor forms to info@queenesheirr.com when you have them. We will complete them promptly.") : "") +
+    (b.intake && b.intake.w9 === "yes" ? P("We have noted that you need our W-9, and it will be sent to you shortly.") : "") +
     H2("What to expect") + rich(b.expect) + H2("What we need from you") + rich(b.need) +
     (b.notes ? H2("A note from us") + rich(b.notes) : "") + H2("Terms of this booking") + rich(b.terms, `font-size:14px;color:${MUTED}`) +
     P("Questions at any time? Reply to this email or write info@queenesheirr.com. We are excited to be with you."), siteOf(env));
-  const text = `Hi ${first},\n\nThank you! Your payment came through and your date is held.\n\n${detailText(b)}\n\nPaid: ${money(paid.paidCents != null ? paid.paidCents : dueNow(b))}${paid.booksQty > 0 ? `\nBooks: ${paid.booksQty}` : ""}${balance(b) > 0 ? `\nRemaining balance: ${money(balance(b))} (we will email the invoice 5 days before your event)` : ""}\n\nWHAT TO EXPECT\n${bullets(b.expect)}\n\nWHAT WE NEED FROM YOU\n${bullets(b.need)}\n${b.notes ? "\nA NOTE FROM US\n" + b.notes + "\n" : ""}\nTERMS\n${bullets(b.terms)}\n\nQuestions? Reply to this email or write info@queenesheirr.com.`;
+  const text = `Hi ${first},\n\nThank you! Your payment came through and your date is held.\n\n${detailText(b)}\n\nPaid: ${money(paid.paidCents != null ? paid.paidCents : dueNow(b))}${paid.booksQty > 0 ? `\nBooks: ${paid.booksQty}` : ""}${balance(b) > 0 ? `\nRemaining balance: ${money(balance(b))} (we will email the invoice 5 days before your event)` : ""}\n${intakeText(b)}${b.intake && b.intake.vendor === "yes" && b.intake.method === "later" ? "\nPlease email your vendor forms to info@queenesheirr.com when you have them.\n" : ""}${b.intake && b.intake.w9 === "yes" ? "\nWe will send you our W-9 shortly.\n" : ""}\nWHAT TO EXPECT\n${bullets(b.expect)}\n\nWHAT WE NEED FROM YOU\n${bullets(b.need)}\n${b.notes ? "\nA NOTE FROM US\n" + b.notes + "\n" : ""}\nTERMS\n${bullets(b.terms)}\n\nQuestions? Reply to this email or write info@queenesheirr.com.`;
   await sendMail(env, b.client.email, `You are booked: ${one((b.event || {}).title, 80)}`, html, text);
 }
 
@@ -160,8 +178,8 @@ async function emailOwners(env, b, origin) {
     try {
       await sendMail(env, to, `Booking paid: ${one((b.event || {}).title, 70)}`,
         frame("Booking paid", P(`<strong>${esc((b.client || {}).name || "A client")}</strong> paid <strong>${esc(money(paid.paidCents))}</strong>${paid.booksQty > 0 ? ` including ${esc(String(paid.booksQty))} book${paid.booksQty === 1 ? "" : "s"}` : ""}.`) + detailTable(b) +
-          P(`Phone: ${esc((b.client || {}).phone || "not given")}<br>Email: ${esc((b.client || {}).email || "")}`) + P("The client was emailed the summary of what to expect and what we need. Manage it in the admin app under Booking Invoices."), siteOf(env)),
-        `Booking paid: ${(b.client || {}).name}\nPaid: ${money(paid.paidCents)}${paid.booksQty > 0 ? ` (${paid.booksQty} books)` : ""}\n\n${detailText(b)}\nPhone: ${(b.client || {}).phone || ""}\nEmail: ${(b.client || {}).email || ""}`);
+          P(`Phone: ${esc((b.client || {}).phone || "not given")}<br>Email: ${esc((b.client || {}).email || "")}`) + intakeHtml(b) + (b.intake && b.intake.w9 === "yes" ? P("<strong>They need our W-9.</strong> Please send it to them.") : "") + (b.intake && b.intake.vendor === "yes" ? P("<strong>Vendor forms are required.</strong> See Booking Invoices in the admin app for their link or files.") : "") + P("The client was emailed the summary of what to expect and what we need. Manage it in the admin app under Booking Invoices."), siteOf(env)),
+        `Booking paid: ${(b.client || {}).name}\nPaid: ${money(paid.paidCents)}${paid.booksQty > 0 ? ` (${paid.booksQty} books)` : ""}\n\n${detailText(b)}\nPhone: ${(b.client || {}).phone || ""}\nEmail: ${(b.client || {}).email || ""}\n${intakeText(b)}${b.intake && b.intake.w9 === "yes" ? "THEY NEED OUR W-9\n" : ""}`);
     } catch (e) { console.log("booking owner notice failed", String(e)); }
   }
 }
@@ -321,6 +339,13 @@ function bookingPage(b, origin) {
     `<div class="card"><div class="row"><span>${esc(e.title || "Booking")} ${bal > 0 ? "(deposit)" : ""}</span><span>${esc(money(dn))}</span></div>` +
     `<div class="row" id="booksrow" style="display:none"><span id="bookslbl"></span><span id="booksamt"></span></div><div class="row tot"><span>Total today (before any sales tax)</span><span id="grand">${esc(money(dn))}</span></div>` +
     (bal > 0 ? `<p class="muted" style="margin:6px 0 0">Remaining balance of ${esc(money(bal))} is due before the event. We will email you the invoice 5 days before it.</p>` : "") + `</div>` + upsell +
+    `<div class="card"><h2 style="margin-top:0">Vendor paperwork</h2>` +
+    `<label for="vendor"><strong>Does your organization require vendor forms to be completed before the event?</strong></label><select id="vendor" style="width:100%;height:44px;margin:6px 0 12px"><option value="">Please choose</option><option value="no">No</option><option value="yes">Yes</option></select>` +
+    `<div id="vbox" style="display:none"><label for="vmethod"><strong>How would you like to get them to us?</strong></label><select id="vmethod" style="width:100%;height:44px;margin:6px 0 12px"><option value="">Please choose</option><option value="link">I have a link to the forms</option><option value="files">I will attach the documents now</option><option value="later">I will send them later</option></select>` +
+    `<div id="vlink" style="display:none"><label for="vurl">Link to the forms</label><input id="vurl" type="url" placeholder="https://" style="width:100%;height:44px;margin:6px 0 12px;padding:0 10px;border:1px solid ${LINEN};border-radius:10px;font-size:16px"></div>` +
+    `<div id="vfiles" style="display:none"><label for="vfile">Attach up to ${MAX_DOCS} files (PDF, Word, Excel, or image, ${MAX_DOC_MB} MB each)</label><input id="vfile" type="file" multiple accept=".pdf,.doc,.docx,.xls,.xlsx,.png,.jpg,.jpeg" style="display:block;margin:6px 0 12px"></div></div>` +
+    `<label for="w9"><strong>Do you need a W-9 from us?</strong></label><select id="w9" style="width:100%;height:44px;margin:6px 0 12px"><option value="">Please choose</option><option value="no">No, we do not need one</option><option value="yes">Yes, please send our W-9</option></select>` +
+    `<label for="vnote">Anything else about paperwork or payment (optional)</label><textarea id="vnote" rows="2" maxlength="500" style="width:100%;margin-top:6px;padding:10px;border:1px solid ${LINEN};border-radius:10px;font:16px ${SANS}"></textarea></div>` +
     `<h2>Terms of this booking</h2><div class="muted">${rich(b.terms)}</div>` +
     `<div class="card" style="text-align:center"><button class="pay" id="pay" type="button">Confirm and pay</button><p class="err" id="err" role="alert"></p><p class="muted" style="margin:0">Payments are processed securely by Stripe. By paying you agree to the terms above.</p></div>` +
     `<script>(function(){var due=${dn},unit=${bk ? bk.unitCents : 0},max=${MAX_BOOKS},name=${JSON.stringify(bk ? bk.name : "")};var q=document.getElementById("qty");
@@ -329,13 +354,27 @@ function qv(){if(!q)return 0;var n=parseInt(q.value,10);if(!(n>0))n=0;if(n>max)n
 function upd(){var n=qv();if(q)q.value=n;var r=document.getElementById("booksrow");if(r){r.style.display=n?"flex":"none";document.getElementById("bookslbl").textContent=name+" x "+n;document.getElementById("booksamt").textContent=money(n*unit);}document.getElementById("grand").textContent=money(due+n*unit);}
 if(q){q.addEventListener("input",upd);document.getElementById("minus").addEventListener("click",function(){q.value=Math.max(0,qv()-1);upd();});document.getElementById("plus").addEventListener("click",function(){q.value=Math.min(max,qv()+1);upd();});}
 upd();
-document.getElementById("pay").addEventListener("click",function(){var btn=this,err=document.getElementById("err");err.textContent="";btn.disabled=true;
-fetch(location.pathname+"/pay",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({qty:qv()})}).then(function(r){return r.json().then(function(d){if(!r.ok)throw new Error(d.error||"Something went wrong");return d;});})
+function $(i){return document.getElementById(i);}
+function sh(){var v=$("vendor").value,m=$("vmethod").value;$("vbox").style.display=v==="yes"?"block":"none";$("vlink").style.display=v==="yes"&&m==="link"?"block":"none";$("vfiles").style.display=v==="yes"&&m==="files"?"block":"none";}
+$("vendor").addEventListener("change",sh);$("vmethod").addEventListener("change",sh);
+function b64(f){return new Promise(function(ok,no){var r=new FileReader();r.onload=function(){ok(String(r.result).split(",")[1]||"");};r.onerror=function(){no(new Error("Could not read "+f.name));};r.readAsDataURL(f);});}
+function post(path,body){return fetch(location.pathname+path,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(body)}).then(function(r){return r.json().then(function(d){if(!r.ok)throw new Error(d.error||"Something went wrong");return d;});});}
+$("pay").addEventListener("click",function(){var btn=this,err=$("err");err.textContent="";
+var v=$("vendor").value,m=$("vmethod").value,w=$("w9").value,fl=$("vfile").files;
+if(!v||!w){err.textContent="Please answer the paperwork questions above.";return;}
+if(v==="yes"&&!m){err.textContent="Please choose how you will get us the vendor forms.";return;}
+if(v==="yes"&&m==="link"&&!/^https?:[/][/]/i.test($("vurl").value.trim())){err.textContent="Please enter the link, starting with https://";return;}
+if(v==="yes"&&m==="files"&&!fl.length){err.textContent="Please choose the file(s) to attach, or pick another option.";return;}
+if(fl.length>${MAX_DOCS}){err.textContent="Please attach no more than ${MAX_DOCS} files.";return;}
+for(var i=0;i<fl.length&&v==="yes"&&m==="files";i++){if(fl[i].size>${MAX_DOC_MB}*1048576){err.textContent=fl[i].name+" is larger than ${MAX_DOC_MB} MB.";return;}}
+btn.disabled=true;var chain=Promise.resolve();
+if(v==="yes"&&m==="files"){Array.prototype.forEach.call(fl,function(f){chain=chain.then(function(){return b64(f).then(function(d){return post("/doc",{name:f.name,type:f.type,data:d});});});});}
+chain.then(function(){return post("/pay",{qty:qv(),intake:{vendor:v,method:v==="yes"?m:"",link:$("vurl").value.trim(),w9:w,note:$("vnote").value}});})
 .then(function(d){if(!d.url||d.url.indexOf("https://checkout.stripe.com/")!==0)throw new Error("Unexpected response");location.href=d.url;}).catch(function(e){err.textContent=e.message;btn.disabled=false;});});})();</script>`);
 }
 
 export async function publicBooking(request, env, url, deps = {}) {
-  const m = url.pathname.match(/^\/booking\/([a-f0-9]{24})(\/pay)?$/);
+  const m = url.pathname.match(/^\/booking\/([a-f0-9]{24})(\/pay|\/doc)?$/);
   if (!m || !env.ADMIN_KV) return null;
   const list = await readBookings(env), b = find(list, m[1]);
   const notFound = () => new Response(pageShell("Booking", `<h1>We could not find that booking</h1><p>Please check the link in your email, or write <a href="mailto:info@queenesheirr.com">info@queenesheirr.com</a>.</p>`), { status: 404, headers: PAGE_HEADERS });
@@ -345,10 +384,30 @@ export async function publicBooking(request, env, url, deps = {}) {
     return b ? new Response(bookingPage(b, url.origin), { headers: PAGE_HEADERS }) : notFound();
   }
   if (request.method !== "POST") return null;
+  const isDoc = m[2] === "/doc";
   const J = (o, s = 200) => new Response(JSON.stringify(o), { status: s, headers: { "Content-Type": "application/json", "Cache-Control": "no-store" } });
   const origin = request.headers.get("Origin");
   if (origin && origin !== url.origin) return J({ error: "Origin not allowed" }, 403);
   if (!b) return J({ error: "That booking was not found" }, 404);
+  if (isDoc) {
+    if (b.status === "paid" || b.status === "cancelled") return J({ error: "This booking can no longer accept files here. Please email them to info@queenesheirr.com." }, 400);
+    const d = await request.json().catch(() => ({}));
+    const name = one(d.name, 120).replace(/[^\w.\- ()]/g, "_") || "file", ext = (name.split(".").pop() || "").toLowerCase();
+    if (!["pdf", "doc", "docx", "xls", "xlsx", "png", "jpg", "jpeg"].includes(ext)) return J({ error: "That file type is not accepted. Please use PDF, Word, Excel, or an image." }, 400);
+    const data = String(d.data || "");
+    if (!/^[A-Za-z0-9+/=]+$/.test(data) || data.length < 4) return J({ error: "That file could not be read." }, 400);
+    if (data.length * 0.75 > MAX_DOC_MB * 1048576) return J({ error: `${name} is larger than ${MAX_DOC_MB} MB.` }, 400);
+    b.docs = b.docs || [];
+    if (b.docs.length >= MAX_DOCS) return J({ error: `No more than ${MAX_DOCS} files, please.` }, 400);
+    const ip = request.headers.get("CF-Connecting-IP") || "x", k = `rl:bookdoc:${ip}:${Math.floor(Date.now() / 3600000)}`;
+    const cnt = parseInt((await env.ADMIN_KV.get(k)) || "0", 10); if (cnt >= 12) return J({ error: "Too many uploads. Please wait a little while." }, 429);
+    await env.ADMIN_KV.put(k, String(cnt + 1), { expirationTtl: 3700 });
+    const key = `bkdoc:${b.id}:${b.docs.length}`;
+    await env.ADMIN_KV.put(key, JSON.stringify({ name, type: ext === "pdf" ? "application/pdf" : String(d.type || "application/octet-stream").slice(0, 100), data }));
+    b.docs.push({ key, name, size: Math.round(data.length * 0.75), at: Date.now() });
+    await saveAll(env, list);
+    return J({ ok: true });
+  }
   if (b.status === "paid" && balanceDue(b)) {
     try { return J({ url: await createBalanceCheckout(env, b, url.origin) }); } catch { return J({ error: "We could not start checkout. Please try again, or contact us." }, 502); }
   }
@@ -361,6 +420,18 @@ export async function publicBooking(request, env, url, deps = {}) {
     await env.ADMIN_KV.put(k, String(n + 1), { expirationTtl: 3700 });
   } catch { /* storage hiccup: do not block */ }
   const body = await request.json().catch(() => ({}));
+  {   // paperwork answers
+    const t = body.intake || {};
+    if (!["yes", "no"].includes(t.vendor) || !["yes", "no"].includes(t.w9)) return J({ error: "Please answer the paperwork questions." }, 400);
+    const it = { vendor: t.vendor, w9: t.w9, method: "", link: "", note: many(t.note, 500), at: Date.now() };
+    if (t.vendor === "yes") {
+      if (!["link", "files", "later"].includes(t.method)) return J({ error: "Please choose how you will send the vendor forms." }, 400);
+      it.method = t.method;
+      if (t.method === "link") { const u = one(t.link, 500); if (!/^https?:\/\/[^\s]+$/i.test(u)) return J({ error: "Please enter a valid link starting with https://" }, 400); it.link = u; }
+      if (t.method === "files" && !(b.docs && b.docs.length)) return J({ error: "Your files did not attach. Please try again." }, 400);
+    }
+    b.intake = it; await saveAll(env, list);
+  }
   let qty = b.book ? parseInt(body.qty, 10) : 0; if (!(qty > 0)) qty = 0; qty = Math.min(qty, MAX_BOOKS);
   if (qty > 0 && b.book && b.book.priceId && deps.stripeGet && deps.stockOf) {
     try { const pr = await deps.stripeGet(env, `/prices/${b.book.priceId}`); const st = deps.stockOf(pr); if (st !== null && qty > st) return J({ error: `We only have ${st} ${st === 1 ? "copy" : "copies"} on hand right now. Please lower the number or contact us for a larger order.` }, 400); } catch { /* let checkout proceed */ }
@@ -459,6 +530,11 @@ export async function bookingsRoute(route, method, body, env, me, deps, j, origi
       b.origin = origin; await emailBalance(env, b, Math.max(1, b.balanceStage || 1)); await saveAll(env, list); return j({ ok: true });
     }
     if (route === "bookinv-balance-pause") { b.paused = !b.paused; await saveAll(env, list); return j({ ok: true, paused: b.paused }); }
+    if (route === "bookinv-doc") {
+      const doc = (b.docs || [])[parseInt(body.n, 10)]; if (!doc) return j({ error: "File not found." }, 404);
+      const f = JSON.parse((await env.ADMIN_KV.get(doc.key)) || "null"); if (!f) return j({ error: "File not found." }, 404);
+      return j({ name: f.name, type: f.type, data: f.data });
+    }
     if (route === "bookinv-summary") {
       if (b.status !== "paid") return j({ error: "The summary goes out after payment." }, 400);
       await emailSummary(env, b, origin); b.summarySentAt = Date.now(); await saveAll(env, list); return j({ ok: true });
