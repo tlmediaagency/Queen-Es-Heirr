@@ -211,7 +211,7 @@ var GROUPS = [
   ["Wholesale", [["wsorders", "Refill Orders"], ["wsvendors", "Vendors"]]],
   ["Events", [["events", "Events"]]],
   ["Classes & Bookings", [["classes", "Classes"], ["bookings", "Bookings"]]],
-  ["Programs", [["services", "Program Pricing"]]],
+  ["Programs", [["services", "Program Pricing"], ["bookinv", "Booking Invoices"]]],
   ["Marketing", [["discounts", "Discounts"], ["subscribers", "Mailing List"], ["campaigns", "Email Campaigns"], ["blog", "Blog Posts"]]]
 ];
 function groupOf(key) { return GROUPS.filter(function (g) { return g[1].some(function (v) { return v[0] === key; }); })[0] || null; }
@@ -248,7 +248,7 @@ function start() {
     }));
   }
   shell(subnav ? [nav, subnav, body] : [nav, body]);
-  ({ orders: viewOrders, products: viewProducts, requests: viewRequests, classes: viewClasses, bookings: viewBookings, events: viewEvents, ledger: viewLedger, reports: viewReports, sale: viewSale, eventpickups: viewEventPickups, subscribers: viewSubscribers, campaigns: viewCampaigns, toship: viewToShip, shipped: viewShipped, shipsetup: viewShipSetup, services: viewServices, discounts: viewDiscounts, todeliver: viewToDeliver, blog: viewBlog, wsorders: viewWsOrders, wsvendors: viewWsVendors })[current](body);
+  ({ orders: viewOrders, products: viewProducts, requests: viewRequests, classes: viewClasses, bookings: viewBookings, events: viewEvents, ledger: viewLedger, reports: viewReports, sale: viewSale, eventpickups: viewEventPickups, subscribers: viewSubscribers, campaigns: viewCampaigns, toship: viewToShip, shipped: viewShipped, shipsetup: viewShipSetup, services: viewServices, bookinv: viewBookingInvoices, discounts: viewDiscounts, todeliver: viewToDeliver, blog: viewBlog, wsorders: viewWsOrders, wsvendors: viewWsVendors })[current](body);
   keepAwake(current === "sale");
 }
 
@@ -508,13 +508,12 @@ function viewServices(n) {
   }).catch(function (er) { failed(n, er); });
 }
 var bkTop = null;
-function bkLoad(host) {
-  loading(host);
-  api("GET", "bookinv").then(function (d) { clear(host); bkList(host, d); }).catch(function (er) { failed(host, er); });
+function viewBookingInvoices(n) {
+  loading(n); bkTop = n;
+  api("GET", "bookinv").then(function (d) { clear(n); bkList(n, d); }).catch(function (er) { failed(n, er); });
 }
 function bkList(n, d) {
-  n.appendChild(h("h3", { text: "Special bookings and invoices (keynotes and events)" }));
-  n.appendChild(h("p", { "class": "muted", text: "Create an invoice for a keynote or special booking. Your client gets a private link with the event details, an offer to add books for their program, and a secure card payment through Stripe. When they pay, they are emailed a full summary of what to expect and what you need from them, and you are emailed too. If you take a deposit, the balance is emailed to them automatically 5 days before the event, again the day before, and again the day of if it is still unpaid." }));
+    n.appendChild(h("p", { "class": "muted", text: "Create an invoice for a keynote or special booking. Your client gets a private link with the event details, an offer to add books for their program, and a secure card payment through Stripe. When they pay, they are emailed a full summary of what to expect and what you need from them, and you are emailed too. If you take a deposit, the balance is emailed to them automatically 5 days before the event, again the day before, and again the day of if it is still unpaid." }));
   n.appendChild(h("p", null, [h("button", { "class": "btn primary", text: "New booking invoice", onclick: function () { clear(bkTop); bkEditor(bkTop, d, null); } })]));
   if (!d.bookings.length) n.appendChild(h("p", { "class": "muted", text: "No booking invoices yet." }));
   d.bookings.forEach(function (b) {
@@ -523,24 +522,24 @@ function bkList(n, d) {
     var e = b.event || {}, paid = b.paid;
     var acts = [];
     if (b.status === "draft" || b.status === "sent") {
-      acts.push(h("button", { "class": "btn small primary", text: b.status === "sent" ? "Email link again" : "Email link to client", onclick: function () { if (!window.confirm('Email the pay link to ' + b.client.email + '?')) return; api("POST", "bookinv-send", { id: b.id }).then(function () { toast("Sent"); viewBookings(bkTop); }).catch(function (er) { toast(er.message); }); } }));
+      acts.push(h("button", { "class": "btn small primary", text: b.status === "sent" ? "Email link again" : "Email link to client", onclick: function () { if (!window.confirm('Email the pay link to ' + b.client.email + '?')) return; api("POST", "bookinv-send", { id: b.id }).then(function () { toast("Sent"); viewBookingInvoices(bkTop); }).catch(function (er) { toast(er.message); }); } }));
       acts.push(h("button", { "class": "btn small", text: "Copy link", onclick: function () { if (navigator.clipboard) navigator.clipboard.writeText(b.link).then(function () { toast("Link copied"); }, function () { window.prompt("Copy this link", b.link); }); else window.prompt("Copy this link", b.link); } }));
       acts.push(h("button", { "class": "btn small", text: "Edit", onclick: function () { clear(bkTop); bkEditor(bkTop, d, b); } }));
       acts.push(h("button", { "class": "btn small", text: "Paid another way", onclick: function () {
         var q = b.book ? window.prompt('How many books were bought for the program? (0 for none)', '0') : '0';
         if (q === null) return;
         if (!window.confirm('Mark as paid (check, cash, or Zelle) and email the client the summary?')) return;
-        api("POST", "bookinv-paid", { id: b.id, booksQty: parseInt(q, 10) || 0 }).then(function (r) { toast(r.warning || "Marked paid"); viewBookings(bkTop); }).catch(function (er) { toast(er.message); });
+        api("POST", "bookinv-paid", { id: b.id, booksQty: parseInt(q, 10) || 0 }).then(function (r) { toast(r.warning || "Marked paid"); viewBookingInvoices(bkTop); }).catch(function (er) { toast(er.message); });
       } }));
-      acts.push(h("button", { "class": "btn small danger", text: "Cancel", onclick: function () { if (window.confirm('Cancel this invoice? The link will stop working.')) api("POST", "bookinv-cancel", { id: b.id }).then(function () { viewBookings(bkTop); }).catch(function (er) { toast(er.message); }); } }));
+      acts.push(h("button", { "class": "btn small danger", text: "Cancel", onclick: function () { if (window.confirm('Cancel this invoice? The link will stop working.')) api("POST", "bookinv-cancel", { id: b.id }).then(function () { viewBookingInvoices(bkTop); }).catch(function (er) { toast(er.message); }); } }));
     }
     if (b.balanceOpen) {
       acts.push(h("button", { "class": "btn small primary", text: "Send balance invoice now", onclick: function () { if (window.confirm('Email the ' + money(b.balanceCents) + ' balance invoice to ' + b.client.email + ' now?')) api("POST", "bookinv-balance-send", { id: b.id }).then(function () { toast("Sent"); }).catch(function (er) { toast(er.message); }); } }));
-      acts.push(h("button", { "class": "btn small", text: "Balance paid another way", onclick: function () { if (window.confirm('Record the ' + money(b.balanceCents) + ' balance as paid (check, cash, or Zelle) and email a receipt?')) api("POST", "bookinv-balance-paid", { id: b.id }).then(function (r) { toast(r.warning || "Recorded"); viewBookings(bkTop); }).catch(function (er) { toast(er.message); }); } }));
-      acts.push(h("button", { "class": "btn small", text: b.paused ? "Resume auto reminders" : "Pause auto reminders", onclick: function () { api("POST", "bookinv-balance-pause", { id: b.id }).then(function () { viewBookings(bkTop); }).catch(function (er) { toast(er.message); }); } }));
+      acts.push(h("button", { "class": "btn small", text: "Balance paid another way", onclick: function () { if (window.confirm('Record the ' + money(b.balanceCents) + ' balance as paid (check, cash, or Zelle) and email a receipt?')) api("POST", "bookinv-balance-paid", { id: b.id }).then(function (r) { toast(r.warning || "Recorded"); viewBookingInvoices(bkTop); }).catch(function (er) { toast(er.message); }); } }));
+      acts.push(h("button", { "class": "btn small", text: b.paused ? "Resume auto reminders" : "Pause auto reminders", onclick: function () { api("POST", "bookinv-balance-pause", { id: b.id }).then(function () { viewBookingInvoices(bkTop); }).catch(function (er) { toast(er.message); }); } }));
     }
     if (b.status === "paid") acts.push(h("button", { "class": "btn small", text: "Resend summary email", onclick: function () { api("POST", "bookinv-summary", { id: b.id }).then(function () { toast("Sent"); }).catch(function (er) { toast(er.message); }); } }));
-    if (b.status === "cancelled") acts.push(h("button", { "class": "btn small danger", text: "Delete", onclick: function () { if (window.confirm('Delete this record?')) api("POST", "bookinv-delete", { id: b.id }).then(function () { viewBookings(bkTop); }).catch(function (er) { toast(er.message); }); } }));
+    if (b.status === "cancelled") acts.push(h("button", { "class": "btn small danger", text: "Delete", onclick: function () { if (window.confirm('Delete this record?')) api("POST", "bookinv-delete", { id: b.id }).then(function () { viewBookingInvoices(bkTop); }).catch(function (er) { toast(er.message); }); } }));
     n.appendChild(h("div", { "class": "card" }, [
       h("div", { style: "display:flex;justify-content:space-between;gap:8px;flex-wrap:wrap" }, [h("strong", { text: e.title || "Booking" }), h("span", { "class": "pill" + (b.status === "paid" ? "" : " void"), text: st })]),
       h("p", { "class": "muted", text: [b.client.name, b.client.org, e.date, e.location].filter(Boolean).join(" \xB7 ") }),
@@ -559,7 +558,7 @@ function bkEditor(n, d, b) {
   var bk = cur.book;
   var bookSel = h("select", null, [h("option", { value: "", text: "No book offer" })].concat(d.books.map(function (x) { return h("option", { value: x.key, text: x.label, selected: !!bk && bk.productId + "|" + bk.size === x.key }); })));
   var cl = cur.client, ev = cur.event;
-  n.appendChild(h("p", null, [h("button", { "class": "btn small", text: "Back to invoices", onclick: function () { viewBookings(bkTop); } })]));
+  n.appendChild(h("p", null, [h("button", { "class": "btn small", text: "Back to invoices", onclick: function () { viewBookingInvoices(bkTop); } })]));
   n.appendChild(h("div", { "class": "card" }, [
     h("h3", { text: "Client" }),
     h("div", { "class": "row" }, [txt("cname", "Contact name", cl.name), txt("corg", "Organization", cl.org)]),
@@ -595,7 +594,7 @@ function bkEditor(n, d, b) {
       fee: f.fee.value, travel: f.travel.value, deposit: f.deposit.value,
       book: bookSel.value ? { key: bookSel.value, unit: unit.value, suggestedQty: q.value, delivery: f.bdel.value } : null,
       notes: f.notes.value, expect: f.expect.value, need: f.need.value, terms: f.terms.value, internal: f.internal.value };
-    api("POST", "bookinv-save", body).then(function () { toast("Saved"); viewBookings(bkTop); }).catch(function (er) { msg.textContent = er.message; });
+    api("POST", "bookinv-save", body).then(function () { toast("Saved"); viewBookingInvoices(bkTop); }).catch(function (er) { msg.textContent = er.message; });
   } })]));
 }
 function viewDiscounts(n) {
@@ -1659,12 +1658,9 @@ function viewClasses(n) {
 
 /* BOOKINGS: who paid for a spot in a class */
 function viewBookings(n) {
-  loading(n); bkTop = n;
+  loading(n);
   api("GET", "bookings").then(function (d) {
     clear(n);
-    var invBox = h("div"); n.appendChild(invBox); bkLoad(invBox);
-    n.appendChild(h("hr"));
-    n.appendChild(h("h3", { text: "Class bookings" }));
     var all = d.bookings, filter = "";
     var pick = h("select", { "aria-label": "Filter by class" });
     var seen = {};
