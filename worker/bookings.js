@@ -140,15 +140,20 @@ export async function emailSummary(env, b, origin) {
   const html = frame("You are booked!",
     P(`Hi ${esc(first)},`) + P("Thank you! Your payment came through and your date is held. Here is everything in one place: what is booked, what to expect, and what we need from you so the day goes beautifully.") +
     detailTable(b) + H2("Payment summary") + payTable +
-    (balance(b) > 0 ? P(`<strong>Remaining balance:</strong> ${esc(money(balance(b)))}, due before the event. We will send that invoice separately.`) : "") +
+    (balance(b) > 0 ? P(`<strong>Remaining balance:</strong> ${esc(money(balance(b)))}, due before the event. We will email you the invoice 5 days before your event.`) : "") +
     (paid.booksQty > 0 ? P(`<strong>Books for your program:</strong> ${esc(String(paid.booksQty))} ${paid.booksQty === 1 ? "copy" : "copies"}. ${esc((b.book && b.book.delivery) || "We bring them with us on event day.")}`) : "") +
     H2("What to expect") + rich(b.expect) + H2("What we need from you") + rich(b.need) +
     (b.notes ? H2("A note from us") + rich(b.notes) : "") + H2("Terms of this booking") + rich(b.terms, `font-size:14px;color:${MUTED}`) +
     P("Questions at any time? Reply to this email or write info@queenesheirr.com. We are excited to be with you."), siteOf(env));
-  const text = `Hi ${first},\n\nThank you! Your payment came through and your date is held.\n\n${detailText(b)}\n\nPaid: ${money(paid.paidCents != null ? paid.paidCents : dueNow(b))}${paid.booksQty > 0 ? `\nBooks: ${paid.booksQty}` : ""}${balance(b) > 0 ? `\nRemaining balance: ${money(balance(b))} (we will invoice separately)` : ""}\n\nWHAT TO EXPECT\n${bullets(b.expect)}\n\nWHAT WE NEED FROM YOU\n${bullets(b.need)}\n${b.notes ? "\nA NOTE FROM US\n" + b.notes + "\n" : ""}\nTERMS\n${bullets(b.terms)}\n\nQuestions? Reply to this email or write info@queenesheirr.com.`;
+  const text = `Hi ${first},\n\nThank you! Your payment came through and your date is held.\n\n${detailText(b)}\n\nPaid: ${money(paid.paidCents != null ? paid.paidCents : dueNow(b))}${paid.booksQty > 0 ? `\nBooks: ${paid.booksQty}` : ""}${balance(b) > 0 ? `\nRemaining balance: ${money(balance(b))} (we will email the invoice 5 days before your event)` : ""}\n\nWHAT TO EXPECT\n${bullets(b.expect)}\n\nWHAT WE NEED FROM YOU\n${bullets(b.need)}\n${b.notes ? "\nA NOTE FROM US\n" + b.notes + "\n" : ""}\nTERMS\n${bullets(b.terms)}\n\nQuestions? Reply to this email or write info@queenesheirr.com.`;
   await sendMail(env, b.client.email, `You are booked: ${one((b.event || {}).title, 80)}`, html, text);
 }
 
+async function emailBalanceReceipt(env, b) {
+  const first = String((b.client && b.client.name) || "").trim().split(/\s+/)[0] || "there", c = b.balancePaid ? b.balancePaid.cents : balance(b);
+  await sendMail(env, b.client.email, `Balance received: ${one((b.event || {}).title, 70)}`, frame("Balance received", P(`Hi ${esc(first)},`) + P(`Thank you! We received your remaining balance of <strong>${esc(money(c))}</strong>. Your booking is paid in full.`) + detailTable(b) + P("We are looking forward to being with you."), siteOf(env)),
+    `Hi ${first},\n\nThank you! We received your remaining balance of ${money(c)}. Your booking is paid in full.\n\n${detailText(b)}`);
+}
 async function emailOwners(env, b, origin) {
   const paid = b.paid || {};
   for (const to of owners(env)) {
@@ -159,6 +164,43 @@ async function emailOwners(env, b, origin) {
         `Booking paid: ${(b.client || {}).name}\nPaid: ${money(paid.paidCents)}${paid.booksQty > 0 ? ` (${paid.booksQty} books)` : ""}\n\n${detailText(b)}\nPhone: ${(b.client || {}).phone || ""}\nEmail: ${(b.client || {}).email || ""}`);
     } catch (e) { console.log("booking owner notice failed", String(e)); }
   }
+}
+
+// ---- balance reminders ------------------------------------------------------------------------------
+const BASE = "https://queenes-checkout.summer-paper-e090.workers.dev";
+const balanceDue = (b) => b.status === "paid" && balance(b) > 0 && !b.balancePaid;
+const originOf = (env, b) => b.origin || env.BOOKING_ORIGIN || BASE;
+const chiToday = () => new Intl.DateTimeFormat("en-CA", { timeZone: "America/Chicago" }).format(new Date());
+const daysUntil = (date) => Math.round((Date.parse(date + "T12:00:00Z") - Date.parse(chiToday() + "T12:00:00Z")) / 86400000);
+// stage 1: 5 days out, stage 2: the day before, stage 3: the day of
+export async function emailBalance(env, b, stage) {
+  const first = String((b.client && b.client.name) || "").trim().split(/\s+/)[0] || "there";
+  const url = linkOf(originOf(env, b), b), amt = money(balance(b));
+  const lead = stage >= 3 ? "Your event is today, and the remaining balance has not come through yet." : stage === 2 ? "A friendly reminder: your event is tomorrow and the remaining balance is still open." : "Your event is coming up, and here is the invoice for the remaining balance.";
+  const subj = (stage >= 3 ? "Balance due today: " : stage === 2 ? "Reminder, balance due: " : "Invoice for your remaining balance: ") + one((b.event || {}).title, 70);
+  const html = frame(stage >= 3 ? "Balance due today" : stage === 2 ? "Balance reminder" : "Your remaining balance",
+    P(`Hi ${esc(first)},`) + P(esc(lead)) + detailTable(b) + P(`<strong>Balance due:</strong> ${esc(amt)}`) + button(url, "Pay balance") +
+    P("If you have already paid another way or have a question, just reply to this email and we will sort it out."), siteOf(env));
+  await sendMail(env, b.client.email, subj, html, `Hi ${first},\n\n${lead}\n\n${detailText(b)}\n\nBalance due: ${amt}\nPay here: ${url}\n\nIf you already paid another way, reply to this email.`);
+}
+async function ownerBalanceNote(env, b, stage) {
+  for (const to of owners(env)) {
+    try { await sendMail(env, to, `Balance still unpaid: ${one((b.event || {}).title, 60)}`, frame("Balance still unpaid", P(`${esc((b.client || {}).name)} has not paid the ${esc(money(balance(b)))} balance. ${stage >= 3 ? "The event is today." : "The event is tomorrow."} A reminder was emailed to the client.`) + detailTable(b), siteOf(env)), `Balance unpaid: ${(b.client || {}).name} ${money(balance(b))}\n${detailText(b)}`); } catch (e) { console.log("owner balance note failed", String(e)); }
+  }
+}
+/** Daily job: invoice the balance 5 days out, remind the day before, and the day of. Safe to run twice a day. */
+export async function bookingReminders(env) {
+  if (!env.ADMIN_KV) return { skipped: true };
+  const list = await readBookings(env); let sent = 0;
+  for (const b of list) {
+    if (!balanceDue(b) || b.paused || !DATE_RE.test((b.event || {}).date || "")) continue;
+    const d = daysUntil(b.event.date);
+    const stage = d < 0 ? 0 : d === 0 ? 3 : d <= 1 ? 2 : d <= 5 ? 1 : 0;
+    if (stage <= (b.balanceStage || 0)) continue;
+    try { await emailBalance(env, b, stage); b.balanceStage = stage; b.balanceEmailAt = Date.now(); sent++; await saveAll(env, list); if (stage >= 2) await ownerBalanceNote(env, b, stage); }
+    catch (e) { console.log("balance reminder failed", b.id, String(e)); }
+  }
+  return { sent };
 }
 
 // ---- payment ------------------------------------------------------------------------------------
@@ -195,12 +237,33 @@ async function createCheckout(env, b, qty, origin) {
   return data.url;
 }
 
+async function createBalanceCheckout(env, b, origin) {
+  const e = b.event || {}, p = new URLSearchParams(), tax = env.TAX_ENABLED === "true";
+  p.set("mode", "payment"); p.set("success_url", `${origin}/booking/${b.id}?paid=1`); p.set("cancel_url", `${origin}/booking/${b.id}`);
+  p.set("customer_email", b.client.email); p.set("metadata[kind]", "booking"); p.set("metadata[part]", "balance"); p.set("metadata[booking_id]", b.id); p.set("metadata[fulfillment]", "booking");
+  p.set("line_items[0][quantity]", "1"); p.set("line_items[0][price_data][currency]", "usd"); p.set("line_items[0][price_data][unit_amount]", String(balance(b)));
+  p.set("line_items[0][price_data][product_data][name]", one(`${e.title} (remaining balance)`, 120));
+  if (tax) { p.set("line_items[0][price_data][tax_behavior]", "exclusive"); p.set("automatic_tax[enabled]", "true"); p.set("billing_address_collection", "required"); }
+  const res = await fetch(`${API}/checkout/sessions`, { method: "POST", headers: { Authorization: `Bearer ${env.STRIPE_SECRET_KEY}`, "Content-Type": "application/x-www-form-urlencoded" }, body: p });
+  const data = await res.json();
+  if (!res.ok || !data.url) { console.log("balance checkout error", res.status, JSON.stringify(data.error || {})); throw new Error("Could not start checkout"); }
+  return data.url;
+}
+
 /** Stripe webhook: a booking checkout was paid. Safe to run twice. */
 export async function onBookingPaid(env, session, origin, deps = {}) {
   const md = session.metadata || {};
   if (md.kind !== "booking") return { skipped: true };
   const list = await readBookings(env), b = find(list, md.booking_id);
   if (!b) { console.log("booking not found", md.booking_id); return { missing: true }; }
+  if (md.part === "balance") {
+    if (b.balancePaid && b.balancePaid.sessionId === session.id) return { duplicate: true };
+    b.balancePaid = { at: Date.now(), sessionId: session.id, cents: session.amount_total != null ? session.amount_total : balance(b) };
+    await saveAll(env, list);
+    try { await emailBalanceReceipt(env, b); } catch (e) { console.log("balance receipt failed", String(e)); }
+    for (const to of owners(env)) { try { await sendMail(env, to, `Balance paid: ${one((b.event || {}).title, 70)}`, frame("Balance paid", P(`${esc((b.client || {}).name)} paid the remaining ${esc(money(b.balancePaid.cents))}.`) + detailTable(b), siteOf(env)), `Balance paid: ${(b.client || {}).name} ${money(b.balancePaid.cents)}`); } catch (e) { console.log("owner notice failed", String(e)); } }
+    return { ok: true, balance: true };
+  }
   if (b.status === "paid" && b.paid && b.paid.sessionId === session.id) return { duplicate: true };
   const qty = Math.max(0, Math.min(MAX_BOOKS, parseInt(md.books_qty, 10) || 0));
   b.status = "paid";
@@ -236,6 +299,12 @@ const detailList = (b) => `<dl>${detailRows(b).map((r) => `<dt>${esc(r[0])}</dt>
 function bookingPage(b, origin) {
   const e = b.event || {};
   if (b.status === "cancelled") return pageShell("Booking", `<h1>This booking is no longer active</h1><p>Please contact us at <a href="mailto:info@queenesheirr.com">info@queenesheirr.com</a> if you have questions.</p>`);
+  if (b.status === "paid" && balanceDue(b)) {
+    return pageShell("Balance due", `<h1>Remaining balance</h1><p class="muted">Thank you for booking with us. Here is the balance for your event.</p><div class="card">${detailList(b)}</div>` +
+      `<div class="card"><div class="row tot" style="border:0;margin:0;padding:0"><span>Balance due (before any sales tax)</span><span>${esc(money(balance(b)))}</span></div></div>` +
+      `<div class="card" style="text-align:center"><button class="pay" id="pay" type="button">Pay balance</button><p class="err" id="err" role="alert"></p><p class="muted" style="margin:0">Payments are processed securely by Stripe.</p></div>` +
+      `<script>document.getElementById("pay").addEventListener("click",function(){var btn=this,err=document.getElementById("err");err.textContent="";btn.disabled=true;fetch(location.pathname+"/pay",{method:"POST",headers:{"Content-Type":"application/json"},body:"{}"}).then(function(r){return r.json().then(function(d){if(!r.ok)throw new Error(d.error||"Something went wrong");return d;});}).then(function(d){if(!d.url||d.url.indexOf("https://checkout.stripe.com/")!==0)throw new Error("Unexpected response");location.href=d.url;}).catch(function(e){err.textContent=e.message;btn.disabled=false;});});</script>`);
+  }
   if (b.status === "paid") {
     return pageShell("Booking confirmed", `<h1>You are booked!</h1><p>Thank you. Your payment came through. We emailed a full summary of what to expect and what we need from you to <strong>${esc((b.paid && b.paid.email) || b.client.email)}</strong>.</p><div class="card">${detailList(b)}</div>` +
       `<h2>What to expect</h2>${rich(b.expect)}<h2>What we need from you</h2>${rich(b.need)}<p class="muted">Questions? Write <a href="mailto:info@queenesheirr.com">info@queenesheirr.com</a>.</p>`);
@@ -251,7 +320,7 @@ function bookingPage(b, origin) {
     (b.notes ? `<div class="notice">${rich(b.notes)}</div>` : "") +
     `<div class="card"><div class="row"><span>${esc(e.title || "Booking")} ${bal > 0 ? "(deposit)" : ""}</span><span>${esc(money(dn))}</span></div>` +
     `<div class="row" id="booksrow" style="display:none"><span id="bookslbl"></span><span id="booksamt"></span></div><div class="row tot"><span>Total today (before any sales tax)</span><span id="grand">${esc(money(dn))}</span></div>` +
-    (bal > 0 ? `<p class="muted" style="margin:6px 0 0">Remaining balance of ${esc(money(bal))} is due before the event; we will send it separately.</p>` : "") + `</div>` + upsell +
+    (bal > 0 ? `<p class="muted" style="margin:6px 0 0">Remaining balance of ${esc(money(bal))} is due before the event. We will email you the invoice 5 days before it.</p>` : "") + `</div>` + upsell +
     `<h2>Terms of this booking</h2><div class="muted">${rich(b.terms)}</div>` +
     `<div class="card" style="text-align:center"><button class="pay" id="pay" type="button">Confirm and pay</button><p class="err" id="err" role="alert"></p><p class="muted" style="margin:0">Payments are processed securely by Stripe. By paying you agree to the terms above.</p></div>` +
     `<script>(function(){var due=${dn},unit=${bk ? bk.unitCents : 0},max=${MAX_BOOKS},name=${JSON.stringify(bk ? bk.name : "")};var q=document.getElementById("qty");
@@ -280,6 +349,9 @@ export async function publicBooking(request, env, url, deps = {}) {
   const origin = request.headers.get("Origin");
   if (origin && origin !== url.origin) return J({ error: "Origin not allowed" }, 403);
   if (!b) return J({ error: "That booking was not found" }, 404);
+  if (b.status === "paid" && balanceDue(b)) {
+    try { return J({ url: await createBalanceCheckout(env, b, url.origin) }); } catch { return J({ error: "We could not start checkout. Please try again, or contact us." }, 502); }
+  }
   if (b.status === "paid") return J({ error: "This booking is already paid. Thank you!" }, 400);
   if (b.status === "cancelled") return J({ error: "This booking is no longer active." }, 400);
   try {
@@ -330,12 +402,12 @@ function clean(body, old, books) {
 export async function bookingsRoute(route, method, body, env, me, deps, j, origin) {
   if (!/^bookinv(-[a-z]+)?$/.test(route)) return null;
   try {
-    const books = async () => { try { return (await deps.loadCatalog(env)).filter((p) => p.category === "Books" || /j\.?u\.?d\.?a\.?h|workbook|book/i.test(p.name)); } catch { return []; } };
+    const books = async () => { try { return (await deps.loadCatalog(env)).filter((p) => p.category === "Books" || p.category === "Curriculum & Resources").map((p) => ({ ...p, sizes: p.sizes.filter((z) => !z.soldOut) })).filter((p) => p.sizes.length); } catch { return []; } };
     if (route === "bookinv" && method === "GET") {
       const list = await readBookings(env);
       const bl = await books();
       return j({
-        bookings: list.sort((a, b) => b.createdAt - a.createdAt).map((b) => ({ ...b, link: linkOf(origin, b), total: total(b), dueNow: dueNow(b) })),
+        bookings: list.sort((a, b) => b.createdAt - a.createdAt).map((b) => ({ ...b, link: linkOf(origin, b), total: total(b), dueNow: dueNow(b), balanceCents: balance(b), balanceOpen: balanceDue(b) })),
         books: bl.flatMap((p) => p.sizes.map((s) => ({ key: p.id + "|" + s.label, label: `${p.name} (${s.label}) ${money(s.cents)}`, cents: s.cents }))),
         defaults: DEFAULTS,
       });
@@ -347,6 +419,7 @@ export async function bookingsRoute(route, method, body, env, me, deps, j, origi
       if (body.id && !old) return j({ error: "That booking was not found." }, 404);
       if (old && (old.status === "paid" || old.status === "cancelled")) return j({ error: "A paid or cancelled booking cannot be edited." }, 400);
       const rec = clean(body, old, await books());
+      rec.origin = origin; rec.balanceStage = old ? old.balanceStage : 0; rec.balancePaid = old ? old.balancePaid : null; rec.paused = old ? old.paused : false;
       if (old) list[list.indexOf(old)] = rec; else list.unshift(rec);
       await saveAll(env, list);
       return j({ ok: true, booking: { ...rec, link: linkOf(origin, rec), total: total(rec), dueNow: dueNow(rec) } });
@@ -375,6 +448,17 @@ export async function bookingsRoute(route, method, body, env, me, deps, j, origi
       if (body.email !== false) { try { await emailSummary(env, b, origin); b.summarySentAt = Date.now(); await saveAll(env, list); } catch (e) { return j({ ok: true, warning: "Marked paid, but the summary email did not send: " + e.message }); } }
       return j({ ok: true });
     }
+    if (route === "bookinv-balance-paid") {   // balance paid by check, cash, Zelle
+      if (!balanceDue(b)) return j({ error: "There is no open balance on that booking." }, 400);
+      b.balancePaid = { at: Date.now(), sessionId: "manual", manual: true, cents: balance(b) }; await saveAll(env, list);
+      try { await emailBalanceReceipt(env, b); } catch (e) { return j({ ok: true, warning: "Recorded, but the receipt email did not send: " + e.message }); }
+      return j({ ok: true });
+    }
+    if (route === "bookinv-balance-send") {   // send the balance invoice right now
+      if (!balanceDue(b)) return j({ error: "There is no open balance on that booking." }, 400);
+      b.origin = origin; await emailBalance(env, b, Math.max(1, b.balanceStage || 1)); await saveAll(env, list); return j({ ok: true });
+    }
+    if (route === "bookinv-balance-pause") { b.paused = !b.paused; await saveAll(env, list); return j({ ok: true, paused: b.paused }); }
     if (route === "bookinv-summary") {
       if (b.status !== "paid") return j({ error: "The summary goes out after payment." }, 400);
       await emailSummary(env, b, origin); b.summarySentAt = Date.now(); await saveAll(env, list); return j({ ok: true });

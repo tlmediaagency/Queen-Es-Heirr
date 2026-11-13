@@ -21,7 +21,7 @@ import { wholesalePublic, wsPaid } from "./wholesale.js";
 import { onEventOrderPaid, eventReminders } from "./eventorders.js";
 import { deliveryFor, checkDelivery, onDeliveryOrderPaid } from "./delivery.js";
 import { publicClasses, classCheckout, recordBooking } from "./classes.js";
-import { publicBooking, onBookingPaid } from "./bookings.js";
+import { publicBooking, onBookingPaid, bookingReminders } from "./bookings.js";
 
 const API = "https://api.stripe.com/v1";
 const MAX_LINES = 40;
@@ -693,6 +693,7 @@ export default {
     const hour = Number(new Intl.DateTimeFormat("en-US", { timeZone: "America/Chicago", hour: "numeric", hour12: false }).format(new Date())) % 24;
     ctx.waitUntil((async () => {
       try { console.log("event reminders", await eventReminders(env, stripeGet)); } catch (e) { console.log("event reminders failed", String(e)); }
+      try { console.log("booking reminders", await bookingReminders(env)); } catch (e) { console.log("booking reminders failed", String(e)); }
       try { console.log("event reports", await eventReports(env, stripeGet)); } catch (e) { console.log("event reports failed", String(e)); }
       if (chiDay === 1 && hour === 7) { try { console.log("monthly report", await monthlyReport(env, stripeGet)); } catch (e) { console.log("monthly report failed", String(e)); } }
     })());
