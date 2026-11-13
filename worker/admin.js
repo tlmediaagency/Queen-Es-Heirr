@@ -278,7 +278,7 @@ export async function handleAdmin(request, env, url, d) {
     if (sv) return sv;
     const dc = await discountsRoute(route, request.method, body, env, me, { loadCatalog }, j);
     if (dc) return dc;
-    const bk = await bookingsRoute(route, request.method, body, env, me, { loadCatalog }, j, url.origin);
+    const bk = await bookingsRoute(route, request.method, body, env, me, { loadCatalog, stripeGet, stripePost }, j, url.origin);
     if (bk) return bk;
     const bl = await blogRoute(route, request.method, body, env, me, j, url.origin);
     if (bl) return bl;

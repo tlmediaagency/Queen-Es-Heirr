@@ -45,9 +45,13 @@ export const DEFAULTS = {
 
 // ---- storage ------------------------------------------------------------------------------------
 export async function readBookings(env) {
-  try { const a = JSON.parse((await env.ADMIN_KV.get("bookinv")) || "[]"); return Array.isArray(a) ? a : []; } catch { return []; }
+  let list = [];
+  try { const a = JSON.parse((await env.ADMIN_KV.get("bookinv")) || "[]"); list = Array.isArray(a) ? a : []; } catch { list = []; }
+  let has = false; try { has = !!(await env.ADMIN_KV.get("bkw9meta")); } catch { has = false; }
+  for (const b of list) b.hasW9 = has;
+  return list;
 }
-const saveAll = (env, list) => env.ADMIN_KV.put("bookinv", JSON.stringify(list.slice(0, 500)));
+const saveAll = (env, list) => env.ADMIN_KV.put("bookinv", JSON.stringify(list.slice(0, 500).map((b) => { const { hasW9, ...rest } = b; return rest; })));
 const newId = () => { const b = new Uint8Array(12); crypto.getRandomValues(b); return Array.from(b).map((x) => x.toString(16).padStart(2, "0")).join(""); };
 const find = (list, id) => list.find((b) => b.id === id);
 
@@ -61,6 +65,9 @@ export function dateLabel(d) {
   if (a) out += (out ? ", " : "") + a + (b ? " to " + b : "");
   return out || "Date to be confirmed";
 }
+const BASE = "https://queenes-checkout.summer-paper-e090.workers.dev";
+const originOf = (env, b) => b.origin || env.BOOKING_ORIGIN || BASE;
+const w9Link = (env, b) => `${originOf(env, b)}/booking/${b.id}/w9`;
 const total = (b) => (b.feeCents || 0) + (b.travelCents || 0);
 const dueNow = (b) => (b.depositCents > 0 && b.depositCents < total(b) ? b.depositCents : total(b));
 const balance = (b) => total(b) - dueNow(b);
@@ -96,7 +103,6 @@ function intakeLines(b) {
     if (i.method === "link" && i.link) out.push(["Forms link", i.link]);
     if (i.method === "files") out.push(["Forms attached", String((b.docs || []).length) + " file" + ((b.docs || []).length === 1 ? "" : "s")]);
   } else out.push(["Vendor forms required", "No"]);
-  out.push(["W-9 from us", i.w9 === "yes" ? "Yes, please send" : "Not needed"]);
   if (i.note) out.push(["Their note", i.note]);
   return out;
 }
@@ -131,8 +137,8 @@ export async function emailLink(env, b, origin) {
   const html = frame("Your booking is ready to confirm",
     P(`Hi ${esc(first)},`) + P("Thank you for choosing Queen E's Heirr. Here are the details of your booking. Please look them over, and use the button below to confirm and pay securely by card. You will also have the chance to add copies of the J.U.D.A.H. workbook for your program.") +
     detailTable(b) + P(`<strong>Amount due now:</strong> ${esc(money(dueNow(b)))}` + (balance(b) > 0 ? ` (balance of ${esc(money(balance(b)))} due before the event)` : "")) +
-    button(url, "Review and pay") + P(`If anything above is not right, reply to this email or write info@queenesheirr.com and we will fix it before you pay.`), siteOf(env));
-  const text = `Hi ${first},\n\nHere are the details of your booking with Queen E's Heirr:\n\n${detailText(b)}\n\nAmount due now: ${money(dueNow(b))}\n\nReview and pay: ${url}\n\nIf anything is not right, reply to this email.`;
+    button(url, "Review and pay") + (b.hasW9 ? P(`Our W-9 for your records: <a href="${esc(w9Link(env, b))}">download here</a>.`) : "") + P(`If anything above is not right, reply to this email or write info@queenesheirr.com and we will fix it before you pay.`), siteOf(env));
+  const text = `Hi ${first},\n\nHere are the details of your booking with Queen E's Heirr:\n\n${detailText(b)}\n\nAmount due now: ${money(dueNow(b))}\n\nReview and pay: ${url}${b.hasW9 ? "\n\nOur W-9: " + w9Link(env, b) : ""}\n\nIf anything is not right, reply to this email.`;
   await sendMail(env, b.client.email, `Your Queen E's Heirr booking: ${one((b.event || {}).title, 80)}`, html, text);
 }
 
@@ -159,11 +165,11 @@ export async function emailSummary(env, b, origin) {
     (balance(b) > 0 ? P(`<strong>Remaining balance:</strong> ${esc(money(balance(b)))}, due before the event. We will email you the invoice 5 days before your event.`) : "") +
     (paid.booksQty > 0 ? P(`<strong>Books for your program:</strong> ${esc(String(paid.booksQty))} ${paid.booksQty === 1 ? "copy" : "copies"}. ${esc((b.book && b.book.delivery) || "We bring them with us on event day.")}`) : "") +
     intakeHtml(b) + (b.intake && b.intake.vendor === "yes" && b.intake.method === "later" ? P("Please email your vendor forms to info@queenesheirr.com when you have them. We will complete them promptly.") : "") +
-    (b.intake && b.intake.w9 === "yes" ? P("We have noted that you need our W-9, and it will be sent to you shortly.") : "") +
+    (b.hasW9 ? P(`Our W-9 is available for your records: <a href="${esc(w9Link(env, b))}">download our W-9</a>.`) : "") +
     H2("What to expect") + rich(b.expect) + H2("What we need from you") + rich(b.need) +
     (b.notes ? H2("A note from us") + rich(b.notes) : "") + H2("Terms of this booking") + rich(b.terms, `font-size:14px;color:${MUTED}`) +
     P("Questions at any time? Reply to this email or write info@queenesheirr.com. We are excited to be with you."), siteOf(env));
-  const text = `Hi ${first},\n\nThank you! Your payment came through and your date is held.\n\n${detailText(b)}\n\nPaid: ${money(paid.paidCents != null ? paid.paidCents : dueNow(b))}${paid.booksQty > 0 ? `\nBooks: ${paid.booksQty}` : ""}${balance(b) > 0 ? `\nRemaining balance: ${money(balance(b))} (we will email the invoice 5 days before your event)` : ""}\n${intakeText(b)}${b.intake && b.intake.vendor === "yes" && b.intake.method === "later" ? "\nPlease email your vendor forms to info@queenesheirr.com when you have them.\n" : ""}${b.intake && b.intake.w9 === "yes" ? "\nWe will send you our W-9 shortly.\n" : ""}\nWHAT TO EXPECT\n${bullets(b.expect)}\n\nWHAT WE NEED FROM YOU\n${bullets(b.need)}\n${b.notes ? "\nA NOTE FROM US\n" + b.notes + "\n" : ""}\nTERMS\n${bullets(b.terms)}\n\nQuestions? Reply to this email or write info@queenesheirr.com.`;
+  const text = `Hi ${first},\n\nThank you! Your payment came through and your date is held.\n\n${detailText(b)}\n\nPaid: ${money(paid.paidCents != null ? paid.paidCents : dueNow(b))}${paid.booksQty > 0 ? `\nBooks: ${paid.booksQty}` : ""}${balance(b) > 0 ? `\nRemaining balance: ${money(balance(b))} (we will email the invoice 5 days before your event)` : ""}\n${intakeText(b)}${b.intake && b.intake.vendor === "yes" && b.intake.method === "later" ? "\nPlease email your vendor forms to info@queenesheirr.com when you have them.\n" : ""}${b.hasW9 ? "\nOur W-9: " + w9Link(env, b) + "\n" : ""}\nWHAT TO EXPECT\n${bullets(b.expect)}\n\nWHAT WE NEED FROM YOU\n${bullets(b.need)}\n${b.notes ? "\nA NOTE FROM US\n" + b.notes + "\n" : ""}\nTERMS\n${bullets(b.terms)}\n\nQuestions? Reply to this email or write info@queenesheirr.com.`;
   await sendMail(env, b.client.email, `You are booked: ${one((b.event || {}).title, 80)}`, html, text);
 }
 
@@ -178,16 +184,14 @@ async function emailOwners(env, b, origin) {
     try {
       await sendMail(env, to, `Booking paid: ${one((b.event || {}).title, 70)}`,
         frame("Booking paid", P(`<strong>${esc((b.client || {}).name || "A client")}</strong> paid <strong>${esc(money(paid.paidCents))}</strong>${paid.booksQty > 0 ? ` including ${esc(String(paid.booksQty))} book${paid.booksQty === 1 ? "" : "s"}` : ""}.`) + detailTable(b) +
-          P(`Phone: ${esc((b.client || {}).phone || "not given")}<br>Email: ${esc((b.client || {}).email || "")}`) + intakeHtml(b) + (b.intake && b.intake.w9 === "yes" ? P("<strong>They need our W-9.</strong> Please send it to them.") : "") + (b.intake && b.intake.vendor === "yes" ? P("<strong>Vendor forms are required.</strong> See Booking Invoices in the admin app for their link or files.") : "") + P("The client was emailed the summary of what to expect and what we need. Manage it in the admin app under Booking Invoices."), siteOf(env)),
-        `Booking paid: ${(b.client || {}).name}\nPaid: ${money(paid.paidCents)}${paid.booksQty > 0 ? ` (${paid.booksQty} books)` : ""}\n\n${detailText(b)}\nPhone: ${(b.client || {}).phone || ""}\nEmail: ${(b.client || {}).email || ""}\n${intakeText(b)}${b.intake && b.intake.w9 === "yes" ? "THEY NEED OUR W-9\n" : ""}`);
+          P(`Phone: ${esc((b.client || {}).phone || "not given")}<br>Email: ${esc((b.client || {}).email || "")}`) + intakeHtml(b) + (b.intake && b.intake.vendor === "yes" ? P("<strong>Vendor forms are required.</strong> See Booking Invoices in the admin app for their link or files.") : "") + P("The client was emailed the summary of what to expect and what we need. Manage it in the admin app under Booking Invoices."), siteOf(env)),
+        `Booking paid: ${(b.client || {}).name}\nPaid: ${money(paid.paidCents)}${paid.booksQty > 0 ? ` (${paid.booksQty} books)` : ""}\n\n${detailText(b)}\nPhone: ${(b.client || {}).phone || ""}\nEmail: ${(b.client || {}).email || ""}\n${intakeText(b)}`);
     } catch (e) { console.log("booking owner notice failed", String(e)); }
   }
 }
 
 // ---- balance reminders ------------------------------------------------------------------------------
-const BASE = "https://queenes-checkout.summer-paper-e090.workers.dev";
 const balanceDue = (b) => b.status === "paid" && balance(b) > 0 && !b.balancePaid;
-const originOf = (env, b) => b.origin || env.BOOKING_ORIGIN || BASE;
 const chiToday = () => new Intl.DateTimeFormat("en-CA", { timeZone: "America/Chicago" }).format(new Date());
 const daysUntil = (date) => Math.round((Date.parse(date + "T12:00:00Z") - Date.parse(chiToday() + "T12:00:00Z")) / 86400000);
 // stage 1: 5 days out, stage 2: the day before, stage 3: the day of
@@ -339,12 +343,12 @@ function bookingPage(b, origin) {
     `<div class="card"><div class="row"><span>${esc(e.title || "Booking")} ${bal > 0 ? "(deposit)" : ""}</span><span>${esc(money(dn))}</span></div>` +
     `<div class="row" id="booksrow" style="display:none"><span id="bookslbl"></span><span id="booksamt"></span></div><div class="row tot"><span>Total today (before any sales tax)</span><span id="grand">${esc(money(dn))}</span></div>` +
     (bal > 0 ? `<p class="muted" style="margin:6px 0 0">Remaining balance of ${esc(money(bal))} is due before the event. We will email you the invoice 5 days before it.</p>` : "") + `</div>` + upsell +
-    `<div class="card"><h2 style="margin-top:0">Vendor paperwork</h2>` +
+    `<div class="card"><h2 style="margin-top:0">Paperwork</h2>` +
     `<label for="vendor"><strong>Does your organization require vendor forms to be completed before the event?</strong></label><select id="vendor" style="width:100%;height:44px;margin:6px 0 12px"><option value="">Please choose</option><option value="no">No</option><option value="yes">Yes</option></select>` +
     `<div id="vbox" style="display:none"><label for="vmethod"><strong>How would you like to get them to us?</strong></label><select id="vmethod" style="width:100%;height:44px;margin:6px 0 12px"><option value="">Please choose</option><option value="link">I have a link to the forms</option><option value="files">I will attach the documents now</option><option value="later">I will send them later</option></select>` +
     `<div id="vlink" style="display:none"><label for="vurl">Link to the forms</label><input id="vurl" type="url" placeholder="https://" style="width:100%;height:44px;margin:6px 0 12px;padding:0 10px;border:1px solid ${LINEN};border-radius:10px;font-size:16px"></div>` +
     `<div id="vfiles" style="display:none"><label for="vfile">Attach up to ${MAX_DOCS} files (PDF, Word, Excel, or image, ${MAX_DOC_MB} MB each)</label><input id="vfile" type="file" multiple accept=".pdf,.doc,.docx,.xls,.xlsx,.png,.jpg,.jpeg" style="display:block;margin:6px 0 12px"></div></div>` +
-    `<label for="w9"><strong>Do you need a W-9 from us?</strong></label><select id="w9" style="width:100%;height:44px;margin:6px 0 12px"><option value="">Please choose</option><option value="no">No, we do not need one</option><option value="yes">Yes, please send our W-9</option></select>` +
+    (b.hasW9 ? `<p style="margin:0 0 12px"><strong>Our W-9:</strong> <a href="/booking/${b.id}/w9">download our W-9 here</a> for your records.</p>` : "") +
     `<label for="vnote">Anything else about paperwork or payment (optional)</label><textarea id="vnote" rows="2" maxlength="500" style="width:100%;margin-top:6px;padding:10px;border:1px solid ${LINEN};border-radius:10px;font:16px ${SANS}"></textarea></div>` +
     `<h2>Terms of this booking</h2><div class="muted">${rich(b.terms)}</div>` +
     `<div class="card" style="text-align:center"><button class="pay" id="pay" type="button">Confirm and pay</button><p class="err" id="err" role="alert"></p><p class="muted" style="margin:0">Payments are processed securely by Stripe. By paying you agree to the terms above.</p></div>` +
@@ -360,8 +364,8 @@ $("vendor").addEventListener("change",sh);$("vmethod").addEventListener("change"
 function b64(f){return new Promise(function(ok,no){var r=new FileReader();r.onload=function(){ok(String(r.result).split(",")[1]||"");};r.onerror=function(){no(new Error("Could not read "+f.name));};r.readAsDataURL(f);});}
 function post(path,body){return fetch(location.pathname+path,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(body)}).then(function(r){return r.json().then(function(d){if(!r.ok)throw new Error(d.error||"Something went wrong");return d;});});}
 $("pay").addEventListener("click",function(){var btn=this,err=$("err");err.textContent="";
-var v=$("vendor").value,m=$("vmethod").value,w=$("w9").value,fl=$("vfile").files;
-if(!v||!w){err.textContent="Please answer the paperwork questions above.";return;}
+var v=$("vendor").value,m=$("vmethod").value,fl=$("vfile").files;
+if(!v){err.textContent="Please answer the paperwork question above.";return;}
 if(v==="yes"&&!m){err.textContent="Please choose how you will get us the vendor forms.";return;}
 if(v==="yes"&&m==="link"&&!/^https?:[/][/]/i.test($("vurl").value.trim())){err.textContent="Please enter the link, starting with https://";return;}
 if(v==="yes"&&m==="files"&&!fl.length){err.textContent="Please choose the file(s) to attach, or pick another option.";return;}
@@ -369,15 +373,21 @@ if(fl.length>${MAX_DOCS}){err.textContent="Please attach no more than ${MAX_DOCS
 for(var i=0;i<fl.length&&v==="yes"&&m==="files";i++){if(fl[i].size>${MAX_DOC_MB}*1048576){err.textContent=fl[i].name+" is larger than ${MAX_DOC_MB} MB.";return;}}
 btn.disabled=true;var chain=Promise.resolve();
 if(v==="yes"&&m==="files"){Array.prototype.forEach.call(fl,function(f){chain=chain.then(function(){return b64(f).then(function(d){return post("/doc",{name:f.name,type:f.type,data:d});});});});}
-chain.then(function(){return post("/pay",{qty:qv(),intake:{vendor:v,method:v==="yes"?m:"",link:$("vurl").value.trim(),w9:w,note:$("vnote").value}});})
+chain.then(function(){return post("/pay",{qty:qv(),intake:{vendor:v,method:v==="yes"?m:"",link:$("vurl").value.trim(),note:$("vnote").value}});})
 .then(function(d){if(!d.url||d.url.indexOf("https://checkout.stripe.com/")!==0)throw new Error("Unexpected response");location.href=d.url;}).catch(function(e){err.textContent=e.message;btn.disabled=false;});});})();</script>`);
 }
 
 export async function publicBooking(request, env, url, deps = {}) {
-  const m = url.pathname.match(/^\/booking\/([a-f0-9]{24})(\/pay|\/doc)?$/);
+  const m = url.pathname.match(/^\/booking\/([a-f0-9]{24})(\/pay|\/doc|\/w9)?$/);
   if (!m || !env.ADMIN_KV) return null;
   const list = await readBookings(env), b = find(list, m[1]);
   const notFound = () => new Response(pageShell("Booking", `<h1>We could not find that booking</h1><p>Please check the link in your email, or write <a href="mailto:info@queenesheirr.com">info@queenesheirr.com</a>.</p>`), { status: 404, headers: PAGE_HEADERS });
+  if (m[2] === "/w9") {
+    if (request.method !== "GET" || !b || b.status === "cancelled") return notFound();
+    const f = JSON.parse((await env.ADMIN_KV.get("bkw9")) || "null"); if (!f) return notFound();
+    const bin = Uint8Array.from(atob(f.data), (c) => c.charCodeAt(0));
+    return new Response(bin, { headers: { "Content-Type": "application/pdf", "Content-Disposition": 'attachment; filename="W-9.pdf"', "Cache-Control": "no-store", "X-Robots-Tag": "noindex, nofollow" } });
+  }
   if (!m[2]) {
     if (request.method !== "GET") return null;
     if (b && (b.status === "sent" || b.status === "draft") && url.searchParams.get("paid") === "1") return new Response(pageShell("Booking", `<h1>Thank you!</h1><p>Your payment is being confirmed. This usually takes under a minute. Please refresh this page shortly, and watch your email for the full summary.</p>`), { headers: PAGE_HEADERS });
@@ -422,8 +432,8 @@ export async function publicBooking(request, env, url, deps = {}) {
   const body = await request.json().catch(() => ({}));
   {   // paperwork answers
     const t = body.intake || {};
-    if (!["yes", "no"].includes(t.vendor) || !["yes", "no"].includes(t.w9)) return J({ error: "Please answer the paperwork questions." }, 400);
-    const it = { vendor: t.vendor, w9: t.w9, method: "", link: "", note: many(t.note, 500), at: Date.now() };
+    if (!["yes", "no"].includes(t.vendor)) return J({ error: "Please answer the paperwork questions." }, 400);
+    const it = { vendor: t.vendor, method: "", link: "", note: many(t.note, 500), at: Date.now() };
     if (t.vendor === "yes") {
       if (!["link", "files", "later"].includes(t.method)) return J({ error: "Please choose how you will send the vendor forms." }, 400);
       it.method = t.method;
@@ -471,7 +481,7 @@ function clean(body, old, books) {
 }
 
 export async function bookingsRoute(route, method, body, env, me, deps, j, origin) {
-  if (!/^bookinv(-[a-z]+)?$/.test(route)) return null;
+  if (!/^bookinv(-[a-z0-9]+)*$/.test(route)) return null;
   try {
     const books = async () => { try { return (await deps.loadCatalog(env)).filter((p) => p.category === "Books" || p.category === "Curriculum & Resources").map((p) => ({ ...p, sizes: p.sizes.filter((z) => !z.soldOut) })).filter((p) => p.sizes.length); } catch { return []; } };
     if (route === "bookinv" && method === "GET") {
@@ -481,9 +491,21 @@ export async function bookingsRoute(route, method, body, env, me, deps, j, origi
         bookings: list.sort((a, b) => b.createdAt - a.createdAt).map((b) => ({ ...b, link: linkOf(origin, b), total: total(b), dueNow: dueNow(b), balanceCents: balance(b), balanceOpen: balanceDue(b) })),
         books: bl.flatMap((p) => p.sizes.map((s) => ({ key: p.id + "|" + s.label, label: `${p.name} (${s.label}) ${money(s.cents)}`, cents: s.cents }))),
         defaults: DEFAULTS,
+        w9: await (async () => { try { return JSON.parse((await env.ADMIN_KV.get("bkw9meta")) || "null"); } catch { return null; } })(),
       });
     }
     if (method !== "POST") return null;
+    if (route === "bookinv-w9-upload") {
+      const data = String(body.data || "");
+      if (!/^[A-Za-z0-9+/=]+$/.test(data) || data.length < 100) return j({ error: "That file could not be read." }, 400);
+      if (data.length * 0.75 > 3 * 1048576) return j({ error: "The W-9 must be under 3 MB." }, 400);
+      if (atob(data.slice(0, 8)).slice(0, 4) !== "%PDF") return j({ error: "Please upload the W-9 as a PDF." }, 400);
+      await env.ADMIN_KV.put("bkw9", JSON.stringify({ data }));
+      const meta = { name: one(body.name, 120) || "W-9.pdf", at: Date.now(), size: Math.round(data.length * 0.75) };
+      await env.ADMIN_KV.put("bkw9meta", JSON.stringify(meta));
+      return j({ ok: true, w9: meta });
+    }
+    if (route === "bookinv-w9-remove") { await env.ADMIN_KV.delete("bkw9"); await env.ADMIN_KV.delete("bkw9meta"); return j({ ok: true }); }
     const list = await readBookings(env);
     if (route === "bookinv-save") {
       const old = body.id ? find(list, String(body.id)) : null;
@@ -493,7 +515,12 @@ export async function bookingsRoute(route, method, body, env, me, deps, j, origi
       rec.origin = origin; rec.balanceStage = old ? old.balanceStage : 0; rec.balancePaid = old ? old.balancePaid : null; rec.paused = old ? old.paused : false;
       if (old) list[list.indexOf(old)] = rec; else list.unshift(rec);
       await saveAll(env, list);
-      return j({ ok: true, booking: { ...rec, link: linkOf(origin, rec), total: total(rec), dueNow: dueNow(rec) } });
+      const qid = !old && /^qt_[A-Za-z0-9]+$/.test(String(body.fromRequest || "")) ? body.fromRequest : "";
+      let converted = false;
+      if (qid && deps.stripeGet && deps.stripePost) {   // the website request is now an invoice, so close its Stripe quote
+        try { const q = await deps.stripeGet(env, `/quotes/${qid}`); if (q && (q.status === "draft" || q.status === "open")) { await deps.stripePost(env, `/quotes/${qid}/cancel`, new URLSearchParams()); converted = true; } rec.fromRequest = qid; await saveAll(env, list); } catch (e) { console.log("quote close failed", String(e)); }
+      }
+      return j({ ok: true, converted, booking: { ...rec, link: linkOf(origin, rec), total: total(rec), dueNow: dueNow(rec) } });
     }
     const b = find(list, String(body.id || ""));
     if (!b) return j({ error: "That booking was not found." }, 404);

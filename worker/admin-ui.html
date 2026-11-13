@@ -507,13 +507,23 @@ function viewServices(n) {
       } })]));
   }).catch(function (er) { failed(n, er); });
 }
-var bkTop = null;
+var bkTop = null, bkPrefill = null;
 function viewBookingInvoices(n) {
   loading(n); bkTop = n;
-  api("GET", "bookinv").then(function (d) { clear(n); bkList(n, d); }).catch(function (er) { failed(n, er); });
+  api("GET", "bookinv").then(function (d) { clear(n); if (bkPrefill) { var pf = bkPrefill; bkPrefill = null; bkEditor(n, d, null, pf); } else bkList(n, d); }).catch(function (er) { failed(n, er); });
 }
 function bkList(n, d) {
     n.appendChild(h("p", { "class": "muted", text: "Create an invoice for a keynote or special booking. Your client gets a private link with the event details, an offer to add books for their program, and a secure card payment through Stripe. When they pay, they are emailed a full summary of what to expect and what you need from them, and you are emailed too. If you take a deposit, the balance is emailed to them automatically 5 days before the event, again the day before, and again the day of if it is still unpaid." }));
+  var w9msg = h("span", { "class": "muted", text: d.w9 ? "On file: " + d.w9.name + " (added " + new Date(d.w9.at).toLocaleDateString() + "). Every invoice and reminder email links to it." : "No W-9 uploaded yet. Upload it once and every invoice email and pay page will include a download link." });
+  var w9in = h("input", { type: "file", accept: "application/pdf,.pdf", "aria-label": "Upload your W-9 as a PDF" });
+  w9in.addEventListener("change", function () {
+    var f = w9in.files[0]; if (!f) return;
+    if (f.size > 3 * 1048576) { toast("The W-9 must be under 3 MB"); return; }
+    var rd = new FileReader();
+    rd.onload = function () { api("POST", "bookinv-w9-upload", { name: f.name, data: String(rd.result).split(",")[1] || "" }).then(function (r) { toast("W-9 saved"); viewBookingInvoices(bkTop); }).catch(function (er) { toast(er.message); }); };
+    rd.readAsDataURL(f);
+  });
+  n.appendChild(h("div", { "class": "card" }, [h("strong", { text: "Your W-9" }), h("p", null, [w9msg]), h("p", null, [w9in, d.w9 ? " " : "", d.w9 ? h("button", { "class": "btn small danger", text: "Remove", onclick: function () { if (window.confirm('Remove the W-9? Links in past emails will stop working.')) api("POST", "bookinv-w9-remove", {}).then(function () { viewBookingInvoices(bkTop); }).catch(function (er) { toast(er.message); }); } }) : null])]));
   n.appendChild(h("p", null, [h("button", { "class": "btn primary", text: "New booking invoice", onclick: function () { clear(bkTop); bkEditor(bkTop, d, null); } })]));
   if (!d.bookings.length) n.appendChild(h("p", { "class": "muted", text: "No booking invoices yet." }));
   d.bookings.forEach(function (b) {
@@ -544,7 +554,7 @@ function bkList(n, d) {
       h("div", { style: "display:flex;justify-content:space-between;gap:8px;flex-wrap:wrap" }, [h("strong", { text: e.title || "Booking" }), h("span", { "class": "pill" + (b.status === "paid" ? "" : " void"), text: st })]),
       h("p", { "class": "muted", text: [b.client.name, b.client.org, e.date, e.location].filter(Boolean).join(" · ") }),
       h("p", { text: "Due now " + money(b.dueNow) + (b.total > b.dueNow ? " (total " + money(b.total) + ")" : "") + (b.book ? " · Book offer: " + b.book.name : "") }),
-      b.intake ? h("p", { "class": "muted", text: "Paperwork: vendor forms " + (b.intake.vendor === "yes" ? "required (" + ({ link: "link", files: "files attached", later: "will send later" }[b.intake.method] || "") + ")" : "not required") + "; W-9 " + (b.intake.w9 === "yes" ? "NEEDED, please send" : "not needed") + (b.intake.note ? ". Note: " + b.intake.note : "") }) : null,
+      b.intake ? h("p", { "class": "muted", text: "Paperwork: vendor forms " + (b.intake.vendor === "yes" ? "required (" + ({ link: "link", files: "files attached", later: "will send later" }[b.intake.method] || "") + ")" : "not required") + "" + (b.intake.note ? ". Note: " + b.intake.note : "") }) : null,
       b.intake && b.intake.link ? h("p", null, [h("a", { href: b.intake.link, target: "_blank", rel: "noopener noreferrer", text: "Open their forms link" })]) : null,
       (b.docs || []).length ? h("p", null, (b.docs || []).map(function (f, k) { return h("button", { "class": "btn small", text: "Download " + f.name, onclick: function () { api("POST", "bookinv-doc", { id: b.id, n: k }).then(function (r) { var bin = atob(r.data), arr = new Uint8Array(bin.length); for (var z = 0; z < bin.length; z++) arr[z] = bin.charCodeAt(z); var url = URL.createObjectURL(new Blob([arr], { type: r.type })); var a = document.createElement("a"); a.href = url; a.download = r.name; document.body.appendChild(a); a.click(); a.remove(); setTimeout(function () { URL.revokeObjectURL(url); }, 4000); }).catch(function (er) { toast(er.message); }); } }); })) : null,
       b.balanceOpen ? h("p", { "class": "muted", text: "Balance of " + money(b.balanceCents) + (b.paused ? " (auto reminders paused)" : " is emailed automatically 5 days before, the day before, and the day of the event if unpaid.") }) : null,
@@ -552,8 +562,8 @@ function bkList(n, d) {
       h("p", null, acts.reduce(function (a, x) { a.push(x, " "); return a; }, []))]));
   });
 }
-function bkEditor(n, d, b) {
-  var cur = b || { client: {}, event: { speaker: "LyKinda Thibodeaux" }, expect: d.defaults.expect, need: d.defaults.need, terms: d.defaults.terms, notes: "", internal: "" };
+function bkEditor(n, d, b, pf) {
+  var cur = b || (pf ? { client: pf.client, event: pf.event, feeCents: pf.feeCents, expect: d.defaults.expect, need: d.defaults.need, terms: d.defaults.terms, notes: "", internal: pf.internal } : null) || { client: {}, event: { speaker: "LyKinda Thibodeaux" }, expect: d.defaults.expect, need: d.defaults.need, terms: d.defaults.terms, notes: "", internal: "" };
   var f = {};
   function txt(key, label, val, type, extra) { var inp = h("input", Object.assign({ type: type || "text", value: val == null ? "" : val }, extra || {})); f[key] = inp; return h("label", null, [label, inp]); }
   function area(key, label, val, rows) { var t = h("textarea", { rows: String(rows || 5) }); t.value = val || ""; f[key] = t; return h("label", null, [label, t]); }
@@ -592,12 +602,12 @@ function bkEditor(n, d, b) {
   n.appendChild(msg);
   n.appendChild(h("p", null, [h("button", { "class": "btn primary", text: "Save invoice", onclick: function () {
     msg.textContent = "";
-    var body = { id: b ? b.id : undefined, client: { name: f.cname.value, org: f.corg.value, email: f.cemail.value, phone: f.cphone.value },
+    var body = { id: b ? b.id : undefined, fromRequest: pf ? pf.id : undefined, client: { name: f.cname.value, org: f.corg.value, email: f.cemail.value, phone: f.cphone.value },
       event: { title: f.etitle.value, date: f.edate.value, start: f.estart.value, end: f.eend.value, location: f.eloc.value, attendees: f.eatt.value, speaker: f.espk.value },
       fee: f.fee.value, travel: f.travel.value, deposit: f.deposit.value,
       book: bookSel.value ? { key: bookSel.value, unit: unit.value, suggestedQty: q.value, delivery: f.bdel.value } : null,
       notes: f.notes.value, expect: f.expect.value, need: f.need.value, terms: f.terms.value, internal: f.internal.value };
-    api("POST", "bookinv-save", body).then(function () { toast("Saved"); viewBookingInvoices(bkTop); }).catch(function (er) { msg.textContent = er.message; });
+    api("POST", "bookinv-save", body).then(function (r) { toast(r.converted ? "Saved. The website request's Stripe quote was closed." : "Saved"); viewBookingInvoices(bkTop); }).catch(function (er) { msg.textContent = er.message; });
   } })]));
 }
 function viewDiscounts(n) {
@@ -1721,6 +1731,11 @@ function viewRequests(n) {
       var rows = applyTools(all.filter(function (r) { return group(r.status) === filter; }), rtools.state, RCFG);
       rows.forEach(function (r) {
         var actions = [h("a", { "class": "btn small", href: r.url, target: "_blank", rel: "noopener noreferrer", text: "Open quote in Stripe" })];
+        if ((r.status === "draft" || r.status === "open") && !r.wholesale) actions.push(h("button", { "class": "btn small primary", text: "Make booking invoice", onclick: function () {
+          if (!window.confirm('Turn this request into a booking invoice? You will review and fill in the details first. Saving it closes the Stripe quote so the client is not billed twice.')) return;
+          bkPrefill = { id: r.id, client: { name: r.name, email: r.email, phone: r.phone, org: r.business || "" }, event: { title: r.cls, date: /^\d{4}-\d{2}-\d{2}$/.test(r.date || "") ? r.date : "", attendees: parseInt(r.attendees, 10) || "", speaker: "LyKinda Thibodeaux" }, feeCents: r.total || 0, internal: r.notes ? "Their request notes: " + r.notes : "" };
+          current = "bookinv"; start();
+        } }));
         if (r.status === "draft") {
           actions.push(h("button", { "class": "btn small primary", text: "Approve", onclick: function () { act(r, "approve"); } }));
           actions.push(h("button", { "class": "btn small danger", text: "Decline", onclick: function () { if (window.confirm("Decline this request? The quote is cancelled in Stripe.")) act(r, "decline"); } }));
