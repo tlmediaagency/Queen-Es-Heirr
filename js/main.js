@@ -388,7 +388,7 @@
     var shown = sortedCatalog().filter(function (p) { return soloCat ? soloCat.split("|").indexOf(p.category) > -1 : (!catFilter || (catGroup(catFilter) || []).indexOf(p.category) > -1); });
     if (!shown.length) shop.appendChild(el("p", { "class": "muted" }, soloCat ? "More to come. Join the mailing list to hear about the new releases as they are available." : "Nothing here yet."));
     shown.forEach(function (p) {
-      var card = el("article", { "class": "card" });
+      var card = el("article", { "class": "card" }); card.setAttribute("data-pid", String(p.id));
       var imgSrc = p.image || PLACEHOLDER;
       var img = el("img", { src: imgSrc, alt: imgSrc === PLACEHOLDER ? p.name + " (photo coming soon)" : p.name + (isFood(p) ? " jar" : ""), loading: "lazy" });
       var body = el("div", { "class": "card-body" });
@@ -406,6 +406,11 @@
       img.style.cursor = "zoom-in"; img.addEventListener("click", function () { quickView(p, imgSrc); });
       shop.appendChild(card);
     });
+    var findId = (/[?&]find=([A-Za-z0-9_-]+)/.exec(location.search) || [])[1];   // arriving from site search
+    if (findId) {
+      var hit = shop.querySelector('[data-pid="' + findId + '"]');
+      if (hit) { hit.classList.add("srch-found"); if (!renderShop.scrolled) { renderShop.scrolled = true; hit.scrollIntoView({ block: "center" }); } }
+    }
   }
   // Size picker + Add to Cart, or a Buy on Amazon link when the product is sold elsewhere online.
   function purchaseControls(p, after) {
@@ -832,4 +837,6 @@
       });
     }).catch(function () {});
   })();
+  // Site search (header magnifier button, or press "/")
+  (function () { var sc = document.createElement("script"); sc.src = "/js/search.js"; sc.defer = true; document.body.appendChild(sc); })();
 })();
