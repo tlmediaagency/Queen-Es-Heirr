@@ -443,8 +443,21 @@ body.srch-open { overflow: hidden; }
   .brand strong { font-size: 0.82rem; letter-spacing: 0.05em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .actions { gap: 0; flex: none; }
   .actions > .btn { display: none; }
-  .menu-btn { width: auto; min-width: 44px; padding: 0 0.5rem; font: inherit; font-size: 0.72rem; font-weight: 700; letter-spacing: 0.12em; text-transform: uppercase; cursor: pointer; }
   .menu.is-open { border-top: 1px solid var(--linen); box-shadow: 0 12px 24px rgba(14, 32, 18, 0.12); background: var(--cream); }
-  .menu a { border-bottom: 1px solid var(--linen); }
-  .menu a:last-child { border-bottom: 0; }
+  .menu > a { border-bottom: 1px solid var(--linen); }
+  .menu > a:last-child { border-bottom: 0; }
 }
+
+/* Menu button is the three-lines icon; menu sections open like a dropdown */
+.menu-btn { width: 44px; min-width: 44px; padding: 0; display: inline-grid; place-items: center; cursor: pointer; }
+.menu-btn svg { display: block; }
+.m-dd { border-bottom: 1px solid var(--linen); }
+.m-dd summary { list-style: none; cursor: pointer; display: flex; justify-content: space-between; align-items: center; padding: 0.75rem 0; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; font-size: 0.85rem; min-height: 44px; }
+.m-dd summary::-webkit-details-marker { display: none; }
+.m-dd summary::after { content: ""; width: 8px; height: 8px; border-right: 2px solid var(--forest); border-bottom: 2px solid var(--forest); transform: rotate(45deg); margin-right: 4px; transition: transform 0.15s; }
+.m-dd[open] summary::after { transform: rotate(-135deg); }
+.m-dd summary:focus-visible, .menu a:focus-visible { outline: 3px solid var(--gold); outline-offset: 2px; }
+.menu .m-dd a { display: block; border-bottom: 0; padding: 0.55rem 0 0.55rem 1rem; font-weight: 500; text-transform: none; letter-spacing: 0.02em; font-size: 0.95rem; }
+.menu .m-dd a:last-child { padding-bottom: 0.9rem; }
+.menu a[aria-current="page"] { color: var(--forest); text-decoration: underline; text-decoration-color: var(--gold); text-underline-offset: 4px; }
+@media (prefers-reduced-motion: reduce) { .m-dd summary::after { transition: none; } }
