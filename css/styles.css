@@ -433,3 +433,18 @@ body.srch-open { overflow: hidden; }
 @keyframes srch-found { 0%, 60% { box-shadow: 0 0 0 4px var(--gold); } 100% { box-shadow: 0 0 0 0 transparent; } }
 @media (prefers-reduced-motion: reduce) { .srch-found { animation: none; box-shadow: 0 0 0 4px var(--gold); } }
 .srch-input::-webkit-search-cancel-button { -webkit-appearance: none; appearance: none; }
+
+/* Phones and small tablets: keep the header to logo, search, bag and Menu. Everything else lives in the Menu dropdown. */
+@media (max-width: 799px) {
+  .bar { min-height: 64px; gap: 0.5rem; }
+  .brand { min-width: 0; gap: 0.5rem; flex: 1 1 auto; }
+  .brand img { width: 40px; height: 40px; flex: none; }
+  .brand span { display: none; }
+  .brand strong { font-size: 0.82rem; letter-spacing: 0.05em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .actions { gap: 0; flex: none; }
+  .actions > .btn { display: none; }
+  .menu-btn { width: auto; min-width: 44px; padding: 0 0.5rem; font: inherit; font-size: 0.72rem; font-weight: 700; letter-spacing: 0.12em; text-transform: uppercase; cursor: pointer; }
+  .menu.is-open { border-top: 1px solid var(--linen); box-shadow: 0 12px 24px rgba(14, 32, 18, 0.12); background: var(--cream); }
+  .menu a { border-bottom: 1px solid var(--linen); }
+  .menu a:last-child { border-bottom: 0; }
+}
