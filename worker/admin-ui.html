@@ -553,6 +553,9 @@ function bkList(n, d) {
     n.appendChild(h("div", { "class": "card" }, [
       h("div", { style: "display:flex;justify-content:space-between;gap:8px;flex-wrap:wrap" }, [h("strong", { text: e.title || "Booking" }), h("span", { "class": "pill" + (b.status === "paid" ? "" : " void"), text: st })]),
       h("p", { "class": "muted", text: [b.client.name, b.client.org, e.date, e.location].filter(Boolean).join(" · ") }),
+      b.accept ? h("p", { "class": "muted", text: "Agreement accepted by " + b.accept.name + " on " + new Date(b.accept.at).toLocaleString() }) : null,
+      b.intake && b.intake.allergy ? h("p", { style: "margin:4px 0" }, [h("strong", { text: "Allergies: " }), b.intake.allergy.method === "none" ? "None known" : b.intake.allergy.method === "later" ? (b.allergyIn ? "List received" : "They will send a list (we remind them 10 days before)") : b.intake.allergy.text, " · Ages: " + (b.intake.ages || ""),
+        b.intake.allergy.method === "later" && !b.allergyIn ? h("button", { "class": "btn small", style: "margin-left:8px", text: "List received", onclick: function () { api("POST", "bookinv-allergy-in", { id: b.id }).then(function () { viewBookingInvoices(bkTop); }).catch(function (er) { toast(er.message); }); } }) : null]) : null,
       h("p", { text: "Due now " + money(b.dueNow) + (b.total > b.dueNow ? " (total " + money(b.total) + ")" : "") + (b.book ? " · Book offer: " + b.book.name : "") }),
       b.intake ? h("p", { "class": "muted", text: "Paperwork: vendor forms " + (b.intake.vendor === "yes" ? "required (" + ({ link: "link", files: "files attached", later: "will send later" }[b.intake.method] || "") + ")" : "not required") + "; W-9 " + (b.intake.w9 === "yes" ? "requested" + (d.w9 ? " (link given)" : " (none uploaded, please send)") : "not needed") + (b.intake.note ? ". Note: " + b.intake.note : "") }) : null,
       b.intake && b.intake.link ? h("p", null, [h("a", { href: b.intake.link, target: "_blank", rel: "noopener noreferrer", text: "Open their forms link" })]) : null,
@@ -615,23 +618,32 @@ function bkMore(b, d) {
     box.appendChild(h("p", null, [h("button", { "class": "btn small", text: "Add an extra invoice", onclick: function () {
       if (form.firstChild) { clear(form); return; }
       var t = h("input", { type: "text", placeholder: "Additional hour, travel, materials..." }), a = h("input", { type: "number", min: 0, step: "0.01" }), nt = h("input", { type: "text", placeholder: "Optional note" });
+      var tm = h("textarea", { rows: "6" }); tm.value = d.defaults.extraTerms;
       var snd = h("input", { type: "checkbox", checked: true }), msg = h("p", { "class": "msg err", role: "alert" });
       form.appendChild(h("div", { "class": "card" }, [
         h("p", { "class": "muted", text: "Bill something after the event: extra time, travel, materials, or anything you forgot. The client gets an email with a secure card payment link." }),
         h("div", { "class": "row" }, [h("label", null, ["What is it for?", t]), h("label", null, ["Amount ($)", a]), h("label", null, ["Note", nt])]),
+        h("label", { style: "display:block;margin-top:8px" }, ["Terms the client reviews and accepts (edit if needed)", tm]),
         h("label", { "class": "chk", style: "margin-top:8px" }, [snd, "Email it to the client now"]), msg,
-        h("p", null, [h("button", { "class": "btn small primary", text: "Save extra invoice", onclick: function () { api("POST", "bookinv-extra-save", { id: b.id, title: t.value, amount: a.value, note: nt.value, send: snd.checked }).then(function (r) { toast(r.warning || "Saved"); viewBookingInvoices(bkTop); }).catch(function (er) { msg.textContent = er.message; }); } })])]));
+        h("p", null, [h("button", { "class": "btn small primary", text: "Save extra invoice", onclick: function () { api("POST", "bookinv-extra-save", { id: b.id, title: t.value, amount: a.value, note: nt.value, terms: tm.value, send: snd.checked }).then(function (r) { toast(r.warning || "Saved"); viewBookingInvoices(bkTop); }).catch(function (er) { msg.textContent = er.message; }); } })])]));
     } })]));
     box.appendChild(form);
   }
   return box;
 }
 function bkEditor(n, d, b, pf) {
-  var cur = b || (pf ? { client: pf.client, event: pf.event, feeCents: pf.feeCents, expect: d.defaults.expect, need: d.defaults.need, terms: d.defaults.terms, notes: "", internal: pf.internal } : null) || { client: {}, event: { speaker: "LyKinda Thibodeaux" }, expect: d.defaults.expect, need: d.defaults.need, terms: d.defaults.terms, notes: "", internal: "" };
+  var cur = b || (pf ? { client: pf.client, event: pf.event, feeCents: pf.feeCents, kind: pf.kind, expect: d.defaults.byKind[pf.kind].expect, need: d.defaults.byKind[pf.kind].need, terms: d.defaults.byKind[pf.kind].terms, notes: "", internal: pf.internal } : null) || { client: {}, kind: "keynote", event: { speaker: "LyKinda Thibodeaux" }, expect: d.defaults.byKind.keynote.expect, need: d.defaults.byKind.keynote.need, terms: d.defaults.byKind.keynote.terms, notes: "", internal: "" };
   var f = {};
   function txt(key, label, val, type, extra) { var inp = h("input", Object.assign({ type: type || "text", value: val == null ? "" : val }, extra || {})); f[key] = inp; return h("label", null, [label, inp]); }
   function area(key, label, val, rows) { var t = h("textarea", { rows: String(rows || 5) }); t.value = val || ""; f[key] = t; return h("label", null, [label, t]); }
   var dol = function (c) { return c ? String(c / 100) : ""; };
+  var kindSel = h("select", null, d.defaults.kinds.map(function (k) { return h("option", { value: k[0], text: k[1], selected: k[0] === (cur.kind || "other") }); }));
+  var lastKind = cur.kind || "other";
+  kindSel.addEventListener("change", function () {
+    var t = d.defaults.byKind[kindSel.value];
+    if (window.confirm('Replace the what-to-expect, what-we-need and agreement text with the standard text for this type? Any edits you made to those boxes will be replaced.')) { f.expect.value = t.expect; f.need.value = t.need; f.terms.value = t.terms; lastKind = kindSel.value; }
+    else kindSel.value = lastKind;
+  });
   var bk = cur.book;
   var bookSel = h("select", null, [h("option", { value: "", text: "No book offer" })].concat(d.books.map(function (x) { return h("option", { value: x.key, text: x.label, selected: !!bk && bk.productId + "|" + bk.size === x.key }); })));
   var cl = cur.client, ev = cur.event;
@@ -642,6 +654,7 @@ function bkEditor(n, d, b, pf) {
     h("div", { "class": "row", style: "margin-top:10px" }, [txt("cemail", "Email (receipt goes here)", cl.email, "email"), txt("cphone", "Phone", cl.phone, "tel")])]));
   n.appendChild(h("div", { "class": "card" }, [
     h("h3", { text: "Event" }),
+    h("label", null, ["What kind of service is this? (sets the standard agreement, expectations and requirements below)", kindSel]),
     h("div", { "class": "row" }, [txt("etitle", "Event name", ev.title, "text", { placeholder: "Women's Leadership Luncheon keynote" })]),
     h("div", { "class": "row", style: "margin-top:10px" }, [txt("edate", "Date", ev.date, "date"), txt("estart", "Start time", ev.start, "time"), txt("eend", "End time", ev.end, "time")]),
     h("div", { "class": "row", style: "margin-top:10px" }, [txt("eloc", "Location", ev.location), txt("eatt", "Estimated attendees", ev.attendees || "", "number", { min: 0 }), txt("espk", "Keynote speaker", ev.speaker)])]));
@@ -660,7 +673,7 @@ function bkEditor(n, d, b, pf) {
     area("notes", "A personal note shown on the pay page and in the email (optional)", cur.notes, 3),
     area("expect", "What to expect (one bullet per line, starting with a dash)", cur.expect, 6),
     area("need", "What we need from you", cur.need, 8),
-    area("terms", "Terms (please have these reviewed to fit your business)", cur.terms, 6),
+    area("terms", "Agreement the client reviews and accepts before paying (starting text only: please have an attorney review it. Use ## for headings and - for bullets)", cur.terms, 14),
     area("internal", "Private notes (only you see these)", cur.internal, 2)]));
   var pm = bkPromoForm(cur.promo, d);
   n.appendChild(h("div", { "class": "card" }, [h("h3", { text: "Marketing requests" }), pm.el]));
@@ -668,7 +681,7 @@ function bkEditor(n, d, b, pf) {
   n.appendChild(msg);
   n.appendChild(h("p", null, [h("button", { "class": "btn primary", text: "Save invoice", onclick: function () {
     msg.textContent = "";
-    var body = { id: b ? b.id : undefined, fromRequest: pf ? pf.id : undefined, client: { name: f.cname.value, org: f.corg.value, email: f.cemail.value, phone: f.cphone.value },
+    var body = { id: b ? b.id : undefined, kind: kindSel.value, fromRequest: pf ? pf.id : undefined, client: { name: f.cname.value, org: f.corg.value, email: f.cemail.value, phone: f.cphone.value },
       event: { title: f.etitle.value, date: f.edate.value, start: f.estart.value, end: f.eend.value, location: f.eloc.value, attendees: f.eatt.value, speaker: f.espk.value },
       fee: f.fee.value, travel: f.travel.value, deposit: f.deposit.value,
       book: bookSel.value ? { key: bookSel.value, unit: unit.value, suggestedQty: q.value, delivery: f.bdel.value } : null,
@@ -1799,7 +1812,8 @@ function viewRequests(n) {
         var actions = [h("a", { "class": "btn small", href: r.url, target: "_blank", rel: "noopener noreferrer", text: "Open quote in Stripe" })];
         if ((r.status === "draft" || r.status === "open") && !r.wholesale) actions.push(h("button", { "class": "btn small primary", text: "Make booking invoice", onclick: function () {
           if (!window.confirm('Turn this request into a booking invoice? You will review and fill in the details first. Saving it closes the Stripe quote so the client is not billed twice.')) return;
-          bkPrefill = { id: r.id, client: { name: r.name, email: r.email, phone: r.phone, org: r.business || "" }, event: { title: r.cls, date: /^\d{4}-\d{2}-\d{2}$/.test(r.date || "") ? r.date : "", attendees: parseInt(r.attendees, 10) || "", speaker: "LyKinda Thibodeaux" }, feeCents: r.total || 0, internal: r.notes ? "Their request notes: " + r.notes : "" };
+          var cn = String(r.cls || "").toLowerCase(), kd = /stem/.test(cn) ? "stem" : /jam|pickl|cook|dining|tea/.test(cn) ? "making" : /keynote|speak|talk/.test(cn) ? "keynote" : "workshop";
+          bkPrefill = { kind: kd, id: r.id, client: { name: r.name, email: r.email, phone: r.phone, org: r.business || "" }, event: { title: r.cls, date: /^\d{4}-\d{2}-\d{2}$/.test(r.date || "") ? r.date : "", attendees: parseInt(r.attendees, 10) || "", speaker: "LyKinda Thibodeaux" }, feeCents: r.total || 0, internal: r.notes ? "Their request notes: " + r.notes : "" };
           current = "bookinv"; start();
         } }));
         if (r.status === "draft") {

@@ -5,6 +5,7 @@
 //   3. When Stripe says the payment went through, the webhook marks the booking paid and emails the client a detailed summary
 //      (what to expect, what we need, terms) and emails the owner(s).
 // Stored in ADMIN_KV key "bookinv" (an array). Prices for books come from the record, never from the browser.
+import { KINDS, NEEDS_PARTICIPANTS, termsFor, EXPECT, NEED, EXTRA_TERMS } from "./bookterms.js";
 const EMAIL_RE = /^[^@\s]+@[^@\s]+\.[^@\s]+$/;
 const FOREST = "#1b3b22", GOLD = "#d4af37", CREAM = "#fcfaf7", INK = "#0e2012", LINEN = "#e5dbd1", MUTED = "#5c6b5f";
 const SERIF = "Georgia,'Times New Roman',serif", SANS = "Helvetica,Arial,sans-serif";
@@ -19,6 +20,9 @@ const DATE_RE = /^\d{4}-\d{2}-\d{2}$/, TIME_RE = /^([01]\d|2[0-3]):[0-5]\d$/;
 const toCents = (v, max = 100000000) => { const n = Math.round(Number(String(v == null ? "" : v).replace(/[$,]/g, "")) * 100); return Number.isFinite(n) && n >= 0 && n <= max ? n : NaN; };
 
 export const DEFAULTS = {
+  kinds: KINDS,
+  byKind: Object.fromEntries(KINDS.map(([k]) => [k, { expect: EXPECT[k], need: NEED[k], terms: termsFor(k) }])),
+  extraTerms: EXTRA_TERMS,
   promoBefore: [
     "Your logo (PNG or a link to download it) and any brand colors or guidelines we should follow.",
     "A short description of the event, plus the date, time, location and registration or ticket link, so our promotion is accurate.",
@@ -90,11 +94,11 @@ function rich(text, style = "") {
   const lines = String(text || "").split("\n").map((x) => x.trim()).filter(Boolean);
   let html = "", list = [];
   const flush = () => { if (list.length) { html += `<ul style="margin:0 0 14px;padding-left:20px;${style}">` + list.map((x) => `<li style="margin:0 0 6px">${esc(x)}</li>`).join("") + "</ul>"; list = []; } };
-  for (const l of lines) { if (/^[-*•]\s+/.test(l)) list.push(l.replace(/^[-*•]\s+/, "")); else { flush(); html += `<p style="margin:0 0 12px;${style}">${esc(l)}</p>`; } }
+  for (const l of lines) { if (/^##\s+/.test(l)) { flush(); html += `<h3 style="font:700 15px ${SANS};color:${FOREST};margin:16px 0 8px">${esc(l.replace(/^##\s+/, ""))}</h3>`; } else if (/^[-*•]\s+/.test(l)) list.push(l.replace(/^[-*•]\s+/, "")); else { flush(); html += `<p style="margin:0 0 12px;${style}">${esc(l)}</p>`; } }
   flush();
   return html;
 }
-const bullets = (text) => String(text || "").split("\n").map((x) => x.trim()).filter(Boolean).map((x) => "- " + x.replace(/^[-*•]\s+/, "")).join("\n");
+const bullets = (text) => String(text || "").split("\n").map((x) => x.trim()).filter(Boolean).map((x) => /^##\s+/.test(x) ? "\n" + x.replace(/^##\s+/, "").toUpperCase() : "- " + x.replace(/^[-*•]\s+/, "")).join("\n");
 
 const detailRows = (b) => {
   const e = b.event || {}, c = b.client || {};
@@ -117,6 +121,8 @@ function intakeLines(b) {
     if (i.method === "files") out.push(["Forms attached", String((b.docs || []).length) + " file" + ((b.docs || []).length === 1 ? "" : "s")]);
   } else out.push(["Vendor forms required", "No"]);
   out.push(["W-9", i.w9 === "yes" ? "Requested (link provided)" : "Not needed"]);
+  if (i.allergy) { out.push(["Allergies and medical concerns", i.allergy.method === "none" ? "None known" : i.allergy.method === "later" ? "Will send a participant list at least 7 days before" + (b.allergyIn ? " (received)" : "") : i.allergy.text]); out.push(["Participant ages", i.ages || ""]); }
+  if (b.accept) out.push(["Agreement accepted", `${b.accept.name}, ${new Date(b.accept.at).toLocaleString("en-US", { timeZone: "America/Chicago" })} Central`]);
   if (i.note) out.push(["Their note", i.note]);
   return out;
 }
@@ -149,7 +155,7 @@ export async function emailLink(env, b, origin) {
   const first = String((b.client && b.client.name) || "").trim().split(/\s+/)[0] || "there";
   const url = linkOf(origin, b);
   const html = frame("Your booking is ready to confirm",
-    P(`Hi ${esc(first)},`) + P("Thank you for choosing Queen E's Heirr. Here are the details of your booking. Please look them over, and use the button below to confirm and pay securely by card. You will also have the chance to add copies of the J.U.D.A.H. workbook for your program.") +
+    P(`Hi ${esc(first)},`) + P("Thank you for choosing Queen E's Heirr. Here are the details of your booking. Please look them over, and use the button below to review the agreement and pay securely by card. You will also have the chance to add copies of the J.U.D.A.H. workbook for your program.") +
     detailTable(b) + P(`<strong>Amount due now:</strong> ${esc(money(dueNow(b)))}` + (balance(b) > 0 ? ` (balance of ${esc(money(balance(b)))} due before the event)` : "")) +
     button(url, "Review and pay") + P(`Need to tell us more about your event? Our <a href="${esc(siteOf(env))}/training/#ask">program request form</a> is the best place to do it.`) + P(`If anything above is not right, reply to this email or write info@queenesheirr.com and we will fix it before you pay.`), siteOf(env));
   const text = `Hi ${first},\n\nHere are the details of your booking with Queen E's Heirr:\n\n${detailText(b)}\n\nAmount due now: ${money(dueNow(b))}\n\nReview and pay: ${url}\n\nMore about your event? ${siteOf(env)}/training/#ask\n\nIf anything is not right, reply to this email.`;
@@ -237,6 +243,13 @@ export async function emailPromo(env, b, kind) {
   await sendMail(env, to.email, (before ? "Promoting your event: " : "Photos and highlights from ") + one(e.title, 70), html, `Hi ${first},\n\n${introText}\n\n${bullets(list)}\n\nYou can simply reply to this email with the items or a link. Thank you!`);
 }
 
+async function emailAllergy(env, b) {
+  const first = String((b.client && b.client.name) || "").trim().split(/\s+/)[0] || "there", e = b.event || {};
+  const html = frame("We need your participant list", P(`Hi ${esc(first)},`) + P(`Your <strong>${esc(e.title)}</strong> event is coming up on ${esc(dateLabel(b))}. You told us you would send a participant list. We need it at least 7 days before the event so we can prepare safely. Please reply to this email with:`) +
+    rich("- Every known food allergy, dietary restriction or medical concern, and who it applies to\n- The ages of the participants and the names of the supervising adults") + P("Thank you! We cannot accommodate allergies we have not been told about."), siteOf(env));
+  await sendMail(env, b.client.email, `We need your participant list: ${one(e.title, 60)}`, html, `Hi ${first},\n\nYour ${e.title} event is coming up on ${dateLabel(b)}. We need your participant list at least 7 days before the event so we can prepare safely. Please reply with every known food allergy, dietary restriction or medical concern (and who it applies to), the ages of participants, and the names of the supervising adults.\n\nWe cannot accommodate allergies we have not been told about.`);
+}
+
 // ---- extra (post-event) invoices ------------------------------------------------------------------
 const exLink = (env, b, x) => `${originOf(env, b)}/booking/${b.id}/x/${x.id}`;
 export async function emailExtra(env, b, x) {
@@ -269,8 +282,10 @@ async function extraPublic(request, env, url, b, eid, suffix, pageShell, HEAD, n
     if (x.status === "cancelled") return new Response(pageShell("Invoice", head + `<p>This invoice is no longer active. Please contact <a href="mailto:info@queenesheirr.com">info@queenesheirr.com</a> if you have questions.</p>`), { headers: HEAD });
     if (url.searchParams.get("paid") === "1") return new Response(pageShell("Invoice", `<h1>Thank you!</h1><p>Your payment is being confirmed. Please refresh in a moment. A receipt is also emailed by Stripe.</p>`), { headers: HEAD });
     return new Response(pageShell("Invoice", head + `<div class="card"><div class="row"><span>${esc(x.title)}</span><span>${esc(money(x.cents))}</span></div>${x.note ? `<p class="muted" style="margin:6px 0 0">${esc(x.note)}</p>` : ""}<div class="row tot"><span>Total (before any sales tax)</span><span>${esc(money(x.cents))}</span></div></div>` +
+      `<div class="card"><h2 style="margin-top:0">Terms</h2><div style="max-height:260px;overflow:auto;border:1px solid ${LINEN};border-radius:10px;padding:4px 14px;margin-bottom:12px" tabindex="0">${rich(x.terms || EXTRA_TERMS, "font-size:14px")}</div>` +
+      `<label style="display:flex;gap:10px;align-items:flex-start;margin:0 0 12px"><input id="agree" type="checkbox" style="width:22px;height:22px;flex:none;margin-top:2px"><span>I have read and agree to these terms and the original booking agreement.</span></label><label for="signname"><strong>Type your full name as your electronic signature</strong></label><input id="signname" type="text" maxlength="100" autocomplete="name" style="width:100%;height:44px;margin:6px 0 0;padding:0 10px;border:1px solid ${LINEN};border-radius:10px;font-size:16px"></div>` +
       `<div class="card" style="text-align:center"><button class="pay" id="pay" type="button">Pay ${esc(money(x.cents))}</button><p class="err" id="err" role="alert"></p><p class="muted" style="margin:0">Payments are processed securely by Stripe.</p></div>` +
-      `<script>document.getElementById("pay").addEventListener("click",function(){var btn=this,err=document.getElementById("err");err.textContent="";btn.disabled=true;fetch(location.pathname+"/pay",{method:"POST",headers:{"Content-Type":"application/json"},body:"{}"}).then(function(r){return r.json().then(function(d){if(!r.ok)throw new Error(d.error||"Something went wrong");return d;});}).then(function(d){if(!d.url||d.url.indexOf("https://checkout.stripe.com/")!==0)throw new Error("Unexpected response");location.href=d.url;}).catch(function(e){err.textContent=e.message;btn.disabled=false;});});</script>`), { headers: HEAD });
+      `<script>document.getElementById("pay").addEventListener("click",function(){var btn=this,err=document.getElementById("err");err.textContent="";if(!document.getElementById("agree").checked){err.textContent="Please check the box to agree.";return;}var nm=document.getElementById("signname").value.trim();if(nm.length<2){err.textContent="Please type your full name as your signature.";return;}btn.disabled=true;fetch(location.pathname+"/pay",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({accept:{agree:true,name:nm}})}).then(function(r){return r.json().then(function(d){if(!r.ok)throw new Error(d.error||"Something went wrong");return d;});}).then(function(d){if(!d.url||d.url.indexOf("https://checkout.stripe.com/")!==0)throw new Error("Unexpected response");location.href=d.url;}).catch(function(e){err.textContent=e.message;btn.disabled=false;});});</script>`), { headers: HEAD });
   }
   if (suffix !== "/pay" || request.method !== "POST") return null;
   const J = (o, s = 200) => new Response(JSON.stringify(o), { status: s, headers: { "Content-Type": "application/json", "Cache-Control": "no-store" } });
@@ -283,6 +298,10 @@ async function extraPublic(request, env, url, b, eid, suffix, pageShell, HEAD, n
     const n = parseInt((await env.ADMIN_KV.get(k)) || "0", 10); if (n >= 20) return J({ error: "Too many tries. Please wait a little while and try again." }, 429);
     await env.ADMIN_KV.put(k, String(n + 1), { expirationTtl: 3700 });
   } catch { /* do not block on a storage hiccup */ }
+  const bd = await request.json().catch(() => ({})), ac = bd.accept || {}, nm = one(ac.name, 100);
+  if (ac.agree !== true || nm.length < 2) return J({ error: "Please agree and type your full name." }, 400);
+  x.accept = { name: nm, at: Date.now(), ip: (request.headers.get("CF-Connecting-IP") || "").slice(0, 60) };
+  try { const list = await readBookings(env), bb = list.find((q) => q.id === b.id), xx = bb && (bb.extras || []).find((e) => e.id === x.id); if (xx) { xx.accept = x.accept; await saveAll(env, list); } } catch { /* acceptance is also recorded by Stripe's payment */ }
   try { return J({ url: await createExtraCheckout(env, b, x, url.origin) }); } catch { return J({ error: "We could not start checkout. Please try again, or contact us." }, 502); }
 }
 
@@ -305,7 +324,13 @@ export async function bookingReminders(env) {
     if (!kind) continue;
     try { await emailPromo(env, b, kind); p[kind + "SentAt"] = Date.now(); promo++; await saveAll(env, list); } catch (e) { console.log("promo email failed", b.id, kind, String(e)); }
   }
-  return { sent, promo };
+  let allergy = 0;
+  for (const b of list) {
+    if (b.status !== "paid" || !b.intake || !b.intake.allergy || b.intake.allergy.method !== "later" || b.allergyIn || b.allergyRemindedAt || !DATE_RE.test((b.event || {}).date || "")) continue;
+    const d = daysUntil(b.event.date); if (d > 10 || d < 1) continue;
+    try { await emailAllergy(env, b); b.allergyRemindedAt = Date.now(); allergy++; await saveAll(env, list); } catch (e) { console.log("allergy reminder failed", b.id, String(e)); }
+  }
+  return { sent, promo, allergy };
 }
 
 // ---- payment ------------------------------------------------------------------------------------
@@ -416,6 +441,7 @@ function bookingPage(b, origin) {
   if (b.status === "cancelled") return pageShell("Booking", `<h1>This booking is no longer active</h1><p>Please contact us at <a href="mailto:info@queenesheirr.com">info@queenesheirr.com</a> if you have questions.</p>`);
   if (b.status === "paid" && balanceDue(b)) {
     return pageShell("Balance due", `<h1>Remaining balance</h1><p class="muted">Thank you for booking with us. Here is the balance for your event.</p><div class="card">${detailList(b)}</div>` +
+      `<details class="card"><summary style="cursor:pointer"><strong>Review the agreement you accepted</strong></summary><div style="margin-top:10px">${rich(b.terms, "font-size:14px")}</div></details>` +
       `<div class="card"><div class="row tot" style="border:0;margin:0;padding:0"><span>Balance due (before any sales tax)</span><span>${esc(money(balance(b)))}</span></div></div>` +
       `<div class="card" style="text-align:center"><button class="pay" id="pay" type="button">Pay balance</button><p class="err" id="err" role="alert"></p><p class="muted" style="margin:0">Payments are processed securely by Stripe.</p></div>` +
       `<script>document.getElementById("pay").addEventListener("click",function(){var btn=this,err=document.getElementById("err");err.textContent="";btn.disabled=true;fetch(location.pathname+"/pay",{method:"POST",headers:{"Content-Type":"application/json"},body:"{}"}).then(function(r){return r.json().then(function(d){if(!r.ok)throw new Error(d.error||"Something went wrong");return d;});}).then(function(d){if(!d.url||d.url.indexOf("https://checkout.stripe.com/")!==0)throw new Error("Unexpected response");location.href=d.url;}).catch(function(e){err.textContent=e.message;btn.disabled=false;});});</script>`);
@@ -444,7 +470,14 @@ function bookingPage(b, origin) {
     `<label for="w9"><strong>Does your organization need our W-9?</strong></label><select id="w9" style="width:100%;height:44px;margin:6px 0 12px"><option value="">Please choose</option><option value="no">No, we do not need one</option><option value="yes">Yes, we need it</option></select>` +
     `<p id="w9box" style="display:none;margin:0 0 12px;padding:12px;background:#f4ecd0;border:1px solid ${GOLD};border-radius:10px">` + (b.hasW9 ? `<a href="/booking/${b.id}/w9"><strong>Download our W-9 here</strong></a>. We will also include the link in your confirmation email.` : "We will email you our W-9 with your confirmation.") + `</p>` +
     `<label for="vnote">Anything else about paperwork or payment (optional)</label><textarea id="vnote" rows="2" maxlength="500" style="width:100%;margin-top:6px;padding:10px;border:1px solid ${LINEN};border-radius:10px;font:16px ${SANS}"></textarea></div>` +
-    `<h2>Terms of this booking</h2><div class="muted">${rich(b.terms)}</div>` +
+    (NEEDS_PARTICIPANTS.includes(b.kind) ? `<div class="card"><h2 style="margin-top:0">Participant safety information</h2>` +
+      `<label for="amethod"><strong>Allergies, dietary restrictions or medical concerns among your participants</strong></label><select id="amethod" style="width:100%;height:44px;margin:6px 0 12px"><option value="">Please choose</option><option value="none">None known</option><option value="list">I am listing them below</option><option value="later">I will send a participant list at least 7 days before the event</option></select>` +
+      `<div id="abox" style="display:none"><textarea id="atext" rows="3" maxlength="1500" placeholder="For example: 2 participants with peanut allergies, 1 with a dairy allergy" style="width:100%;padding:10px;border:1px solid ${LINEN};border-radius:10px;font:16px ${SANS};margin-bottom:12px"></textarea></div>` +
+      `<label for="ages"><strong>Ages of participants</strong></label><input id="ages" type="text" maxlength="120" placeholder="For example: adults, or 4th and 5th graders" style="width:100%;height:44px;margin:6px 0 12px;padding:0 10px;border:1px solid ${LINEN};border-radius:10px;font-size:16px">` +
+      `<p class="muted" style="margin:0">We prepare food and materials ahead of time, so please share this as early as you can. We cannot accommodate allergies we are not told about.</p></div>` : "") +
+    `<div class="card"><h2 style="margin-top:0">Agreement</h2><div style="max-height:320px;overflow:auto;border:1px solid ${LINEN};border-radius:10px;padding:4px 14px;margin-bottom:12px" tabindex="0" aria-label="Agreement text">${rich(b.terms, "font-size:14px")}</div>` +
+    `<label style="display:flex;gap:10px;align-items:flex-start;margin:0 0 12px"><input id="agree" type="checkbox" style="width:22px;height:22px;flex:none;margin-top:2px"><span>I have read and agree to this agreement for myself and my organization, and I am authorized to do so.</span></label>` +
+    `<label for="signname"><strong>Type your full name as your electronic signature</strong></label><input id="signname" type="text" maxlength="100" autocomplete="name" style="width:100%;height:44px;margin:6px 0 0;padding:0 10px;border:1px solid ${LINEN};border-radius:10px;font-size:16px"></div>` +
     `<div class="card" style="text-align:center"><button class="pay" id="pay" type="button">Confirm and pay</button><p class="err" id="err" role="alert"></p><p class="muted" style="margin:0">Payments are processed securely by Stripe. By paying you agree to the terms above.</p></div>` +
     `<script>(function(){var due=${dn},unit=${bk ? bk.unitCents : 0},max=${MAX_BOOKS},name=${JSON.stringify(bk ? bk.name : "")};var q=document.getElementById("qty");
 function money(c){return "$"+(c/100).toLocaleString("en-US",{minimumFractionDigits:2,maximumFractionDigits:2});}
@@ -454,12 +487,15 @@ if(q){q.addEventListener("input",upd);document.getElementById("minus").addEventL
 upd();
 function $(i){return document.getElementById(i);}
 function sh(){var v=$("vendor").value,m=$("vmethod").value;$("vbox").style.display=v==="yes"?"block":"none";$("vlink").style.display=v==="yes"&&m==="link"?"block":"none";$("vfiles").style.display=v==="yes"&&m==="files"?"block":"none";}
-$("w9").addEventListener("change",function(){$("w9box").style.display=$("w9").value==="yes"?"block":"none";});$("vendor").addEventListener("change",sh);$("vmethod").addEventListener("change",sh);
+if($("amethod"))$("amethod").addEventListener("change",function(){$("abox").style.display=$("amethod").value==="list"?"block":"none";});$("w9").addEventListener("change",function(){$("w9box").style.display=$("w9").value==="yes"?"block":"none";});$("vendor").addEventListener("change",sh);$("vmethod").addEventListener("change",sh);
 function b64(f){return new Promise(function(ok,no){var r=new FileReader();r.onload=function(){ok(String(r.result).split(",")[1]||"");};r.onerror=function(){no(new Error("Could not read "+f.name));};r.readAsDataURL(f);});}
 function post(path,body){return fetch(location.pathname+path,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(body)}).then(function(r){return r.json().then(function(d){if(!r.ok)throw new Error(d.error||"Something went wrong");return d;});});}
 $("pay").addEventListener("click",function(){var btn=this,err=$("err");err.textContent="";
 var v=$("vendor").value,m=$("vmethod").value,w=$("w9").value,fl=$("vfile").files;
 if(!v||!w){err.textContent="Please answer the paperwork questions above.";return;}
+var ap=null;if($("amethod")){var am=$("amethod").value,at=$("atext").value.trim(),ag=$("ages").value.trim();if(!am){err.textContent="Please tell us about allergies and medical concerns, or choose None known.";return;}if(am==="list"&&!at){err.textContent="Please list the allergies or concerns.";return;}if(!ag){err.textContent="Please tell us the ages of participants.";return;}ap={method:am,text:at,ages:ag};}
+if(!$("agree").checked){err.textContent="Please check the box to agree to the agreement.";return;}
+if($("signname").value.trim().length<2){err.textContent="Please type your full name as your signature.";return;}
 if(v==="yes"&&!m){err.textContent="Please choose how you will get us the vendor forms.";return;}
 if(v==="yes"&&m==="link"&&!/^https?:[/][/]/i.test($("vurl").value.trim())){err.textContent="Please enter the link, starting with https://";return;}
 if(v==="yes"&&m==="files"&&!fl.length){err.textContent="Please choose the file(s) to attach, or pick another option.";return;}
@@ -467,7 +503,7 @@ if(fl.length>${MAX_DOCS}){err.textContent="Please attach no more than ${MAX_DOCS
 for(var i=0;i<fl.length&&v==="yes"&&m==="files";i++){if(fl[i].size>${MAX_DOC_MB}*1048576){err.textContent=fl[i].name+" is larger than ${MAX_DOC_MB} MB.";return;}}
 btn.disabled=true;var chain=Promise.resolve();
 if(v==="yes"&&m==="files"){Array.prototype.forEach.call(fl,function(f){chain=chain.then(function(){return b64(f).then(function(d){return post("/doc",{name:f.name,type:f.type,data:d});});});});}
-chain.then(function(){return post("/pay",{qty:qv(),intake:{vendor:v,method:v==="yes"?m:"",link:$("vurl").value.trim(),w9:w,note:$("vnote").value}});})
+chain.then(function(){return post("/pay",{qty:qv(),accept:{agree:true,name:$("signname").value.trim()},intake:{allergy:ap,vendor:v,method:v==="yes"?m:"",link:$("vurl").value.trim(),w9:w,note:$("vnote").value}});})
 .then(function(d){if(!d.url||d.url.indexOf("https://checkout.stripe.com/")!==0)throw new Error("Unexpected response");location.href=d.url;}).catch(function(e){err.textContent=e.message;btn.disabled=false;});});})();</script>`);
 }
 
@@ -535,6 +571,16 @@ export async function publicBooking(request, env, url, deps = {}) {
       if (t.method === "link") { const u = one(t.link, 500); if (!/^https?:\/\/[^\s]+$/i.test(u)) return J({ error: "Please enter a valid link starting with https://" }, 400); it.link = u; }
       if (t.method === "files" && !(b.docs && b.docs.length)) return J({ error: "Your files did not attach. Please try again." }, 400);
     }
+    if (NEEDS_PARTICIPANTS.includes(b.kind)) {
+      const a = t.allergy || {};
+      if (!["none", "list", "later"].includes(a.method)) return J({ error: "Please tell us about allergies and medical concerns, or choose None known." }, 400);
+      const txt = many(a.text, 1500); if (a.method === "list" && !txt) return J({ error: "Please list the allergies or concerns." }, 400);
+      const ages = one(a.ages, 120); if (!ages) return J({ error: "Please tell us the ages of participants." }, 400);
+      it.allergy = { method: a.method, text: a.method === "list" ? txt : "" }; it.ages = ages;
+    }
+    const ac = body.accept || {}, nm = one(ac.name, 100);
+    if (ac.agree !== true || nm.length < 2) return J({ error: "Please agree to the agreement and type your full name." }, 400);
+    b.accept = { name: nm, at: Date.now(), ip: (request.headers.get("CF-Connecting-IP") || "").slice(0, 60), agent: (request.headers.get("User-Agent") || "").slice(0, 160) };
     b.intake = it; await saveAll(env, list);
   }
   let qty = b.book ? parseInt(body.qty, 10) : 0; if (!(qty > 0)) qty = 0; qty = Math.min(qty, MAX_BOOKS);
@@ -577,7 +623,7 @@ function clean(body, old, books) {
   }
   return {
     id: old ? old.id : newId(), createdAt: old ? old.createdAt : Date.now(), status: old ? old.status : "draft",
-    client, event, feeCents, travelCents, depositCents, book,
+    client, event, feeCents, travelCents, depositCents, book, kind: KINDS.some((k) => k[0] === body.kind) ? body.kind : "other",
     expect: many(body.expect, 4000), need: many(body.need, 4000), terms: many(body.terms, 4000), notes: many(body.notes, 1500),
     promo: cleanPromo(body.promo, old && old.promo), extras: old ? old.extras || [] : [], origin: old ? old.origin : undefined,
     sentAt: old ? old.sentAt : null, paid: old ? old.paid : null, summarySentAt: old ? old.summarySentAt : null, internal: many(body.internal, 1500),
@@ -666,6 +712,7 @@ export async function bookingsRoute(route, method, body, env, me, deps, j, origi
       const f = JSON.parse((await env.ADMIN_KV.get(doc.key)) || "null"); if (!f) return j({ error: "File not found." }, 404);
       return j({ name: f.name, type: f.type, data: f.data });
     }
+    if (route === "bookinv-allergy-in") { b.allergyIn = true; await saveAll(env, list); return j({ ok: true }); }
     if (route === "bookinv-promo-save") {
       if (b.status === "cancelled") return j({ error: "That booking is cancelled." }, 400);
       b.promo = cleanPromo(body.promo, b.promo); await saveAll(env, list); return j({ ok: true });
@@ -679,7 +726,7 @@ export async function bookingsRoute(route, method, body, env, me, deps, j, origi
       const title = one(body.title, 120), cents = toCents(body.amount, 100000000), note = one(body.note, 300);
       if (!title) return j({ error: "Describe what the extra charge is for." }, 400);
       if (!(cents >= 50)) return j({ error: "Enter the amount, for example 150.00." }, 400);
-      const x = { id: newId().slice(0, 8), title, cents, note, status: "draft", createdAt: Date.now(), sentAt: null, paid: null };
+      const x = { id: newId().slice(0, 8), title, cents, note, terms: many(body.terms, 3000) || EXTRA_TERMS, status: "draft", createdAt: Date.now(), sentAt: null, paid: null };
       b.extras = [...(b.extras || []), x].slice(-30); b.origin = origin; await saveAll(env, list);
       if (body.send) { try { await emailExtra(env, b, x); x.status = "sent"; x.sentAt = Date.now(); await saveAll(env, list); } catch (e) { return j({ ok: true, warning: "Saved, but the email did not send: " + e.message }); } }
       return j({ ok: true });
