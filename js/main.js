@@ -487,13 +487,13 @@
   }
   if (blogPost) {
     var slug = (location.search.match(/[?&]s=([a-z0-9-]+)/) || [])[1];
-    var fail = function () { blogPost.textContent = ""; blogPost.appendChild(el("p", { "class": "muted" }, "We couldn't find that post.")); blogPost.appendChild(el("p")).appendChild(el("a", { "class": "btn", href: "/stories/" }, "Back to Queen Talk")); };
+    var fail = function () { blogPost.textContent = ""; blogPost.appendChild(el("h1", null, "Post not found")); blogPost.appendChild(el("p", { "class": "muted" }, "We couldn't find that post.")); blogPost.appendChild(el("p")).appendChild(el("a", { "class": "btn", href: "/stories/" }, "Back to Queen Talk")); };
     if (!slug || !CFG.CHECKOUT_URL) fail();
     else fetch(workerUrl("/blog/" + slug)).then(function (r) { if (!r.ok) throw new Error("x"); return r.json(); }).then(function (d) {
       var p = d.post; document.title = p.title + " | Queen E's Heirr";
       var setMeta = function (sel, val) { var m = document.querySelector(sel); if (m) m.setAttribute("content", val); };
       var url = "https://queenesheirr.com/stories/post/?s=" + p.slug;
-      setMeta('meta[name="description"]', p.excerpt); setMeta('meta[property="og:title"]', p.title); setMeta('meta[property="og:description"]', p.excerpt); setMeta('meta[property="og:url"]', url);
+      setMeta('meta[name="description"]', p.excerpt); setMeta('meta[property="og:title"]', p.title); setMeta('meta[property="og:description"]', p.excerpt); setMeta('meta[property="og:url"]', url); var full = p.title + " | Queen E's Heirr"; setMeta('meta[property="og:title"]', full); setMeta('meta[name="twitter:title"]', full); setMeta('meta[name="twitter:description"]', p.excerpt); if (p.image && /^https:/.test(p.image)) { setMeta('meta[property="og:image"]', p.image); setMeta('meta[name="twitter:image"]', p.image); setMeta('meta[property="og:image:alt"]', p.title); }
       var can = document.querySelector('link[rel="canonical"]'); if (can) can.setAttribute("href", url);
       blogPost.textContent = "";
       if (p.category) blogPost.appendChild(el("p", { "class": "kicker" }, p.category));

@@ -1,0 +1,12 @@
+# GitHub Pages publishes the site files only. Backend source and tooling stay in the repo but off the website.
+exclude:
+  - worker
+  - apps-script
+  - scripts
+  - node_modules
+  - README.md
+  - LICENSE.txt
+  - package.json
+  - package-lock.json
+  - Gemfile
+  - Gemfile.lock

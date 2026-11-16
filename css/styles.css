@@ -68,11 +68,12 @@ button, [role="button"] { cursor: pointer; }
 .dd-menu a:hover, .dd-menu a:focus { background: rgba(20, 45, 25, 0.07); color: var(--forest); }
 .actions { display: flex; align-items: center; gap: 0.5rem; }
 .icon-btn, .menu-btn {
+  font-family: inherit;
   width: 44px; height: 44px; border: 0; background: transparent; color: var(--forest); position: relative;
 }
 .badge {
   position: absolute; top: 4px; right: 2px;
-  min-width: 18px; height: 18px; border-radius: 99px;
+  font-family: inherit; min-width: 18px; height: 18px; border-radius: 99px;
   background: var(--gold); color: var(--ink); font-size: 11px; font-weight: 700;
   display: grid; place-items: center;
 }
@@ -90,7 +91,7 @@ button, [role="button"] { cursor: pointer; }
 .hero-banner { padding: 0; }
 .hero-banner img { display: block; width: 100%; max-width: 1774px; height: auto; margin: 0 auto; border-bottom: 1px solid rgba(212, 175, 55, 0.4); }
 .hero { display: grid; gap: 2rem; padding: 3rem 0; align-items: center; }
-.kicker { font-size: 0.72rem; letter-spacing: 0.18em; text-transform: uppercase; color: var(--sage); font-weight: 600; }
+.kicker { font-size: 0.75rem; letter-spacing: 0.18em; text-transform: uppercase; color: var(--sage); font-weight: 600; }
 .lede { font-size: 1.05rem; color: var(--muted); font-weight: 300; max-width: 40rem; }
 .row { display: flex; flex-wrap: wrap; gap: 0.75rem; }
 .grid-3, .grid-2 { display: grid; gap: 1.25rem; }
@@ -106,7 +107,7 @@ button, [role="button"] { cursor: pointer; }
 .site-footer a:hover, .site-footer a:focus-visible { color: var(--gold-light); }
 .foot { display: grid; gap: 1.5rem; }
 .muted { color: var(--muted); font-size: 0.92rem; }
-.field { display: grid; gap: 0.35rem; font-size: 0.72rem; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; }
+.field { display: grid; gap: 0.35rem; font-size: 0.75rem; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; }
 input, select, textarea {
   font: inherit; text-transform: none; letter-spacing: 0; font-weight: 400; font-size: 0.95rem;
   border: 1px solid var(--linen); background: var(--cream); border-radius: 12px; padding: 0.75rem 0.9rem; width: 100%;
@@ -154,7 +155,7 @@ form.stack { display: grid; gap: 1rem; background: #fff; border: 1px solid var(-
 
 /* Mailing list signup (footer) */
 .signup { margin-top: 2rem; padding-top: 1.75rem; border-top: 1px solid rgba(255,255,255,0.15); }
-.signup-form { display: grid; gap: 1rem; align-items: end; }
+.signup-form { display: grid; grid-template-columns: minmax(0, 1fr); gap: 1rem; align-items: end; }
 .signup-form h3 { color: var(--gold); margin: 0 0 .25rem; }
 .signup-form p { margin: 0; }
 .signup-form .field { color: var(--cream-deep); }
@@ -264,7 +265,7 @@ html { scroll-behavior: smooth; }
 .judah-intro { max-width: 46rem; margin: 1.25rem auto 0; text-align: center; }
 .judah-links { display: flex; flex-wrap: wrap; gap: .75rem; justify-content: center; margin-top: 1.25rem; }
 
-.quick-link { background: none; border: 0; padding: 0; margin: 0.15rem 0 0; color: var(--forest); font: inherit; font-size: 0.85rem; text-decoration: underline; cursor: pointer; display: inline-block; }
+.quick-link { background: none; border: 0; padding: 0.55rem 0; margin: 0; color: var(--forest); font: inherit; font-size: 0.85rem; text-decoration: underline; cursor: pointer; display: inline-block; }
 .card-body .field { display: block; margin-top: 0.6rem; }
 a.btn[href] { text-decoration: none; }
 .qv-bg { position: fixed; inset: 0; z-index: 200; background: rgba(0,0,0,.55); display: flex; align-items: center; justify-content: center; padding: 1rem; }
@@ -324,7 +325,8 @@ a.btn[href] { text-decoration: none; }
 .signup-interests legend { padding: 0; font-size: .9rem; margin-bottom: .4rem; width: 100%; float: left; }
 .signup-interests label.chk { display: inline-flex; flex-direction: row; gap: .5rem; align-items: center; width: auto; margin: 0; font-size: .95rem; font-weight: 400; text-transform: none; letter-spacing: 0; color: var(--cream-deep); }
 .signup-interests label.chk input { width: 1.15rem; height: 1.15rem; padding: 0; margin: 0; flex: none; }
-.signup-interests label.field { display: inline-flex; flex-direction: row; gap: .6rem; align-items: center; }
+.signup-interests label.field { display: inline-flex; flex-direction: row; flex-wrap: wrap; gap: .6rem; align-items: center; max-width: 100%; }
+.signup-interests label.field select { flex: 1 1 12rem; min-width: 0; }
 .signup-interests select { width: auto; max-width: 100%; }
 .cart-optin { display: flex; gap: .6rem; align-items: flex-start; font-size: .9rem; margin: .75rem 0; line-height: 1.4; text-transform: none; letter-spacing: 0; font-weight: 400; }
 .cart-optin input { margin: .15rem 0 0; width: 1.1rem; height: 1.1rem; flex: none; padding: 0; }
@@ -461,3 +463,11 @@ body.srch-open { overflow: hidden; }
 .menu .m-dd a:last-child { padding-bottom: 0.9rem; }
 .menu a[aria-current="page"] { color: var(--forest); text-decoration: underline; text-decoration-color: var(--gold); text-underline-offset: 4px; }
 @media (prefers-reduced-motion: reduce) { .m-dd summary::after { transition: none; } }
+
+/* Footer links: comfortable tap targets */
+.site-footer p a { display: inline-block; padding: 0.3rem 0; }
+.site-footer p a[href^="mailto"] { padding: 0.3rem 0; }
+/* Screen-reader-only text, used to keep the heading outline in order */
+.sr-only { position: absolute; width: 1px; height: 1px; margin: -1px; padding: 0; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0; }
+.field { grid-template-columns: minmax(0, 1fr); }
+.field select, .field input { min-width: 0; max-width: 100%; }
