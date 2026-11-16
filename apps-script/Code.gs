@@ -9,7 +9,7 @@ function doPost(e) {
     // Admin sign-in code email (called by the Cloudflare Worker, never by browsers).
     if (data.action === "send_code") {
       const want = PropertiesService.getScriptProperties().getProperty("MAIL_SECRET");
-      if (!want || data.secret !== want || !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(data.to || "") || !/^\d{6}$/.test(data.code || "")) return out_({ ok: false });
+      if (!secretOk_(data.secret) || !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(data.to || "") || !/^\d{6}$/.test(data.code || "")) return out_({ ok: false });
       MailApp.sendEmail({
         to: data.to,
         subject: "Your Queen E's Heirr admin code: " + data.code,
@@ -23,19 +23,19 @@ function doPost(e) {
     // Emails the customer and the shop, and adds the customer as a guest on one Google Calendar event per class date.
     if (data.action === "booking_notice") {
       const want2 = PropertiesService.getScriptProperties().getProperty("MAIL_SECRET");
-      if (!want2 || data.secret !== want2) return out_({ ok: false });
+      if (!secretOk_(data.secret)) return out_({ ok: false });
       return out_(bookingNotice_(data.booking || {}, data.cls || {}));
     }
     // Cash sale receipt from the event sale screen (called by the Cloudflare Worker, never by browsers).
     if (data.action === "cash_receipt") {
       const want3 = PropertiesService.getScriptProperties().getProperty("MAIL_SECRET");
-      if (!want3 || data.secret !== want3) return out_({ ok: false });
+      if (!secretOk_(data.secret)) return out_({ ok: false });
       return out_(cashReceipt_(data.sale || {}));
     }
     // Shipping updates and tracking emails from the admin app (HTML body supplied by the Worker).
     if (data.action === "send_html") {
       var want6 = PropertiesService.getScriptProperties().getProperty("MAIL_SECRET");
-      if (!want6 || data.secret !== want6) return out_({ ok: false });
+      if (!secretOk_(data.secret)) return out_({ ok: false });
       if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(data.to || "")) return out_({ ok: false });
       MailApp.sendEmail({ to: data.to, subject: String(data.subject || "").slice(0, 150), body: String(data.text || ""), htmlBody: String(data.html || ""), name: "Queen E's Heirr" });
       return out_({ ok: true });
@@ -43,13 +43,13 @@ function doPost(e) {
     // Mailing list management and campaign sending from the admin app (called by the Cloudflare Worker, never by browsers).
     if (data.action === "mkt") {
       const want5 = PropertiesService.getScriptProperties().getProperty("MAIL_SECRET");
-      if (!want5 || data.secret !== want5) return out_({ ok: false });
+      if (!secretOk_(data.secret)) return out_({ ok: false });
       return out_(mkt_(data));
     }
     // Monthly or on-demand sales report with CSV attachments (called by the Cloudflare Worker).
     if (data.action === "report_email") {
       const want4 = PropertiesService.getScriptProperties().getProperty("MAIL_SECRET");
-      if (!want4 || data.secret !== want4) return out_({ ok: false });
+      if (!secretOk_(data.secret)) return out_({ ok: false });
       const to = (Array.isArray(data.to) ? data.to : []).filter(function (x) { return /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(x || ""); }).slice(0, 5);
       if (!to.length) return out_({ ok: false });
       const files = (Array.isArray(data.files) ? data.files : []).slice(0, 5).map(function (f) {
@@ -60,8 +60,15 @@ function doPost(e) {
         return out_({ ok: true });
       } catch (err) { console.log("report email failed: " + err); return out_({ ok: false }); }
     }
+    // ---- Public form path: only the website forms get here, and only within sensible limits ----
+    if (data.action) return out_({ ok: false });                       // unknown actions never fall into the public form handler
+    if (String(e.postData.contents || "").length > 30000) return out_({ ok: false });
     const fields = data.fields || {};
     if (fields.website) return out_({ ok: true }); // honeypot: bots fill this hidden field
+    if (FORMS.indexOf(String(data.subject || "").trim()) < 0) return out_({ ok: true }); // only our own forms; stops junk tabs and spam subjects
+    const gate = publicGate_(String(data.subject || "").trim(), String(fields.email || ""));
+    if (!gate.ok) return out_({ ok: true });                            // quietly drop floods; the browser cannot read the reply anyway
+    const mailOk = gate.mailOk;
 
     const subject = String(data.subject || "Website request").replace(/[\r\n]+/g, " ").slice(0, 100);
     const keys = Object.keys(fields).filter(function (k) { return k !== "website"; }).slice(0, 30);
@@ -76,11 +83,11 @@ function doPost(e) {
       body: lines.join("\n\n") + "\n\nPage: " + String(data.page || "").slice(0, 200),
     };
     if (replyTo) opts.replyTo = replyTo;
-    MailApp.sendEmail(opts);
+    if (mailOk) MailApp.sendEmail(opts);
 
     // Confirmation copy to the person who submitted (best effort; never blocks the request).
     // Limited to one per address per hour so the form can't be used to spam someone.
-    if (replyTo) {
+    if (replyTo && mailOk) {
       try {
         const cache = CacheService.getScriptCache();
         const key = "conf:" + replyTo.toLowerCase().slice(0, 200);
@@ -128,6 +135,41 @@ function doPost(e) {
   } catch (err) {
     return out_({ ok: false });
   }
+}
+
+// The only forms the website sends. Anything else is dropped, so nobody can create endless tabs or spoof subjects.
+const FORMS = ["Class registration", "Customer support", "Event invitation", "Mailing list signup", "Store request", "Training inquiry", "Wholesale request"];
+
+// Constant-time check of the shared secret used by the Cloudflare Worker.
+function secretOk_(given) {
+  const want = PropertiesService.getScriptProperties().getProperty("MAIL_SECRET");
+  if (!want || typeof given !== "string") return false;
+  let d = want.length ^ given.length;
+  for (let i = 0; i < Math.max(want.length, given.length); i++) d |= (want.charCodeAt(i) || 0) ^ (given.charCodeAt(i) || 0);
+  return d === 0;
+}
+
+// Hourly caps for the public forms: everything, per email address, and mailing-list sign-ups (each sends a welcome email).
+// Also keeps a reserve of the daily email quota for admin sign-in codes and customer receipts.
+function publicGate_(subject, email) {
+  const lock = LockService.getScriptLock();
+  try { lock.waitLock(5000); } catch (err) { return { ok: false, mailOk: false }; }
+  try {
+    const cache = CacheService.getScriptCache();
+    const hour = Math.floor(Date.now() / 3600000);
+    const bump = function (key, max) {
+      const n = parseInt(cache.get(key) || "0", 10);
+      if (n >= max) return false;
+      cache.put(key, String(n + 1), 3700);
+      return true;
+    };
+    if (!bump("pub:all:" + hour, 80)) return { ok: false, mailOk: false };
+    const em = String(email || "").toLowerCase().trim().slice(0, 200);
+    if (em && !bump("pub:em:" + em + ":" + hour, 4)) return { ok: false, mailOk: false };
+    if (/mailing list/i.test(subject) && !bump("pub:ml:" + hour, 30)) return { ok: false, mailOk: false };
+    let quota = 100; try { quota = MailApp.getRemainingDailyQuota(); } catch (err) { /* assume fine */ }
+    return { ok: true, mailOk: quota > 25 };
+  } finally { lock.releaseLock(); }
 }
 
 function out_(obj) {

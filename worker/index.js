@@ -8,6 +8,7 @@
 // one active price per size with the size as the price "nickname" (e.g. "8 oz").
 // Sold out: set metadata sold_out=true on the product (all sizes) or on one price (that size).
 
+import { guard, safeEqual } from "./guard.js";
 import { CATALOG } from "./catalog.js";
 import { stdSize, CATEGORIES } from "./sizes.js";
 import { SEED } from "./seed-data.js";
@@ -566,7 +567,7 @@ async function handleWholesaleRequest(request, env, c) {
 // One-time catalog seed. Disabled unless the ADMIN_TOKEN secret is set. Idempotent: skips what exists.
 async function handleSeed(request, env, c) {
   const auth = request.headers.get("Authorization") || "";
-  if (!env.ADMIN_TOKEN || auth !== `Bearer ${env.ADMIN_TOKEN}`) return json({ error: "Not found" }, 404, c.headers);
+  if (!env.ADMIN_TOKEN || !safeEqual(auth, `Bearer ${env.ADMIN_TOKEN}`)) return json({ error: "Not found" }, 404, c.headers);
   const out = { created: [], skipped: [], errors: [] };
   for (const p of SEED) {
     try {
@@ -671,7 +672,7 @@ async function handleStripeWebhook(request, env) {
 // One-time bulk stock: sets metadata stock=N on every active price that has no stock yet. ADMIN_TOKEN required.
 async function handleSetStock(request, env, c, url) {
   const auth = request.headers.get("Authorization") || "";
-  if (!env.ADMIN_TOKEN || auth !== `Bearer ${env.ADMIN_TOKEN}`) return json({ error: "Not found" }, 404, c.headers);
+  if (!env.ADMIN_TOKEN || !safeEqual(auth, `Bearer ${env.ADMIN_TOKEN}`)) return json({ error: "Not found" }, 404, c.headers);
   const n = parseInt(url.searchParams.get("n"), 10);
   if (!Number.isInteger(n) || n < 0 || n > 100000) return json({ error: "Bad n" }, 400, c.headers);
   const out = { set: [], kept: [], soldOutLeftAlone: [], errors: [] };
@@ -703,6 +704,8 @@ export default {
     const url = new URL(request.url);
     const c = cors(env, request.headers.get("Origin") || "");
     if (request.method === "OPTIONS") return new Response(null, { status: 204, headers: c.headers });
+    const blocked = await guard(request, env, url, c.headers);
+    if (blocked) return blocked;
     if (url.pathname === "/robots.txt" && request.method === "GET") return new Response("User-agent: *\nDisallow: /admin\nDisallow: /ws/\nDisallow: /booking/\nAllow: /blog\n", { headers: { "Content-Type": "text/plain; charset=utf-8", "Cache-Control": "public, max-age=3600" } });
     if (env.ADMIN_HOST && url.hostname === env.ADMIN_HOST && url.pathname === "/") return Response.redirect(`https://${env.ADMIN_HOST}/admin`, 302);
     if (!env.STRIPE_SECRET_KEY) return json({ error: "Not configured" }, 500, c.headers);

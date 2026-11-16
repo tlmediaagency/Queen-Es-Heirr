@@ -2,6 +2,7 @@
 // follow delivery, refund unused labels, and schedule a USPS pickup or plan a drop-off day.
 // Needs the secret SHIPPO_API_KEY (use a shippo_test_ key first). Customer emails go out through the Apps Script.
 
+import { safeEqual } from "./guard.js";
 import { PDFDocument } from "pdf-lib";
 
 const SHIPPO = "https://api.goshippo.com";
@@ -422,7 +423,7 @@ export async function shippoWebhook(request, env, ctx, deps) {
   const url = new URL(request.url);
   const ok = (b, s = 200) => new Response(JSON.stringify(b), { status: s, headers: { "Content-Type": "application/json" } });
   if (!env.ADMIN_KV || !env.SESSION_SECRET) return ok({ error: "off" }, 503);
-  if (url.searchParams.get("k") !== (await webhookKey(env))) return ok({ error: "no" }, 403);
+  if (!safeEqual(url.searchParams.get("k"), await webhookKey(env))) return ok({ error: "no" }, 403);
   let ev; try { ev = await request.json(); } catch { return ok({ error: "bad" }, 400); }
   try { await env.ADMIN_KV.put("shipwebhook", JSON.stringify({ at: Date.now(), event: one(ev && ev.event, 40), matched: false })); } catch { /* not important */ }
   if (!ev || ev.event !== "track_updated" || !ev.data || !ev.data.tracking_number) return ok({ ok: true });
