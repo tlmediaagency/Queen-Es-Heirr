@@ -559,8 +559,72 @@ function bkList(n, d) {
       (b.docs || []).length ? h("p", null, (b.docs || []).map(function (f, k) { return h("button", { "class": "btn small", text: "Download " + f.name, onclick: function () { api("POST", "bookinv-doc", { id: b.id, n: k }).then(function (r) { var bin = atob(r.data), arr = new Uint8Array(bin.length); for (var z = 0; z < bin.length; z++) arr[z] = bin.charCodeAt(z); var url = URL.createObjectURL(new Blob([arr], { type: r.type })); var a = document.createElement("a"); a.href = url; a.download = r.name; document.body.appendChild(a); a.click(); a.remove(); setTimeout(function () { URL.revokeObjectURL(url); }, 4000); }).catch(function (er) { toast(er.message); }); } }); })) : null,
       b.balanceOpen ? h("p", { "class": "muted", text: "Balance of " + money(b.balanceCents) + (b.paused ? " (auto reminders paused)" : " is emailed automatically 5 days before, the day before, and the day of the event if unpaid.") }) : null,
       paid ? h("p", { "class": "muted", text: "Paid " + money(paid.paidCents || 0) + (paid.booksQty ? " including " + paid.booksQty + " books" : "") + (paid.manual ? " (recorded manually)" : "") }) : null,
+      bkMore(b, d),
       h("p", null, acts.reduce(function (a, x) { a.push(x, " "); return a; }, []))]));
   });
+}
+function bkPromoForm(p, d) {
+  p = p || { on: true, days: 14, name: "", email: "", before: d.defaults.promoBefore, after: d.defaults.promoAfter };
+  var on = h("input", { type: "checkbox", checked: p.on !== false });
+  var days = h("input", { type: "number", min: 3, max: 60, value: p.days || 14 });
+  var nm = h("input", { type: "text", value: p.name || "", placeholder: "Optional, if not the main contact" }), em = h("input", { type: "email", value: p.email || "", placeholder: "Optional" });
+  var bef = h("textarea", { rows: "5" }); bef.value = p.before || d.defaults.promoBefore;
+  var aft = h("textarea", { rows: "4" }); aft.value = p.after || d.defaults.promoAfter;
+  var el = h("div", null, [
+    h("p", { "class": "muted", text: "Before the event we email a request for promo material (logo, event blurb, handles, flyer). The day after, we email a request for photos, videos and a testimonial. They go to the event contact unless you enter someone else below." }),
+    h("label", { "class": "chk" }, [on, "Send these marketing request emails automatically"]),
+    h("div", { "class": "row", style: "margin-top:10px" }, [h("label", null, ["Send the promo request this many days before", days]), h("label", null, ["Send to someone else: name", nm]), h("label", null, ["Their email", em])]),
+    h("label", { style: "display:block;margin-top:10px" }, ["Before the event (what we ask for)", bef]),
+    h("label", { style: "display:block;margin-top:10px" }, ["After the event (what we ask for)", aft])]);
+  return { el: el, get: function () { return { on: on.checked, days: days.value, name: nm.value, email: em.value, before: bef.value, after: aft.value }; } };
+}
+function bkMore(b, d) {
+  var box = h("div", { style: "margin:8px 0" });
+  var p = b.promo, fmt = function (t) { return new Date(t).toLocaleDateString(); };
+  if (b.status !== "cancelled") {
+    var line = !p ? "Marketing requests: not set up" : !p.on ? "Marketing requests: off" : "Marketing requests: promo request " + (p.beforeSentAt ? "sent " + fmt(p.beforeSentAt) : "goes out " + p.days + " days before") + "; photo request " + (p.afterSentAt ? "sent " + fmt(p.afterSentAt) : "goes out the day after") + (p.email ? " (to " + p.email + ")" : "");
+    box.appendChild(h("p", { "class": "muted", style: "margin:4px 0", text: line }));
+    var panel = h("div");
+    box.appendChild(h("p", null, [
+      h("button", { "class": "btn small", text: "Marketing requests", onclick: function () {
+        if (panel.firstChild) { clear(panel); return; }
+        var pm = bkPromoForm(p, d);
+        panel.appendChild(h("div", { "class": "card" }, [pm.el, h("p", null, [h("button", { "class": "btn small primary", text: "Save", onclick: function () { api("POST", "bookinv-promo-save", { id: b.id, promo: pm.get() }).then(function () { toast("Saved"); viewBookingInvoices(bkTop); }).catch(function (er) { toast(er.message); }); } })])]));
+      } }), " ",
+      h("button", { "class": "btn small", text: "Send promo request now", onclick: function () { var to = (p && p.email) || b.client.email; if (window.confirm('Email the promo-material request to ' + to + ' now?')) api("POST", "bookinv-promo-send", { id: b.id, kind: "before" }).then(function () { toast("Sent"); viewBookingInvoices(bkTop); }).catch(function (er) { toast(er.message); }); } }), " ",
+      h("button", { "class": "btn small", text: "Send photo request now", onclick: function () { var to = (p && p.email) || b.client.email; if (window.confirm('Email the photos and videos request to ' + to + ' now?')) api("POST", "bookinv-promo-send", { id: b.id, kind: "after" }).then(function () { toast("Sent"); viewBookingInvoices(bkTop); }).catch(function (er) { toast(er.message); }); } })]));
+    box.appendChild(panel);
+  }
+  (b.extras || []).forEach(function (x) {
+    var st = { draft: "Draft", sent: "Sent", paid: "Paid", cancelled: "Cancelled" }[x.status] || x.status;
+    var bt = [];
+    if (x.status === "draft" || x.status === "sent") {
+      bt.push(h("button", { "class": "btn small primary", text: x.status === "sent" ? "Email again" : "Email to client", onclick: function () { if (window.confirm('Email this ' + money(x.cents) + ' invoice to ' + b.client.email + '?')) api("POST", "bookinv-extra-send", { id: b.id, eid: x.id }).then(function () { toast("Sent"); viewBookingInvoices(bkTop); }).catch(function (er) { toast(er.message); }); } }));
+      bt.push(h("button", { "class": "btn small", text: "Copy link", onclick: function () { if (navigator.clipboard) navigator.clipboard.writeText(x.link).then(function () { toast("Link copied"); }, function () { window.prompt("Copy this link", x.link); }); else window.prompt("Copy this link", x.link); } }));
+      bt.push(h("button", { "class": "btn small", text: "Paid another way", onclick: function () { if (window.confirm('Mark this ' + money(x.cents) + ' invoice as paid (check, cash, or Zelle)?')) api("POST", "bookinv-extra-paid", { id: b.id, eid: x.id }).then(function () { viewBookingInvoices(bkTop); }).catch(function (er) { toast(er.message); }); } }));
+      bt.push(h("button", { "class": "btn small danger", text: "Cancel", onclick: function () { if (window.confirm('Cancel this invoice? The link will stop working.')) api("POST", "bookinv-extra-cancel", { id: b.id, eid: x.id }).then(function () { viewBookingInvoices(bkTop); }).catch(function (er) { toast(er.message); }); } }));
+    }
+    if (x.status === "cancelled") bt.push(h("button", { "class": "btn small danger", text: "Delete", onclick: function () { api("POST", "bookinv-extra-delete", { id: b.id, eid: x.id }).then(function () { viewBookingInvoices(bkTop); }).catch(function (er) { toast(er.message); }); } }));
+    box.appendChild(h("div", { style: "border-top:1px solid var(--line,#e5dbd1);padding-top:8px;margin-top:8px" }, [
+      h("div", { style: "display:flex;justify-content:space-between;gap:8px;flex-wrap:wrap" }, [h("strong", { text: "Extra invoice: " + x.title }), h("span", { "class": "pill" + (x.status === "paid" ? "" : " void"), text: st + " \u00b7 " + money(x.cents) })]),
+      x.note ? h("div", { "class": "muted", text: x.note }) : null,
+      h("p", null, bt.reduce(function (a, z) { a.push(z, " "); return a; }, []))]));
+  });
+  if (b.status !== "cancelled") {
+    var form = h("div");
+    box.appendChild(h("p", null, [h("button", { "class": "btn small", text: "Add an extra invoice", onclick: function () {
+      if (form.firstChild) { clear(form); return; }
+      var t = h("input", { type: "text", placeholder: "Additional hour, travel, materials..." }), a = h("input", { type: "number", min: 0, step: "0.01" }), nt = h("input", { type: "text", placeholder: "Optional note" });
+      var snd = h("input", { type: "checkbox", checked: true }), msg = h("p", { "class": "msg err", role: "alert" });
+      form.appendChild(h("div", { "class": "card" }, [
+        h("p", { "class": "muted", text: "Bill something after the event: extra time, travel, materials, or anything you forgot. The client gets an email with a secure card payment link." }),
+        h("div", { "class": "row" }, [h("label", null, ["What is it for?", t]), h("label", null, ["Amount ($)", a]), h("label", null, ["Note", nt])]),
+        h("label", { "class": "chk", style: "margin-top:8px" }, [snd, "Email it to the client now"]), msg,
+        h("p", null, [h("button", { "class": "btn small primary", text: "Save extra invoice", onclick: function () { api("POST", "bookinv-extra-save", { id: b.id, title: t.value, amount: a.value, note: nt.value, send: snd.checked }).then(function (r) { toast(r.warning || "Saved"); viewBookingInvoices(bkTop); }).catch(function (er) { msg.textContent = er.message; }); } })])]));
+    } })]));
+    box.appendChild(form);
+  }
+  return box;
 }
 function bkEditor(n, d, b, pf) {
   var cur = b || (pf ? { client: pf.client, event: pf.event, feeCents: pf.feeCents, expect: d.defaults.expect, need: d.defaults.need, terms: d.defaults.terms, notes: "", internal: pf.internal } : null) || { client: {}, event: { speaker: "LyKinda Thibodeaux" }, expect: d.defaults.expect, need: d.defaults.need, terms: d.defaults.terms, notes: "", internal: "" };
@@ -598,6 +662,8 @@ function bkEditor(n, d, b, pf) {
     area("need", "What we need from you", cur.need, 8),
     area("terms", "Terms (please have these reviewed to fit your business)", cur.terms, 6),
     area("internal", "Private notes (only you see these)", cur.internal, 2)]));
+  var pm = bkPromoForm(cur.promo, d);
+  n.appendChild(h("div", { "class": "card" }, [h("h3", { text: "Marketing requests" }), pm.el]));
   var msg = h("p", { "class": "msg err", role: "alert" });
   n.appendChild(msg);
   n.appendChild(h("p", null, [h("button", { "class": "btn primary", text: "Save invoice", onclick: function () {
@@ -606,7 +672,7 @@ function bkEditor(n, d, b, pf) {
       event: { title: f.etitle.value, date: f.edate.value, start: f.estart.value, end: f.eend.value, location: f.eloc.value, attendees: f.eatt.value, speaker: f.espk.value },
       fee: f.fee.value, travel: f.travel.value, deposit: f.deposit.value,
       book: bookSel.value ? { key: bookSel.value, unit: unit.value, suggestedQty: q.value, delivery: f.bdel.value } : null,
-      notes: f.notes.value, expect: f.expect.value, need: f.need.value, terms: f.terms.value, internal: f.internal.value };
+      notes: f.notes.value, expect: f.expect.value, need: f.need.value, terms: f.terms.value, internal: f.internal.value, promo: pm.get() };
     api("POST", "bookinv-save", body).then(function (r) { toast(r.converted ? "Saved. The website request's Stripe quote was closed." : "Saved"); viewBookingInvoices(bkTop); }).catch(function (er) { msg.textContent = er.message; });
   } })]));
 }
