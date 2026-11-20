@@ -75,6 +75,11 @@ table.rep{width:100%;border-collapse:collapse;font-size:.92rem;margin:8px 0 16px
 
 .toast{position:fixed;left:50%;bottom:20px;transform:translateX(-50%);background:var(--ink);color:var(--cream-deep);padding:10px 18px;border-radius:999px;font-size:.9rem;z-index:9}
 .drag-handle{cursor:grab;touch-action:none;user-select:none;-webkit-user-select:none;padding:6px 10px 6px 0;color:var(--muted,#6b6b6b);font-size:1.3rem;line-height:1}.card.dragging{opacity:.85;box-shadow:0 8px 24px rgba(0,0,0,.25);outline:2px solid var(--gold,#c9a84c)}
+.srch{position:relative;margin:0 0 12px}.srch input{width:100%;padding:12px 14px;border:1.5px solid var(--linen);border-radius:12px;font:inherit;background:#fff}
+.srch-res{position:absolute;left:0;right:0;top:100%;margin-top:4px;background:#fff;border:1.5px solid var(--linen);border-radius:12px;box-shadow:0 8px 24px rgba(0,0,0,.15);z-index:8;overflow:hidden}.srch-res[hidden]{display:none}
+.srch-res button{display:block;width:100%;text-align:left;padding:10px 14px;border:0;border-bottom:1px solid var(--linen);background:#fff;font:inherit;cursor:pointer}.srch-res button:hover,.srch-res button:focus{background:var(--cream-deep)}.srch-res small{display:block;color:var(--muted,#6b6b6b)}
+.about{background:var(--cream-deep);border-left:4px solid var(--gold);border-radius:8px;padding:12px 16px;margin:0 0 14px}.about p{margin:4px 0 0}
+details{background:#fff;border:1px solid var(--linen);border-radius:10px;padding:10px 14px;margin:0 0 8px}details summary{cursor:pointer}details ol,details ul{margin:6px 0 10px;padding-left:22px}details li{margin:3px 0}
 </style></head><body>
 <div id="app"></div>
 <script>
@@ -240,6 +245,7 @@ function start() {
     kids.push(h("button", { "class": "tab", role: "tab", "aria-selected": String(g === grp), onclick: function () { current = g[1][0][0]; start(); }, text: g[0] }));
   });
   kids.push(h("button", { "class": "tab go", role: "tab", "aria-selected": String(current === "sale"), onclick: function () { current = "sale"; start(); }, text: "Event Sale" }));
+  kids.push(h("button", { "class": "tab", role: "tab", "aria-selected": String(current === "help"), onclick: function () { goTab("help"); }, text: "Help" }));
   var nav = h("nav", { role: "tablist" }, kids);
   var subnav = null;
   if (grp && grp[1].length > 1) {
@@ -247,9 +253,169 @@ function start() {
       return h("button", { "class": "tab", "aria-selected": String(v[0] === current), onclick: function () { current = v[0]; start(); }, text: v[1] });
     }));
   }
-  shell(subnav ? [nav, subnav, body] : [nav, body]);
-  ({ orders: viewOrders, products: viewProducts, requests: viewRequests, classes: viewClasses, bookings: viewBookings, events: viewEvents, ledger: viewLedger, reports: viewReports, sale: viewSale, eventpickups: viewEventPickups, subscribers: viewSubscribers, campaigns: viewCampaigns, toship: viewToShip, shipped: viewShipped, shipsetup: viewShipSetup, services: viewServices, bookinv: viewBookingInvoices, discounts: viewDiscounts, todeliver: viewToDeliver, blog: viewBlog, wsorders: viewWsOrders, wsvendors: viewWsVendors })[current](body);
+  var top = current === "sale" ? [nav] : [searchBar(), nav]; if (subnav) top.push(subnav);
+  var ab = helpBox(current); if (ab) top.push(ab);
+  top.push(body);
+  shell(top);
+  ({ orders: viewOrders, products: viewProducts, requests: viewRequests, classes: viewClasses, bookings: viewBookings, events: viewEvents, ledger: viewLedger, reports: viewReports, sale: viewSale, eventpickups: viewEventPickups, subscribers: viewSubscribers, campaigns: viewCampaigns, toship: viewToShip, shipped: viewShipped, shipsetup: viewShipSetup, services: viewServices, bookinv: viewBookingInvoices, discounts: viewDiscounts, todeliver: viewToDeliver, blog: viewBlog, wsorders: viewWsOrders, wsvendors: viewWsVendors, help: viewHelp })[current](body);
   keepAwake(current === "sale");
+}
+
+/* HELP: a short "what is this tab for" box on every tab, a full manual (Help tab), and a search bar. */
+var HELP = {
+  orders: { about: "Every order from the website and from Event Sale, newest first. Use it to see what someone bought, whether it ships, is picked up or is delivered, and where it goes.",
+    how: ["Use the Status, sort and date bar at the top to narrow the list.", "Orders marked Ship are handled on the To Ship tab. Pickup orders show which event they are for.", "Card orders have Refund in Stripe, which opens that payment in your Stripe Dashboard."],
+    tips: ["Only the most recent orders show here. Use Reports for full history.", "Refunds are done in Stripe. They are not subtracted in Reports and do not put stock back, so fix stock by hand on Products."], kw: "purchase customer receipt status pickup refund history" },
+  requests: { about: "Private group and event requests, and wholesale requests, that came in through the website. Each one becomes a draft quote in Stripe that you approve or decline here.",
+    how: ["Read the request, then click Open quote in Stripe to change the price if needed (class prices are only an estimate).", "Click Approve to accept it, or Decline. Send the quote from Stripe after you approve.", "For a keynote or special booking, click Make booking invoice to turn the request into a Booking Invoice with the details filled in.", "Send receipt emails the customer a receipt."],
+    tips: ["Wholesale quotes are priced at $2.00 off each jar."], kw: "quote group event private wholesale approve decline invoice" },
+  ledger: { about: "A record of every cash, Cash App, Venmo and Tap to Pay sale you rang up on the Event Sale screen.",
+    how: ["Sort, or filter by place and date, then read the totals at the top.", "Download CSV saves the list for your bookkeeping.", "Void this sale if you rang something up by mistake. That puts the stock back.", "Edit email / resend receipt fixes a mistyped address and sends the receipt again."],
+    tips: ["Voiding does not refund anyone. Hand back the money yourself.", "Card payments at events are in Orders and Reports, not here."], kw: "cash venmo cash app tap to pay void receipt event sale" },
+  reports: { about: "Sales totals for any date range: website, event card payments, cash and class bookings.",
+    how: ["Pick the start and end dates and click Run report.", "Download the CSV files for your accountant or bookkeeper (all sales, cash, class bookings, inventory).", "Email this report to me sends the same report to your inbox."],
+    tips: ["Refunds are not subtracted, so check Stripe for refunds.", "Last month's report is also emailed to you automatically on the 1st of every month.", "The day after each event, a wrap-up email for that event is sent to you too."], kw: "sales totals money csv accounting taxes monthly" },
+  eventpickups: { about: "Who ordered ahead for pickup at one of your events, so you can hand out orders and keep track.",
+    how: ["Pick an event from the list.", "Mark people as picked up when they come.", "Print pick list gives you a paper list to bring.", "Send reminder emails people who have not picked up yet. Sorry we missed you emails the ones who did not come. Resend confirmation re-sends someone's order email."],
+    tips: ["Events are created on the Events tab. Pickup orders only show here once an event exists."], kw: "pickup pick up pre-order preorder list event reminder" },
+  products: { about: "Your shop. Add products, set prices and sizes, track stock, and choose what shows on the website.",
+    how: ["Click + Add a new product, fill in name, category, description and a price for each size, then Add product.", "Open a product to change its details, then Save details. Use Add size for another size.", "Stock: leave it blank for unlimited, or type how many you have. Weight (packed, in ounces) is used for shipping labels.", "Outside buy link: add an Amazon link and the website shows Buy on Amazon instead of Add to Cart. You can still sell it at events.", "Use the star to feature a product, and the arrows or drag handle to change the shop order."],
+    tips: ["Changes show on the website within about a minute.", "Hidden products are listed at the bottom and do not show on the website."], kw: "shop price size stock inventory sold out amazon feature order add item jar" },
+  toship: { about: "Paid orders that still need to go out in the mail. Make the USPS label here.",
+    how: ["Fill in Shipping Setup first (your address and phone) if you have not.", "Click Make label on an order, pick a box, check the weight, then click See USPS prices.", "Click Buy on the price you want. You can print the label or have a QR code emailed to show at the Post Office. Tick the box to email the customer their tracking.", "Pickup and drop-off days are set afterward on the Shipped tab."],
+    tips: ["Test mode labels are practice only and cost nothing."], kw: "label usps mail postage box tracking qr code post office shippo" },
+  shipped: { about: "Orders that already have a label. Print, schedule pickups, and handle problems.",
+    how: ["Tick the packages you want, then Print selected labels (one file) for a stack of 4x6 labels.", "Make SCAN form for selected makes one barcode the post office scans for the whole group.", "Schedule USPS pickup picks a day for free Priority Mail pickup from your address. Ground Advantage packages must be dropped off, so use Save as my drop-off day.", "Refund label if you did not use one."], tips: ["Nothing changes in Shippo when you combine labels."], kw: "scan form pickup drop-off refund label tracking" },
+  shipsetup: { about: "Your ship-from details, return address and box sizes. The website also uses these to figure live shipping prices.",
+    how: ["Enter your ship-from address and phone.", "Optional: enter a PO Box or business mailbox as the return address so your home address stays private. Leave it blank to print the home address.", "Check your box sizes and default weights, then click Save shipping setup."], tips: ["You can set an exact weight on any product, and you can always change the weight before buying a label."], kw: "address return po box phone boxes weight" },
+  todeliver: { about: "Which towns you offer local delivery in.",
+    how: ["Check the towns you deliver to. Uncheck a town to stop offering it.", "Click Save."],
+    tips: ["Delivery is offered on the website when the customer's ZIP code is in a town you checked.", "Customers pay by card at checkout, then you contact them to arrange a time."], kw: "local delivery town zip" },
+  wsorders: { about: "Refill orders from your wholesale vendors (stores that sell your jars).",
+    how: ["Vendors send refill requests from the wholesale portal.", "Open one, adjust the items, set a drop-off date, and send the quote.", "The store approves it and chooses to pay by card or at drop-off.", "Mark delivered when you drop it off, then Mark paid (check) or Mark paid (cash) if they pay you directly."], tips: ["Use Cancel to cancel an order and Reopen to bring one back."], kw: "wholesale refill stores vendors quote drop off" },
+  wsvendors: { about: "The stores that are allowed to sign in to your wholesale portal.",
+    how: ["Add a store after you have approved them: name, email and details, then Save vendor.", "Use Edit to change a store, or Remove to take their access away."], tips: ["Only vendors listed here can sign in. They get a sign-in code by email."], kw: "wholesale portal store login approve" },
+  events: { about: "Your list of pickup events and selling events (farmers markets, pop-ups). Pickup orders and sale reports are tied to these.",
+    how: ["Click + Add event, then fill in the name, date, place, hours (optional) and the Order by (last day).", "Click Save events."],
+    tips: ["Events show as a pickup choice in the customer's cart until the order-by date passes (or the event date if no order-by date is set).", "Add an event here before you start the Event Sale screen, so every sale is tied to an event."], kw: "market pop-up pickup date place order by deadline" },
+  classes: { about: "This is for individual classes: single dates that people book and pay for online, like a jam-making class. Each date gets its own seats, price and Book & pay button on the Classes page. For a keynote, speaking event or custom program for a group, use Programs > Booking Invoices instead.",
+    how: ["Click + Add class date, pick the type, then fill in the name, date, start time, length, seats, price per person, place and an optional note.", "Check Show on site to publish it, then click Save classes.", "After someone pays they get a receipt and a calendar invite. See who booked on the Bookings tab."],
+    tips: ["A date shows Book & pay until the date passes or the seats run out.", "Deleting a class that already has bookings only hides it. The bookings stay on the Bookings tab."], kw: "class jam making workshop date seats book single one-time" },
+  bookings: { about: "People who paid online for a spot in one of your classes.",
+    how: ["Pick a class from the filter to see just its guests.", "Each booking shows how many spots were reserved. Those count against the seats you set on the Classes tab."],
+    tips: ["There is nothing you have to do here unless you want to contact someone.", "Refunds are done in your Stripe Dashboard (Payments)."], kw: "class guests attendees paid seats refund" },
+  services: { about: "This sets the \"Starting at\" prices shown on the Etiquette & Leadership page. It does not bill anyone. To create an invoice and send it to a client, open the Booking Invoices tab and click New booking invoice.",
+    how: ["Click Add a program, then type the program name, choose the section (For Students or For Professionals), the starting price and a short description.", "Check Show on site and the travel note if they apply. Use the arrows to change the order.", "Click Save changes."],
+    tips: ["Final pricing is given with each quote or invoice.", "Changes appear on the website within about a minute."], kw: "program pricing etiquette leadership starting at price keynote students professionals" },
+  bookinv: { about: "Create and send invoices for keynotes and special bookings. Your client gets a private link with the event details, an optional offer to add books, and a secure card payment through Stripe.",
+    how: ["Click New booking invoice. Fill in the contact, organization, email, kind of service, event name, date and times, location, fee, and optional travel and deposit.", "Optional: add a book offer, a personal note, what to expect and what you need from them. Click Save invoice.", "On the list, click Email link to client, or Copy link to send it yourself.", "When they pay, they are emailed a full summary and so are you. A deposit's balance is emailed automatically 5 days before, the day before, and the day of if still unpaid.", "Paid another way records a check, cash or Zelle payment. Add an extra invoice bills something after the event.", "Marketing requests emails the client for promo material before the event and photos and a testimonial after."],
+    tips: ["Upload your W-9 once at the top. Clients who say they need it get a download link.", "Cancel makes the link stop working.", "You can also start an invoice from a request on the Requests tab with Make booking invoice."], kw: "invoice keynote speaking booking client send bill deposit balance w-9 payment link" },
+  discounts: { about: "Sales and promo codes for the shop.",
+    how: ["Click Add a discount. Choose how customers get it (automatic, or with a promo code), the type, and what it applies to.", "Optional limits: Total uses allowed stops it after that many orders. One use per customer asks for their email and allows one order per email.", "Click Save changes."],
+    tips: ["Automatic deals always show on the Deals page.", "When several could apply, the customer gets the one that saves them the most. Discounts do not stack."], kw: "promo code coupon sale deal percent free shipping" },
+  subscribers: { about: "Your mailing list. People who sign up on the website, or opt in at checkout, appear here automatically.",
+    how: ["Add to list adds one person. Import brings in a list of people.", "Groups let you email only some of your list. Edit groups to add your own, then tick them on a person.", "Pull in checkout opt-ins catches any that were missed. It only adds people who ticked the box, never anyone who unsubscribed.", "Download CSV saves the list."],
+    tips: ["Anyone who clicks Unsubscribe is marked automatically.", "This is the same list as the Subscribers tab in your Google Sheet."], kw: "email list newsletter signup unsubscribe import groups csv" },
+  campaigns: { about: "Write and send marketing emails to your mailing list.",
+    how: ["Start a new email, or pick a template and click Use this template.", "Leave all groups unticked to email the whole list, or tick groups to reach only those people.", "Always click Send me a test first.", "When it looks right, click Send."],
+    tips: ["Emails go only to people who are currently subscribed, and each has its own unsubscribe link.", "The law requires a real mailing address (a PO Box works) at the bottom of marketing emails. Save it once with Save address and it is added automatically."], kw: "email newsletter blast send test marketing" },
+  blog: { about: "Your Queen Talk blog posts that show on the website.",
+    how: ["Click Write a new post, add the title, photo and text.", "Save keeps it as a private draft. Save & publish puts it on the website. Pick a future date to schedule it.", "Import posts brings in a file of ready-written posts. Tick the ones you want and choose when each should go out.", "Edit changes an existing post."],
+    tips: ["Drafts stay private until you publish.", "The link to a post shows its title and photo when pasted into Facebook or Instagram."], kw: "queen talk post article write publish draft schedule" },
+  sale: { about: "The customer-facing selling screen for events.",
+    how: ["Add the event on the Events tab first, then pick it here (today's event is chosen for you).", "Choose a 4-digit staff PIN. Only the PIN gets you back to the admin screens.", "Optional: add your Cash App and Venmo names so the bag screen shows a QR code with the exact total.", "Click Start selling. Customers tap jars, review the bag and pay by QR code, card or cash (cash is confirmed with your PIN)."],
+    tips: ["Test each payment option with a $1 sale first.", "On an iPad, turn on Guided Access (Settings, Accessibility) so customers cannot leave the page.", "Stock goes down automatically and each sale shows in Orders as In person."], kw: "event sale pos pin cash card tap square cash app venmo" }
+};
+var HELP_FAQ = [
+  { id: "f-invoice", q: "How do I send an invoice to a client?", go: "bookinv", a: "Open Programs > Booking Invoices and click New booking invoice. Fill in the client, event and fee (plus deposit, travel and book offer if you need them), then Save invoice. Back on the list, click Email link to client, or Copy link and send it yourself. The client pays by card through Stripe. The Program Pricing tab only sets the \"Starting at\" prices on the website. It does not send invoices.", kw: "invoice bill client keynote send pay link" },
+  { id: "f-refund", q: "How do I refund someone?", go: "orders", a: "Refunds are done in Stripe. For a website order, open it on the Orders tab and click Refund in Stripe. For a class booking, use Stripe Dashboard > Payments. Refunds are not subtracted in Reports and do not put stock back, so adjust stock on the Products tab.", kw: "refund money back return stripe" },
+  { id: "f-label", q: "How do I print a shipping label?", go: "toship", a: "Fill in Shipping Setup once. Then on To Ship click Make label, pick a box, check the weight, click See USPS prices, and Buy the one you want. You can print it or have a QR code emailed to show at the Post Office.", kw: "shipping label usps print mail" },
+  { id: "f-class", q: "How do I add a class date?", go: "classes", a: "Open Classes & Bookings > Classes and click + Add class date. Fill in the details, make sure Show on site is checked, and click Save classes. Classes are for single dates people book and pay for. For keynotes or custom programs, use Booking Invoices.", kw: "class add new date schedule workshop" },
+  { id: "f-event", q: "How do I sell at an event?", go: "sale", a: "Add the event on the Events tab first. Then open Event Sale (top right), pick the event, choose a 4-digit PIN, and click Start selling. Test with a $1 sale first.", kw: "event sale market pop-up pos cash card" },
+  { id: "f-product", q: "How do I change a price, add a product or update stock?", go: "products", a: "Open Products. Click + Add a new product to add one, or open an existing one to change its details, prices, sizes or stock, then Save. Leave Stock blank for unlimited. Changes show on the website within about a minute.", kw: "product price stock inventory add edit sold out" },
+  { id: "f-promo", q: "How do I make a promo code or a sale?", go: "discounts", a: "Open Marketing > Discounts, click Add a discount, choose automatic or promo code, and Save changes. Automatic deals show on the Deals page.", kw: "promo code coupon sale discount deal" },
+  { id: "f-email", q: "How do I email my mailing list?", go: "campaigns", a: "Open Marketing > Email Campaigns. Start a new email (or use a template), leave groups unticked to reach everyone or tick groups, click Send me a test, then Send.", kw: "email newsletter mailing list send campaign" },
+  { id: "f-numbers", q: "Where are my sales numbers?", go: "reports", a: "Open Orders & Reports > Reports, pick a date range and click Run report. Last month's report is also emailed to you on the 1st of each month.", kw: "sales numbers report totals money" },
+  { id: "f-pickup", q: "Who is coming to pick up at an event?", go: "eventpickups", a: "Open Orders & Reports > Event Pickups and pick the event. Mark people as picked up and print the pick list.", kw: "pickup event who list" },
+  { id: "f-wholesale", q: "A store wants to reorder. What do I do?", go: "wsorders", a: "Stores request refills in the wholesale portal. Open Wholesale > Refill Orders, adjust the items, set a drop-off date and send the quote. To let a new store sign in, add them under Vendors first.", kw: "wholesale store reorder refill vendor" },
+  { id: "f-time", q: "How long until my changes show on the website?", go: "products", a: "About a minute for Products and Program Pricing. The Classes page updates as soon as you save.", kw: "website update changes how long delay" },
+  { id: "f-signin", q: "How do I sign in or out?", go: null, a: "Enter your email and the app emails you a 6-digit code that works for 10 minutes. Use Sign out at the top right when you are done on a shared device.", kw: "login sign in out code password locked out" }
+];
+var helpFocus = null;
+function helpTabLabel(key) { var g = groupOf(key); if (!g) return key === "sale" ? "Event Sale" : key; return g[1].filter(function (v) { return v[0] === key; })[0][1]; }
+function goTab(key, focus) { current = key; helpFocus = focus || null; start(); window.scrollTo(0, 0); }
+function helpBox(key) {
+  var d = HELP[key]; if (!d || key === "sale") return null;
+  var extra = null;
+  if (key === "services") extra = h("button", { "class": "btn small primary", type: "button", text: "Open Booking Invoices", onclick: function () { goTab("bookinv"); } });
+  if (key === "classes") extra = h("button", { "class": "btn small", type: "button", text: "Open Booking Invoices (keynotes)", onclick: function () { goTab("bookinv"); } });
+  return h("div", { "class": "about", role: "note" }, [
+    h("b", { text: "What this tab is for" }), h("p", { text: d.about }),
+    h("p", { style: "display:flex;gap:8px;flex-wrap:wrap;margin:8px 0 0" }, [h("button", { "class": "btn small", type: "button", text: "How to use this tab", onclick: function () { goTab("help", key); } }), extra])]);
+}
+function helpIndex() {
+  var out = [];
+  GROUPS.forEach(function (g) { g[1].forEach(function (v) { var d = HELP[v[0]]; if (d) out.push({ key: v[0], title: v[1], sub: g[0], hay: (v[1] + " " + g[0] + " " + d.about + " " + d.how.join(" ") + " " + (d.tips || []).join(" ") + " " + (d.kw || "")).toLowerCase() }); }); });
+  out.push({ key: "sale", title: "Event Sale", sub: "Selling screen", hay: ("event sale " + HELP.sale.about + " " + HELP.sale.how.join(" ") + " " + HELP.sale.kw).toLowerCase() });
+  HELP_FAQ.forEach(function (f) { out.push({ faq: f.id, go: f.go, title: f.q, sub: "Help", hay: (f.q + " " + f.a + " " + f.kw).toLowerCase() }); });
+  return out;
+}
+function searchBar() {
+  var idx = helpIndex();
+  var input = h("input", { type: "search", placeholder: "Search the app and help (try refund, invoice, label)", "aria-label": "Search tabs and help", autocomplete: "off" });
+  var res = h("div", { "class": "srch-res", hidden: true, role: "listbox" });
+  var wrap = h("div", { "class": "srch" }, [input, res]);
+  function pickHit(x) { if (x.faq) goTab("help", x.faq); else goTab(x.key, x.key === "sale" ? null : null); }
+  function draw() {
+    var q = input.value.toLowerCase().trim(); clear(res);
+    if (!q) { res.hidden = true; return; }
+    var words = q.split(/\s+/);
+    var hits = idx.filter(function (x) { return words.every(function (w) { return x.hay.indexOf(w) >= 0; }); });
+    hits.sort(function (a, b) { return (b.title.toLowerCase().indexOf(q) >= 0) - (a.title.toLowerCase().indexOf(q) >= 0); });
+    res.hidden = false;
+    if (!hits.length) { res.appendChild(h("p", { "class": "muted", style: "padding:12px 14px;margin:0", text: "Nothing found. Try another word, or open the Help tab." })); return; }
+    hits.slice(0, 8).forEach(function (x) {
+      res.appendChild(h("button", { type: "button", role: "option", onclick: function () { pickHit(x); } }, [h("b", { text: x.title }), h("small", { text: x.faq ? "Help answer" : "Tab: " + x.sub })]));
+    });
+    res.appendChild(h("button", { type: "button", onclick: function () { goTab("help"); } }, [h("small", { text: "Open the full Help manual" })]));
+  }
+  input.addEventListener("input", draw);
+  input.addEventListener("keydown", function (e) {
+    if (e.key === "Escape") { input.value = ""; draw(); }
+    if (e.key === "Enter") { e.preventDefault(); var b = res.querySelector("button"); if (b) b.click(); }
+  });
+  document.addEventListener("click", function (e) { if (!wrap.contains(e.target)) res.hidden = true; });
+  return wrap;
+}
+function viewHelp(n) {
+  clear(n);
+  n.appendChild(h("h1", { text: "Help" }));
+  n.appendChild(h("p", { "class": "muted", text: "Short answers and step-by-step guides for every tab. Use the search bar at the top to find something fast." }));
+  var focusEl = null;
+  function topic(id, title, sub, body, open) {
+    var d = h("details", { id: id }, [h("summary", null, [h("b", { text: title }), sub ? h("span", { "class": "pill", style: "margin-left:8px", text: sub }) : null])].concat(body));
+    if (open) { d.open = true; focusEl = d; }
+    return d;
+  }
+  n.appendChild(h("h2", { text: "Quick answers" }));
+  HELP_FAQ.forEach(function (f) {
+    var body = [h("p", { text: f.a })];
+    if (f.go) body.push(h("p", null, [h("button", { "class": "btn small", type: "button", text: "Open " + helpTabLabel(f.go), onclick: function () { goTab(f.go); } })]));
+    n.appendChild(topic(f.id, f.q, null, body, helpFocus === f.id));
+  });
+  n.appendChild(h("h2", { style: "margin-top:24px", text: "Guide to every tab" }));
+  var order = [];
+  GROUPS.forEach(function (g) { g[1].forEach(function (v) { order.push([v[0], v[1], g[0]]); }); });
+  order.push(["sale", "Event Sale", "Selling screen"]);
+  order.forEach(function (o) {
+    var d = HELP[o[0]]; if (!d) return;
+    var body = [h("p", { text: d.about }), h("b", { text: "How to use it" }), h("ol", null, d.how.map(function (s) { return h("li", { text: s }); }))];
+    if (d.tips && d.tips.length) { body.push(h("b", { text: "Good to know" })); body.push(h("ul", null, d.tips.map(function (s) { return h("li", { text: s }); }))); }
+    if (o[0] !== "sale" || true) body.push(h("p", null, [h("button", { "class": "btn small primary", type: "button", text: "Open " + o[1], onclick: function () { goTab(o[0]); } })]));
+    n.appendChild(topic("t-" + o[0], o[1], o[2], body, helpFocus === o[0]));
+  });
+  if (focusEl) setTimeout(function () { focusEl.scrollIntoView({ block: "start", behavior: "smooth" }); }, 60);
+  helpFocus = null;
 }
 
 /* SHIPPING */
