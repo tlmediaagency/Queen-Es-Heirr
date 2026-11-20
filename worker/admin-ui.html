@@ -80,6 +80,8 @@ table.rep{width:100%;border-collapse:collapse;font-size:.92rem;margin:8px 0 16px
 .srch-res button{display:block;width:100%;text-align:left;padding:10px 14px;border:0;border-bottom:1px solid var(--linen);background:#fff;font:inherit;cursor:pointer}.srch-res button:hover,.srch-res button:focus{background:var(--cream-deep)}.srch-res small{display:block;color:var(--muted,#6b6b6b)}
 .about{background:var(--cream-deep);border-left:4px solid var(--gold);border-radius:8px;padding:12px 16px;margin:0 0 14px}.about p{margin:4px 0 0}
 details{background:#fff;border:1px solid var(--linen);border-radius:10px;padding:10px 14px;margin:0 0 8px}details summary{cursor:pointer}details ol,details ul{margin:6px 0 10px;padding-left:22px}details li{margin:3px 0}
+header .srch{flex:1;max-width:280px;margin:0}header .srch input{padding:7px 12px;font-size:.88rem;border-radius:999px;border-color:transparent}header .srch-res{color:var(--ink);text-align:left}header .srch-res b{font-family:inherit;color:var(--ink);font-size:.95rem}header .srch-res .hd{display:block;padding:8px 14px 2px;font-size:.72rem;letter-spacing:.06em;text-transform:uppercase;color:var(--muted,#6b6b6b)}
+@media(max-width:560px){header .in{flex-wrap:wrap}header .srch{order:3;flex:1 0 100%;max-width:none}}
 </style></head><body>
 <div id="app"></div>
 <script>
@@ -172,10 +174,12 @@ function api(method, path, body) {
 }
 function signOut() { TOKEN = null; keep("qe_t", null); renderLogin(); }
 
+var hdrSearch = null;
 function shell(content) {
   clear(app);
   app.appendChild(h("header", null, [h("div", { "class": "in" }, [
     h("div", null, [h("b", { text: "Queen E's Heirr" }), h("br"), h("small", { text: "Shop Admin Portal" })]),
+    hdrSearch,
     h("button", { "class": "btn small", onclick: signOut, text: "Sign out" })])]));
   app.appendChild(h("div", { "class": "wrap" }, content));
 }
@@ -253,7 +257,8 @@ function start() {
       return h("button", { "class": "tab", "aria-selected": String(v[0] === current), onclick: function () { current = v[0]; start(); }, text: v[1] });
     }));
   }
-  var top = current === "sale" ? [nav] : [searchBar(), nav]; if (subnav) top.push(subnav);
+  noteRecent(current); hdrSearch = current === "sale" ? null : searchBar();
+  var top = [nav]; if (subnav) top.push(subnav);
   var ab = helpBox(current); if (ab) top.push(ab);
   top.push(body);
   shell(top);
@@ -342,6 +347,12 @@ var HELP_FAQ = [
   { id: "f-signin", q: "How do I sign in or out?", go: null, a: "Enter your email and the app emails you a 6-digit code that works for 10 minutes. Use Sign out at the top right when you are done on a shared device.", kw: "login sign in out code password locked out" }
 ];
 var helpFocus = null;
+function recentKey() { return "qe_recent_" + (EMAIL || "").toLowerCase(); }
+function getRecent() { try { var a = JSON.parse(recall(recentKey()) || "[]"); return Array.isArray(a) ? a.filter(function (k) { return k === "help" || HELP[k]; }) : []; } catch (e) { return []; } }
+function noteRecent(key) {
+  if (!key || key === "sale") return;
+  var a = getRecent().filter(function (k) { return k !== key; }); a.unshift(key); keep(recentKey(), JSON.stringify(a.slice(0, 4)));
+}
 function helpTabLabel(key) { var g = groupOf(key); if (!g) return key === "sale" ? "Event Sale" : key; return g[1].filter(function (v) { return v[0] === key; })[0][1]; }
 function goTab(key, focus) { current = key; helpFocus = focus || null; start(); window.scrollTo(0, 0); }
 function helpBox(key) {
@@ -360,15 +371,22 @@ function helpIndex() {
   HELP_FAQ.forEach(function (f) { out.push({ faq: f.id, go: f.go, title: f.q, sub: "Help", hay: (f.q + " " + f.a + " " + f.kw).toLowerCase() }); });
   return out;
 }
+function recentLabel(k) { return k === "help" ? "Help" : helpTabLabel(k); }
 function searchBar() {
   var idx = helpIndex();
-  var input = h("input", { type: "search", placeholder: "Search the app and help (try refund, invoice, label)", "aria-label": "Search tabs and help", autocomplete: "off" });
+  var input = h("input", { type: "search", placeholder: "Search or find a tab", "aria-label": "Search tabs and help", autocomplete: "off" });
   var res = h("div", { "class": "srch-res", hidden: true, role: "listbox" });
   var wrap = h("div", { "class": "srch" }, [input, res]);
   function pickHit(x) { if (x.faq) goTab("help", x.faq); else goTab(x.key, x.key === "sale" ? null : null); }
   function draw() {
     var q = input.value.toLowerCase().trim(); clear(res);
-    if (!q) { res.hidden = true; return; }
+    if (!q) {
+      var rec = getRecent().filter(function (k) { return k !== current; }).slice(0, 3);
+      if (!rec.length || document.activeElement !== input) { res.hidden = true; return; }
+      res.hidden = false; res.appendChild(h("span", { "class": "hd", text: "Your recent tabs" }));
+      rec.forEach(function (k) { res.appendChild(h("button", { type: "button", onclick: function () { goTab(k); } }, [h("b", { text: recentLabel(k) }), h("small", { text: k === "help" ? "Help manual" : "Tab: " + groupOf(k)[0] })])); });
+      return;
+    }
     var words = q.split(/\s+/);
     var hits = idx.filter(function (x) { return words.every(function (w) { return x.hay.indexOf(w) >= 0; }); });
     hits.sort(function (a, b) { return (b.title.toLowerCase().indexOf(q) >= 0) - (a.title.toLowerCase().indexOf(q) >= 0); });
@@ -379,7 +397,7 @@ function searchBar() {
     });
     res.appendChild(h("button", { type: "button", onclick: function () { goTab("help"); } }, [h("small", { text: "Open the full Help manual" })]));
   }
-  input.addEventListener("input", draw);
+  input.addEventListener("input", draw); input.addEventListener("focus", draw);
   input.addEventListener("keydown", function (e) {
     if (e.key === "Escape") { input.value = ""; draw(); }
     if (e.key === "Enter") { e.preventDefault(); var b = res.querySelector("button"); if (b) b.click(); }
